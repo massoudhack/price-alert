@@ -1,1 +1,690 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>آلارم قیمت</title>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #1a1a24;
+    --border: #2a2a3a;
+    --accent: #7c5cfc;
+    --accent2: #fc5c7d;
+    --green: #2ecc8a;
+    --red: #fc5c7d;
+    --yellow: #f7c948;
+    --text: #e8e8f0;
+    --muted: #666680;
+    --font: 'Vazirmatn', sans-serif;
+  }
 
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(124,92,252,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(124,92,252,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .glow-orb {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(120px);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .glow-orb-1 {
+    width: 600px; height: 600px;
+    top: -200px; right: -200px;
+    background: rgba(124,92,252,0.12);
+  }
+  .glow-orb-2 {
+    width: 400px; height: 400px;
+    bottom: -100px; left: -100px;
+    background: rgba(252,92,125,0.08);
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 32px 20px;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 40px;
+  }
+  .logo {
+    width: 52px; height: 52px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    box-shadow: 0 8px 32px rgba(124,92,252,0.4);
+  }
+  .header-text h1 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+  }
+  .header-text p {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .status-badge {
+    margin-right: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(46,204,138,0.1);
+    border: 1px solid rgba(46,204,138,0.2);
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 12px;
+    color: var(--green);
+  }
+  .status-dot {
+    width: 7px; height: 7px;
+    background: var(--green);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.3); }
+  }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 24px;
+    margin-bottom: 20px;
+    transition: border-color 0.2s;
+  }
+  .card:hover { border-color: rgba(124,92,252,0.3); }
+
+  .card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-title::before {
+    content: '';
+    display: block;
+    width: 3px; height: 14px;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+
+  /* Form Grid */
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .form-group { display: flex; flex-direction: column; gap: 8px; }
+  .form-group.full { grid-column: 1 / -1; }
+  .form-group label {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 500;
+  }
+
+  input, select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 11px 14px;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    width: 100%;
+  }
+  input:focus, select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(124,92,252,0.1);
+  }
+  input::placeholder { color: var(--muted); }
+
+  select option { background: var(--surface2); }
+
+  /* Buttons */
+  .btn {
+    border: none;
+    border-radius: 10px;
+    padding: 11px 20px;
+    font-family: var(--font);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), #9b7afc);
+    color: #fff;
+    box-shadow: 0 4px 20px rgba(124,92,252,0.35);
+  }
+  .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 28px rgba(124,92,252,0.5);
+  }
+  .btn-secondary {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-danger {
+    background: rgba(252,92,125,0.1);
+    color: var(--red);
+    border: 1px solid rgba(252,92,125,0.2);
+  }
+  .btn-danger:hover { background: rgba(252,92,125,0.2); }
+  .btn-success {
+    background: rgba(46,204,138,0.1);
+    color: var(--green);
+    border: 1px solid rgba(46,204,138,0.2);
+  }
+  .btn-success:hover { background: rgba(46,204,138,0.2); }
+  .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 7px; }
+  .btn-full { width: 100%; margin-top: 16px; }
+
+  /* Two-column form footer */
+  .form-footer {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 16px;
+  }
+
+  /* Alerts List */
+  .alerts-list { display: flex; flex-direction: column; gap: 12px; }
+  .alert-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    transition: all 0.2s;
+    animation: fadeIn 0.3s ease;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .alert-item.inactive { opacity: 0.45; }
+  .alert-item:hover { border-color: rgba(124,92,252,0.25); }
+
+  .alert-icon {
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .alert-icon.crypto { background: rgba(247,201,72,0.12); }
+  .alert-icon.forex { background: rgba(124,92,252,0.12); }
+
+  .alert-info { flex: 1; min-width: 0; }
+  .alert-symbol {
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .alert-detail {
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge-above { background: rgba(46,204,138,0.12); color: var(--green); }
+  .badge-below { background: rgba(252,92,125,0.12); color: var(--red); }
+  .badge-fired { background: rgba(247,201,72,0.12); color: var(--yellow); }
+
+  .alert-price {
+    text-align: left;
+    flex-shrink: 0;
+  }
+  .alert-price .target { font-size: 15px; font-weight: 700; }
+  .alert-price .current { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  .alert-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+  /* Telegram section */
+  .tg-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .tg-help {
+    grid-column: 1 / -1;
+    background: rgba(124,92,252,0.06);
+    border: 1px solid rgba(124,92,252,0.15);
+    border-radius: 10px;
+    padding: 14px;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.8;
+  }
+  .tg-help a { color: var(--accent); text-decoration: none; }
+
+  /* Stats row */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 18px 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .stat-icon {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+  }
+  .stat-value { font-size: 22px; font-weight: 700; }
+  .stat-label { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* Toast */
+  .toast-container {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 999;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+  }
+  .toast {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 20px;
+    font-size: 13px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    animation: slideUp 0.3s ease, fadeOut 0.3s ease 2.7s forwards;
+    pointer-events: auto;
+    white-space: nowrap;
+  }
+  .toast.success { border-color: rgba(46,204,138,0.4); color: var(--green); }
+  .toast.error { border-color: rgba(252,92,125,0.4); color: var(--red); }
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeOut {
+    to { opacity: 0; transform: translateY(-8px); }
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--muted);
+  }
+  .empty-state .emoji { font-size: 40px; margin-bottom: 12px; }
+  .empty-state p { font-size: 14px; }
+
+  @media (max-width: 600px) {
+    .stats { grid-template-columns: 1fr; }
+    .form-grid { grid-template-columns: 1fr; }
+    .tg-grid { grid-template-columns: 1fr; }
+    .form-footer { grid-template-columns: 1fr; }
+    .alert-item { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+
+<div class="glow-orb glow-orb-1"></div>
+<div class="glow-orb glow-orb-2"></div>
+
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">🔔</div>
+    <div class="header-text">
+      <h1>آلارم قیمت</h1>
+      <p>کریپتو و فارکس · هر ۲ دقیقه چک</p>
+    </div>
+    <div class="status-badge">
+      <div class="status-dot"></div>
+      <span id="statusText">آنلاین</span>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:rgba(124,92,252,0.12)">📋</div>
+      <div>
+        <div class="stat-value" id="totalAlerts">0</div>
+        <div class="stat-label">کل آلارم‌ها</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:rgba(46,204,138,0.12)">✅</div>
+      <div>
+        <div class="stat-value" id="activeAlerts">0</div>
+        <div class="stat-label">فعال</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:rgba(247,201,72,0.12)">⚡</div>
+      <div>
+        <div class="stat-value" id="lastCheck">—</div>
+        <div class="stat-label">آخرین بررسی</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Telegram Settings -->
+  <div class="card">
+    <div class="card-title">تنظیمات تلگرام</div>
+    <div class="tg-grid">
+      <div class="form-group">
+        <label>توکن ربات تلگرام</label>
+        <input type="text" id="botToken" placeholder="123456:ABC-DEF..." dir="ltr">
+      </div>
+      <div class="form-group">
+        <label>Chat ID</label>
+        <input type="text" id="chatId" placeholder="مثال: 123456789" dir="ltr">
+      </div>
+      <div class="tg-help">
+        📖 <strong>راهنما:</strong> ابتدا به <a href="https://t.me/BotFather" target="_blank">@BotFather</a> برو و ربات بساز. بعد به <a href="https://t.me/userinfobot" target="_blank">@userinfobot</a> پیام بده تا Chat ID خودت رو بگیری.
+      </div>
+    </div>
+    <div class="form-footer">
+      <button class="btn btn-secondary" onclick="saveTelegram()">💾 ذخیره</button>
+      <button class="btn btn-success" onclick="testTelegram()">📨 تست پیام</button>
+    </div>
+  </div>
+
+  <!-- Add Alert -->
+  <div class="card">
+    <div class="card-title">آلارم جدید</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>نوع دارایی</label>
+        <select id="assetType" onchange="updateSymbolHint()">
+          <option value="crypto">🪙 کریپتو</option>
+          <option value="forex">💱 فارکس</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>نماد <span id="symbolHint" style="color:var(--accent);font-size:11px">(مثال: BTC)</span></label>
+        <input type="text" id="symbol" placeholder="BTC" dir="ltr" style="text-transform:uppercase">
+      </div>
+      <div class="form-group">
+        <label>قیمت هدف (دلار)</label>
+        <input type="number" id="targetPrice" placeholder="70000" dir="ltr" step="any">
+      </div>
+      <div class="form-group">
+        <label>شرط</label>
+        <select id="condition">
+          <option value="above">📈 بالاتر از قیمت هدف</option>
+          <option value="below">📉 پایین‌تر از قیمت هدف</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-footer">
+      <button class="btn btn-secondary" onclick="checkLivePrice()">👁 قیمت الان</button>
+      <button class="btn btn-primary" onclick="addAlert()">➕ ثبت آلارم</button>
+    </div>
+  </div>
+
+  <!-- Alerts List -->
+  <div class="card">
+    <div class="card-title">آلارم‌های ثبت‌شده</div>
+    <div class="alerts-list" id="alertsList">
+      <div class="empty-state">
+        <div class="emoji">🔕</div>
+        <p>هنوز آلارمی ثبت نشده</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+const API = '';  // empty = same origin (the Flask server)
+
+// ─── Toast ──────────────────────────────────────────────────────────────────
+function toast(msg, type = 'success') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(() => el.remove(), 3100);
+}
+
+// ─── Symbol hint ─────────────────────────────────────────────────────────────
+function updateSymbolHint() {
+  const type = document.getElementById('assetType').value;
+  const hint = document.getElementById('symbolHint');
+  const sym = document.getElementById('symbol');
+  if (type === 'crypto') {
+    hint.textContent = '(مثال: BTC, ETH, SOL)';
+    sym.placeholder = 'BTC';
+  } else {
+    hint.textContent = '(مثال: EURUSD, GBPUSD)';
+    sym.placeholder = 'EURUSD';
+  }
+}
+
+// ─── Telegram ────────────────────────────────────────────────────────────────
+async function loadConfig() {
+  try {
+    const r = await fetch(API + '/api/config');
+    const d = await r.json();
+    document.getElementById('botToken').value = d.bot_token || '';
+    document.getElementById('chatId').value = d.chat_id || '';
+  } catch(e) {}
+}
+
+async function saveTelegram() {
+  const bot_token = document.getElementById('botToken').value.trim();
+  const chat_id = document.getElementById('chatId').value.trim();
+  if (!bot_token || !chat_id) { toast('توکن و Chat ID رو وارد کن', 'error'); return; }
+  await fetch(API + '/api/config', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ bot_token, chat_id })
+  });
+  toast('✅ تنظیمات ذخیره شد');
+}
+
+async function testTelegram() {
+  const r = await fetch(API + '/api/test-telegram', { method: 'POST' });
+  const d = await r.json();
+  if (d.ok) toast('📨 پیام تست ارسال شد!');
+  else toast('❌ خطا در ارسال. توکن و ID رو چک کن', 'error');
+}
+
+// ─── Live price check ────────────────────────────────────────────────────────
+async function checkLivePrice() {
+  const sym = document.getElementById('symbol').value.trim().toUpperCase();
+  const type = document.getElementById('assetType').value;
+  if (!sym) { toast('نماد رو وارد کن', 'error'); return; }
+  toast('⏳ در حال دریافت قیمت...');
+  try {
+    const r = await fetch(`${API}/api/price/${type}/${sym}`);
+    const d = await r.json();
+    if (d.price !== undefined) {
+      toast(`💰 ${sym}: $${d.price.toLocaleString('en', {minimumFractionDigits: 2, maximumFractionDigits: 6})}`);
+      document.getElementById('targetPrice').value = d.price;
+    } else {
+      toast(`❌ نماد پیدا نشد: ${sym}`, 'error');
+    }
+  } catch(e) {
+    toast('❌ خطا در ارتباط با سرور', 'error');
+  }
+}
+
+// ─── Add Alert ───────────────────────────────────────────────────────────────
+async function addAlert() {
+  const symbol = document.getElementById('symbol').value.trim().toUpperCase();
+  const type = document.getElementById('assetType').value;
+  const target_price = parseFloat(document.getElementById('targetPrice').value);
+  const condition = document.getElementById('condition').value;
+
+  if (!symbol) { toast('نماد رو وارد کن', 'error'); return; }
+  if (!target_price || target_price <= 0) { toast('قیمت هدف رو وارد کن', 'error'); return; }
+
+  const r = await fetch(API + '/api/alerts', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ symbol, type, target_price, condition })
+  });
+  const d = await r.json();
+  if (d.ok) {
+    toast(`✅ آلارم ${symbol} ثبت شد`);
+    document.getElementById('symbol').value = '';
+    document.getElementById('targetPrice').value = '';
+    loadAlerts();
+  }
+}
+
+// ─── Load & Render Alerts ─────────────────────────────────────────────────────
+async function loadAlerts() {
+  const r = await fetch(API + '/api/alerts');
+  const alerts = await r.json();
+
+  const total = alerts.length;
+  const active = alerts.filter(a => a.active).length;
+  document.getElementById('totalAlerts').textContent = total;
+  document.getElementById('activeAlerts').textContent = active;
+
+  // last checked
+  const checked = alerts.filter(a => a.last_checked).map(a => a.last_checked);
+  if (checked.length) {
+    const latest = checked.sort().pop();
+    const t = new Date(latest);
+    document.getElementById('lastCheck').textContent = t.toLocaleTimeString('fa-IR');
+  }
+
+  const list = document.getElementById('alertsList');
+  if (total === 0) {
+    list.innerHTML = `<div class="empty-state"><div class="emoji">🔕</div><p>هنوز آلارمی ثبت نشده</p></div>`;
+    return;
+  }
+
+  list.innerHTML = alerts.reverse().map(a => {
+    const icon = a.type === 'crypto' ? '🪙' : '💱';
+    const iconClass = a.type;
+    const badgeClass = !a.active ? 'badge-fired' : (a.condition === 'above' ? 'badge-above' : 'badge-below');
+    const badgeText = !a.active ? '⚡ فعال شد' : (a.condition === 'above' ? '📈 بالاتر' : '📉 پایین‌تر');
+    const currentStr = a.last_price ? `قیمت فعلی: $${parseFloat(a.last_price).toLocaleString('en', {maximumFractionDigits:6})}` : 'هنوز چک نشده';
+    const targetStr = parseFloat(a.target_price).toLocaleString('en', {maximumFractionDigits:6});
+    return `
+      <div class="alert-item ${a.active ? '' : 'inactive'}" id="alert-${a.id}">
+        <div class="alert-icon ${iconClass}">${icon}</div>
+        <div class="alert-info">
+          <div class="alert-symbol">${a.symbol}</div>
+          <div class="alert-detail">
+            <span class="badge ${badgeClass}">${badgeText}</span>
+            <span>${currentStr}</span>
+          </div>
+        </div>
+        <div class="alert-price">
+          <div class="target">$${targetStr}</div>
+          <div class="current">${a.created_at ? a.created_at.slice(0,10) : ''}</div>
+        </div>
+        <div class="alert-actions">
+          <button class="btn btn-secondary btn-sm" onclick="toggleAlert('${a.id}')" title="${a.active ? 'غیرفعال کن' : 'فعال کن'}">
+            ${a.active ? '⏸' : '▶️'}
+          </button>
+          <button class="btn btn-danger btn-sm" onclick="deleteAlert('${a.id}')" title="حذف">🗑</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function deleteAlert(id) {
+  if (!confirm('آلارم حذف بشه؟')) return;
+  await fetch(`${API}/api/alerts/${id}`, { method: 'DELETE' });
+  toast('🗑 آلارم حذف شد');
+  loadAlerts();
+}
+
+async function toggleAlert(id) {
+  await fetch(`${API}/api/alerts/${id}/toggle`, { method: 'POST' });
+  loadAlerts();
+}
+
+// ─── Init ────────────────────────────────────────────────────────────────────
+loadConfig();
+loadAlerts();
+setInterval(loadAlerts, 30000);  // refresh UI every 30s
+</script>
+</body>
+</html>
