@@ -3,688 +3,339 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>آلارم قیمت</title>
-<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
+<title>PriceAlert — آلارم قیمت</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Vazirmatn:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: #0a0a0f;
-    --surface: #111118;
-    --surface2: #1a1a24;
-    --border: #2a2a3a;
-    --accent: #7c5cfc;
-    --accent2: #fc5c7d;
-    --green: #2ecc8a;
-    --red: #fc5c7d;
-    --yellow: #f7c948;
-    --text: #e8e8f0;
-    --muted: #666680;
-    --font: 'Vazirmatn', sans-serif;
-  }
-
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--font);
-    min-height: 100vh;
-    overflow-x: hidden;
-  }
-
-  /* Grid background */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background-image:
-      linear-gradient(rgba(124,92,252,0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(124,92,252,0.04) 1px, transparent 1px);
-    background-size: 40px 40px;
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  .glow-orb {
-    position: fixed;
-    border-radius: 50%;
-    filter: blur(120px);
-    pointer-events: none;
-    z-index: 0;
-  }
-  .glow-orb-1 {
-    width: 600px; height: 600px;
-    top: -200px; right: -200px;
-    background: rgba(124,92,252,0.12);
-  }
-  .glow-orb-2 {
-    width: 400px; height: 400px;
-    bottom: -100px; left: -100px;
-    background: rgba(252,92,125,0.08);
-  }
-
-  .container {
-    position: relative;
-    z-index: 1;
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 32px 20px;
-  }
-
-  /* Header */
-  .header {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    margin-bottom: 40px;
-  }
-  .logo {
-    width: 52px; height: 52px;
-    background: linear-gradient(135deg, var(--accent), var(--accent2));
-    border-radius: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 24px;
-    box-shadow: 0 8px 32px rgba(124,92,252,0.4);
-  }
-  .header-text h1 {
-    font-size: 22px;
-    font-weight: 700;
-    letter-spacing: -0.3px;
-  }
-  .header-text p {
-    font-size: 13px;
-    color: var(--muted);
-    margin-top: 2px;
-  }
-  .status-badge {
-    margin-right: auto;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: rgba(46,204,138,0.1);
-    border: 1px solid rgba(46,204,138,0.2);
-    border-radius: 20px;
-    padding: 6px 14px;
-    font-size: 12px;
-    color: var(--green);
-  }
-  .status-dot {
-    width: 7px; height: 7px;
-    background: var(--green);
-    border-radius: 50%;
-    animation: pulse 2s infinite;
-  }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.5; transform: scale(1.3); }
-  }
-
-  /* Cards */
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 24px;
-    margin-bottom: 20px;
-    transition: border-color 0.2s;
-  }
-  .card:hover { border-color: rgba(124,92,252,0.3); }
-
-  .card-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 20px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .card-title::before {
-    content: '';
-    display: block;
-    width: 3px; height: 14px;
-    background: var(--accent);
-    border-radius: 2px;
-  }
-
-  /* Form Grid */
-  .form-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 14px;
-  }
-  .form-group { display: flex; flex-direction: column; gap: 8px; }
-  .form-group.full { grid-column: 1 / -1; }
-  .form-group label {
-    font-size: 12px;
-    color: var(--muted);
-    font-weight: 500;
-  }
-
-  input, select {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 11px 14px;
-    color: var(--text);
-    font-family: var(--font);
-    font-size: 14px;
-    outline: none;
-    transition: border-color 0.2s, box-shadow 0.2s;
-    width: 100%;
-  }
-  input:focus, select:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(124,92,252,0.1);
-  }
-  input::placeholder { color: var(--muted); }
-
-  select option { background: var(--surface2); }
-
-  /* Buttons */
-  .btn {
-    border: none;
-    border-radius: 10px;
-    padding: 11px 20px;
-    font-family: var(--font);
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-  }
-  .btn-primary {
-    background: linear-gradient(135deg, var(--accent), #9b7afc);
-    color: #fff;
-    box-shadow: 0 4px 20px rgba(124,92,252,0.35);
-  }
-  .btn-primary:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 28px rgba(124,92,252,0.5);
-  }
-  .btn-secondary {
-    background: var(--surface2);
-    color: var(--text);
-    border: 1px solid var(--border);
-  }
-  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
-  .btn-danger {
-    background: rgba(252,92,125,0.1);
-    color: var(--red);
-    border: 1px solid rgba(252,92,125,0.2);
-  }
-  .btn-danger:hover { background: rgba(252,92,125,0.2); }
-  .btn-success {
-    background: rgba(46,204,138,0.1);
-    color: var(--green);
-    border: 1px solid rgba(46,204,138,0.2);
-  }
-  .btn-success:hover { background: rgba(46,204,138,0.2); }
-  .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 7px; }
-  .btn-full { width: 100%; margin-top: 16px; }
-
-  /* Two-column form footer */
-  .form-footer {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-top: 16px;
-  }
-
-  /* Alerts List */
-  .alerts-list { display: flex; flex-direction: column; gap: 12px; }
-  .alert-item {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 16px 20px;
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    transition: all 0.2s;
-    animation: fadeIn 0.3s ease;
-  }
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-8px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  .alert-item.inactive { opacity: 0.45; }
-  .alert-item:hover { border-color: rgba(124,92,252,0.25); }
-
-  .alert-icon {
-    width: 44px; height: 44px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-    flex-shrink: 0;
-  }
-  .alert-icon.crypto { background: rgba(247,201,72,0.12); }
-  .alert-icon.forex { background: rgba(124,92,252,0.12); }
-
-  .alert-info { flex: 1; min-width: 0; }
-  .alert-symbol {
-    font-size: 15px;
-    font-weight: 700;
-    margin-bottom: 4px;
-  }
-  .alert-detail {
-    font-size: 12px;
-    color: var(--muted);
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
-    border-radius: 6px;
-    font-size: 11px;
-    font-weight: 600;
-  }
-  .badge-above { background: rgba(46,204,138,0.12); color: var(--green); }
-  .badge-below { background: rgba(252,92,125,0.12); color: var(--red); }
-  .badge-fired { background: rgba(247,201,72,0.12); color: var(--yellow); }
-
-  .alert-price {
-    text-align: left;
-    flex-shrink: 0;
-  }
-  .alert-price .target { font-size: 15px; font-weight: 700; }
-  .alert-price .current { font-size: 11px; color: var(--muted); margin-top: 2px; }
-
-  .alert-actions { display: flex; gap: 6px; flex-shrink: 0; }
-
-  /* Telegram section */
-  .tg-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 14px;
-  }
-  .tg-help {
-    grid-column: 1 / -1;
-    background: rgba(124,92,252,0.06);
-    border: 1px solid rgba(124,92,252,0.15);
-    border-radius: 10px;
-    padding: 14px;
-    font-size: 12px;
-    color: var(--muted);
-    line-height: 1.8;
-  }
-  .tg-help a { color: var(--accent); text-decoration: none; }
-
-  /* Stats row */
-  .stats {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 14px;
-    margin-bottom: 20px;
-  }
-  .stat-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 18px 20px;
-    display: flex;
-    align-items: center;
-    gap: 14px;
-  }
-  .stat-icon {
-    width: 40px; height: 40px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-  }
-  .stat-value { font-size: 22px; font-weight: 700; }
-  .stat-label { font-size: 11px; color: var(--muted); margin-top: 2px; }
-
-  /* Toast */
-  .toast-container {
-    position: fixed;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 999;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    pointer-events: none;
-  }
-  .toast {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 12px 20px;
-    font-size: 13px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-    animation: slideUp 0.3s ease, fadeOut 0.3s ease 2.7s forwards;
-    pointer-events: auto;
-    white-space: nowrap;
-  }
-  .toast.success { border-color: rgba(46,204,138,0.4); color: var(--green); }
-  .toast.error { border-color: rgba(252,92,125,0.4); color: var(--red); }
-  @keyframes slideUp {
-    from { opacity: 0; transform: translateY(16px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes fadeOut {
-    to { opacity: 0; transform: translateY(-8px); }
-  }
-
-  .empty-state {
-    text-align: center;
-    padding: 48px 20px;
-    color: var(--muted);
-  }
-  .empty-state .emoji { font-size: 40px; margin-bottom: 12px; }
-  .empty-state p { font-size: 14px; }
-
-  @media (max-width: 600px) {
-    .stats { grid-template-columns: 1fr; }
-    .form-grid { grid-template-columns: 1fr; }
-    .tg-grid { grid-template-columns: 1fr; }
-    .form-footer { grid-template-columns: 1fr; }
-    .alert-item { flex-wrap: wrap; }
-  }
+:root {
+  --bg:      #07090c;
+  --bg2:     #0c0f14;
+  --bg3:     #121720;
+  --bg4:     #181e29;
+  --bg5:     #1e2535;
+  --border:  rgba(255,255,255,0.055);
+  --border2: rgba(255,255,255,0.10);
+  --border3: rgba(255,255,255,0.16);
+  --text:    #dce4f0;
+  --text2:   #7a8799;
+  --text3:   #3d4a5c;
+  --green:   #00d98b;
+  --green2:  #00f5a0;
+  --gdim:    rgba(0,217,139,0.09);
+  --gdim2:   rgba(0,217,139,0.04);
+  --red:     #ff4560;
+  --rdim:    rgba(255,69,96,0.09);
+  --gold:    #f0a500;
+  --gdold:   rgba(240,165,0,0.09);
+  --blue:    #4da8ff;
+  --bluedim: rgba(77,168,255,0.09);
+  --purple:  #a070ff;
+  --purdim:  rgba(160,112,255,0.09);
+  --mono:    'IBM Plex Mono', monospace;
+  --sans:    'Vazirmatn', sans-serif;
+  --rad:     12px;
+  --rad2:    16px;
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(255,255,255,0.016) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.016) 1px,transparent 1px);background-size:50px 50px;pointer-events:none;z-index:0;}
+.orb{position:fixed;border-radius:50%;pointer-events:none;z-index:0;}
+.o1{width:800px;height:800px;top:-300px;right:-200px;background:radial-gradient(circle,rgba(0,217,139,0.03) 0%,transparent 65%);}
+.o2{width:500px;height:500px;bottom:-200px;left:-100px;background:radial-gradient(circle,rgba(77,168,255,0.025) 0%,transparent 65%);}
+.o3{width:350px;height:350px;top:50%;left:30%;background:radial-gradient(circle,rgba(160,112,255,0.018) 0%,transparent 65%);}
+.wrap{position:relative;z-index:1;max-width:980px;margin:0 auto;padding:2rem 1.25rem 5rem;}
+.hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:2rem;padding-bottom:1.5rem;border-bottom:1px solid var(--border);}
+.brand{display:flex;align-items:center;gap:13px;}
+.brand-logo{width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,rgba(0,217,139,0.15),rgba(77,168,255,0.15));border:1px solid rgba(0,217,139,0.2);display:flex;align-items:center;justify-content:center;box-shadow:0 0 20px rgba(0,217,139,0.08);}
+.brand-name{font-family:var(--mono);font-size:18px;font-weight:600;letter-spacing:-.03em;}
+.brand-name em{color:var(--green);font-style:normal;}
+.brand-sub{font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:2px;}
+.hdr-right{display:flex;align-items:center;gap:8px;}
+.live-pill{display:flex;align-items:center;gap:6px;padding:7px 13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;font-size:11px;font-family:var(--mono);color:var(--text2);}
+.ldot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);animation:blink 2s ease-in-out infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+.icon-btn{width:36px;height:36px;border-radius:9px;background:var(--bg3);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text3);transition:.18s;}
+.icon-btn:hover{color:var(--text);border-color:var(--border2);}
+.icon-btn svg{width:15px;height:15px;}
+.ticker{display:flex;align-items:center;gap:6px;flex-wrap:wrap;row-gap:5px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rad);padding:9px 14px;margin-bottom:1.5rem;}
+.tlbl{font-size:9px;font-family:var(--mono);color:var(--text3);letter-spacing:.12em;margin-left:4px;}
+.tchip{display:flex;align-items:center;gap:5px;padding:3px 9px;background:var(--bg4);border:1px solid var(--border);border-radius:6px;font-family:var(--mono);font-size:11px;}
+.tsym{color:var(--text2);font-weight:500;}
+.tval{color:var(--text);}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:1.5rem;}
+@media(max-width:640px){.stats{grid-template-columns:1fr 1fr;}}
+.scard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rad2);padding:1.1rem 1.1rem .9rem;position:relative;overflow:hidden;transition:.2s;}
+.scard:hover{border-color:var(--border2);}
+.scard::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,0.014) 0%,transparent 60%);pointer-events:none;}
+.scard-lbl{font-size:10px;font-family:var(--mono);color:var(--text3);letter-spacing:.09em;text-transform:uppercase;margin-bottom:9px;}
+.scard-val{font-size:24px;font-weight:700;font-family:var(--mono);line-height:1;letter-spacing:-.02em;}
+.scard-val.gold{color:var(--gold);}
+.scard-val.green{color:var(--green);}
+.scard-val.blue{color:var(--blue);}
+.scard-val.purple{color:var(--purple);}
+.scard-sub{font-size:11px;color:var(--text2);margin-top:5px;font-family:var(--mono);}
+.scard-ico{position:absolute;top:.9rem;left:.9rem;font-size:20px;opacity:.12;}
+.tabs{display:flex;gap:4px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rad);padding:4px;margin-bottom:1.25rem;width:fit-content;}
+.tab{padding:7px 18px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;color:var(--text2);border:none;background:transparent;font-family:var(--sans);transition:.18s;}
+.tab.on{background:var(--bg4);color:var(--text);border:1px solid var(--border2);}
+.tab:hover:not(.on){color:var(--text);}
+.pnl{display:none;}
+.pnl.on{display:block;}
+.sec{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rad2);margin-bottom:1rem;overflow:hidden;transition:.2s;}
+.sec:hover{border-color:var(--border2);}
+.sec-hd{display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.25rem;border-bottom:1px solid var(--border);}
+.sec-ttl{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:600;color:var(--text2);font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase;}
+.sec-dot{width:3px;height:12px;border-radius:2px;background:var(--gold);}
+.sec-dot.green{background:var(--green);}
+.sec-dot.blue{background:var(--blue);}
+.sec-dot.purple{background:var(--purple);}
+.sec-dot.red{background:var(--red);}
+.sec-bd{padding:1.25rem;}
+.sec-bd.slim{padding:.75rem 1.25rem 1.25rem;}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;align-items:end;}
+.fld label{display:block;font-size:10px;color:var(--text3);font-family:var(--mono);letter-spacing:.08em;margin-bottom:5px;}
+.fld input,.fld select{width:100%;background:var(--bg4);border:1px solid var(--border2);border-radius:var(--rad);padding:9px 11px;color:var(--text);font-size:13px;font-family:var(--mono);outline:none;transition:.18s;-webkit-appearance:none;}
+.fld input:focus,.fld select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(0,217,139,0.06);}
+.fld input::placeholder{color:var(--text3);}
+.fld select option{background:#1e2535;}
+.btn{padding:9px 16px;border-radius:var(--rad);font-size:13px;font-weight:500;cursor:pointer;font-family:var(--sans);border:1px solid var(--border2);background:var(--bg3);color:var(--text2);transition:.18s;white-space:nowrap;}
+.btn:hover{color:var(--text);background:var(--bg4);}
+.btn-green{background:var(--green);color:#07090c;border-color:var(--green);font-weight:700;}
+.btn-green:hover{background:var(--green2);box-shadow:0 0 18px rgba(0,217,139,0.22);}
+.btn-blue{color:var(--blue);border-color:rgba(77,168,255,0.22);}
+.btn-blue:hover{background:var(--bluedim);}
+.btn-red{color:var(--red);border-color:rgba(255,69,96,0.2);background:transparent;padding:5px 10px;font-size:12px;}
+.btn-red:hover{background:var(--rdim);}
+.btn-sm{padding:5px 10px;font-size:11px;border-radius:7px;}
+.row-end{display:flex;gap:8px;justify-content:flex-end;margin-top:1rem;}
+.atbl{width:100%;}
+.atbl-hd{display:grid;grid-template-columns:1.8fr 1fr .8fr 1fr .8fr 64px;gap:8px;padding:0 0 8px;border-bottom:1px solid var(--border);}
+.atbl-hd span{font-size:10px;font-family:var(--mono);color:var(--text3);letter-spacing:.08em;}
+.atbl-row{display:grid;grid-template-columns:1.8fr 1fr .8fr 1fr .8fr 64px;gap:8px;padding:10px 0;border-bottom:1px solid var(--border);align-items:center;transition:.15s;}
+.atbl-row:last-child{border-bottom:none;}
+.atbl-row:hover{background:rgba(255,255,255,.012);border-radius:7px;margin:0 -6px;padding:10px 6px;}
+.atbl-row.hit{background:rgba(0,217,139,.03);}
+@media(max-width:640px){.atbl-hd,.atbl-row{grid-template-columns:1fr .9fr .8fr 48px;}.col-h{display:none;}}
+.acell{display:flex;align-items:center;gap:8px;}
+.abadge{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;font-weight:600;flex-shrink:0;}
+.abadge.c{background:var(--gdold);color:var(--gold);border:1px solid rgba(240,165,0,.15);}
+.abadge.f{background:var(--bluedim);color:var(--blue);border:1px solid rgba(77,168,255,.15);}
+.aname{font-size:13px;font-weight:600;color:var(--text);font-family:var(--mono);}
+.atype{font-size:10px;color:var(--text3);font-family:var(--mono);margin-top:1px;}
+.mono13{font-family:var(--mono);font-size:13px;color:var(--text);}
+.mono11{font-family:var(--mono);font-size:11px;color:var(--text2);}
+.green11{font-family:var(--mono);font-size:11px;color:var(--green);}
+.red11{font-family:var(--mono);font-size:11px;color:var(--red);}
+.dpill{display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:5px;font-size:10px;font-family:var(--mono);font-weight:700;letter-spacing:.04em;}
+.dpill.up{background:var(--gdim);color:var(--green);}
+.dpill.dn{background:var(--rdim);color:var(--red);}
+.sdot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.sdot.watch{background:var(--gold);box-shadow:0 0 5px rgba(240,165,0,.5);animation:blink 2s infinite;}
+.sdot.hit{background:var(--green);box-shadow:0 0 5px rgba(0,217,139,.6);}
+.sdot.pend{background:var(--text3);}
+.arch-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border);}
+.arch-row:last-child{border-bottom:none;}
+.arch-tag{font-size:10px;padding:2px 8px;border-radius:5px;background:var(--gdim);color:var(--green);font-family:var(--mono);font-weight:600;white-space:nowrap;}
+.arch-name{font-size:13px;font-family:var(--mono);font-weight:600;color:var(--text);}
+.arch-detail{font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:2px;}
+.user-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);}
+.user-row:last-child{border-bottom:none;}
+.user-av{width:34px;height:34px;border-radius:8px;background:var(--purdim);border:1px solid rgba(160,112,255,.15);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;}
+.user-name{font-size:13px;font-weight:600;color:var(--text);}
+.user-id{font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:1px;}
+.user-date{font-size:11px;color:var(--text3);font-family:var(--mono);margin-right:auto;}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:100;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(5px);opacity:0;pointer-events:none;transition:.22s;}
+.overlay.on{opacity:1;pointer-events:all;}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:18px;width:min(500px,94vw);padding:1.75rem;transform:translateY(18px);transition:.22s;}
+.overlay.on .modal{transform:translateY(0);}
+.modal-ttl{font-size:15px;font-weight:600;color:var(--text);margin-bottom:1.25rem;display:flex;align-items:center;gap:8px;font-family:var(--mono);}
+.modal-ttl span{color:var(--blue);}
+.mrow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
+.mfooter{display:flex;gap:8px;justify-content:flex-end;margin-top:1.25rem;}
+.tg-note{font-size:12px;font-family:var(--mono);margin-top:10px;padding:10px 12px;border-radius:8px;display:none;}
+.tg-note.ok{display:block;background:var(--gdim);color:var(--green);border:1px solid rgba(0,217,139,.2);}
+.tg-note.err{display:block;background:var(--rdim);color:var(--red);border:1px solid rgba(255,69,96,.2);}
+.tg-note.inf{display:block;background:var(--bluedim);color:var(--blue);border:1px solid rgba(77,168,255,.2);}
+.gstep{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--border);}
+.gstep:last-child{border-bottom:none;}
+.gsn{width:24px;height:24px;border-radius:6px;background:var(--bg4);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:11px;font-family:var(--mono);color:var(--gold);flex-shrink:0;}
+.gst{font-size:13px;color:var(--text2);font-family:var(--mono);line-height:1.8;}
+.gst b{color:var(--text);}
+.gst a{color:var(--blue);text-decoration:none;}
+.note{background:rgba(240,165,0,.06);border:1px solid rgba(240,165,0,.14);border-radius:var(--rad);padding:12px 14px;font-size:12px;color:var(--gold);font-family:var(--mono);line-height:1.8;margin-bottom:1rem;}
+.empty{text-align:center;padding:2.5rem 1rem;color:var(--text3);}
+.empty-ico{font-size:24px;margin-bottom:6px;opacity:.35;}
+.empty p{font-size:12px;font-family:var(--mono);}
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(70px);background:var(--bg4);border:1px solid var(--border2);color:var(--text);padding:11px 20px;border-radius:10px;font-size:13px;font-family:var(--mono);z-index:999;opacity:0;transition:all .28s cubic-bezier(.34,1.56,.64,1);white-space:nowrap;backdrop-filter:blur(10px);}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0);}
+#toast.ok{border-color:rgba(0,217,139,.4);color:var(--green);}
+#toast.er{border-color:rgba(255,69,96,.4);color:var(--red);}
+.loading{color:var(--text3);font-family:var(--mono);font-size:12px;}
 </style>
 </head>
 <body>
-
-<div class="glow-orb glow-orb-1"></div>
-<div class="glow-orb glow-orb-2"></div>
-
-<div class="container">
-
-  <!-- Header -->
-  <div class="header">
-    <div class="logo">🔔</div>
-    <div class="header-text">
-      <h1>آلارم قیمت</h1>
-      <p>کریپتو و فارکس · هر ۲ دقیقه چک</p>
+<div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div>
+<div class="wrap">
+  <header class="hdr">
+    <div class="brand">
+      <div class="brand-logo">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M10 2L16 6.5V13.5L10 18L4 13.5V6.5L10 2Z" stroke="#00d98b" stroke-width="1.5" fill="none"/>
+          <circle cx="10" cy="10" r="2.8" fill="#00d98b"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-name">Price<em>Alert</em></div>
+        <div class="brand-sub">forex · crypto · real-time</div>
+      </div>
     </div>
-    <div class="status-badge">
-      <div class="status-dot"></div>
-      <span id="statusText">آنلاین</span>
+    <div class="hdr-right">
+      <div class="live-pill"><span class="ldot"></span><span id="hdr-time">—</span></div>
+      <button class="icon-btn" onclick="openModal()" title="تنظیمات تلگرام">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/>
+        </svg>
+      </button>
     </div>
-  </div>
+  </header>
 
-  <!-- Stats -->
+  <div class="ticker" id="ticker"><span class="tlbl">LIVE</span><span class="loading">در حال بارگذاری...</span></div>
+
   <div class="stats">
-    <div class="stat-card">
-      <div class="stat-icon" style="background:rgba(124,92,252,0.12)">📋</div>
-      <div>
-        <div class="stat-value" id="totalAlerts">0</div>
-        <div class="stat-label">کل آلارم‌ها</div>
-      </div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-icon" style="background:rgba(46,204,138,0.12)">✅</div>
-      <div>
-        <div class="stat-value" id="activeAlerts">0</div>
-        <div class="stat-label">فعال</div>
-      </div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-icon" style="background:rgba(247,201,72,0.12)">⚡</div>
-      <div>
-        <div class="stat-value" id="lastCheck">—</div>
-        <div class="stat-label">آخرین بررسی</div>
-      </div>
-    </div>
+    <div class="scard"><div class="scard-ico">⬡</div><div class="scard-lbl">طلا · XAU/USD</div><div class="scard-val gold" id="sc-gold">—</div><div class="scard-sub">دلار / اونس</div></div>
+    <div class="scard"><div class="scard-ico">₿</div><div class="scard-lbl">بیتکوین · BTC</div><div class="scard-val green" id="sc-btc">—</div><div class="scard-sub">دلار</div></div>
+    <div class="scard"><div class="scard-ico">🔔</div><div class="scard-lbl">آلارم‌های فعال</div><div class="scard-val blue" id="sc-alerts">0</div><div class="scard-sub" id="sc-alerts-sub">در حال رصد</div></div>
+    <div class="scard"><div class="scard-ico">👥</div><div class="scard-lbl">کاربران ربات</div><div class="scard-val purple" id="sc-users">0</div><div class="scard-sub">نفر ثبت‌شده</div></div>
   </div>
 
-  <!-- Telegram Settings -->
-  <div class="card">
-    <div class="card-title">تنظیمات تلگرام</div>
-    <div class="tg-grid">
-      <div class="form-group">
-        <label>توکن ربات تلگرام</label>
-        <input type="text" id="botToken" placeholder="123456:ABC-DEF..." dir="ltr">
-      </div>
-      <div class="form-group">
-        <label>Chat ID</label>
-        <input type="text" id="chatId" placeholder="مثال: 123456789" dir="ltr">
-      </div>
-      <div class="tg-help">
-        📖 <strong>راهنما:</strong> ابتدا به <a href="https://t.me/BotFather" target="_blank">@BotFather</a> برو و ربات بساز. بعد به <a href="https://t.me/userinfobot" target="_blank">@userinfobot</a> پیام بده تا Chat ID خودت رو بگیری.
-      </div>
-    </div>
-    <div class="form-footer">
-      <button class="btn btn-secondary" onclick="saveTelegram()">💾 ذخیره</button>
-      <button class="btn btn-success" onclick="testTelegram()">📨 تست پیام</button>
-    </div>
+  <div class="tabs">
+    <button class="tab on" onclick="switchTab('alerts')">آلارم‌ها</button>
+    <button class="tab" onclick="switchTab('archive')">بایگانی</button>
+    <button class="tab" onclick="switchTab('users')">کاربران</button>
+    <button class="tab" onclick="switchTab('guide')">راهنما</button>
   </div>
 
-  <!-- Add Alert -->
-  <div class="card">
-    <div class="card-title">آلارم جدید</div>
-    <div class="form-grid">
-      <div class="form-group">
-        <label>نوع دارایی</label>
-        <select id="assetType" onchange="updateSymbolHint()">
-          <option value="crypto">🪙 کریپتو</option>
-          <option value="forex">💱 فارکس</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>نماد <span id="symbolHint" style="color:var(--accent);font-size:11px">(مثال: BTC)</span></label>
-        <input type="text" id="symbol" placeholder="BTC" dir="ltr" style="text-transform:uppercase">
-      </div>
-      <div class="form-group">
-        <label>قیمت هدف (دلار)</label>
-        <input type="number" id="targetPrice" placeholder="70000" dir="ltr" step="any">
-      </div>
-      <div class="form-group">
-        <label>شرط</label>
-        <select id="condition">
-          <option value="above">📈 بالاتر از قیمت هدف</option>
-          <option value="below">📉 پایین‌تر از قیمت هدف</option>
-        </select>
-      </div>
-    </div>
-    <div class="form-footer">
-      <button class="btn btn-secondary" onclick="checkLivePrice()">👁 قیمت الان</button>
-      <button class="btn btn-primary" onclick="addAlert()">➕ ثبت آلارم</button>
-    </div>
-  </div>
-
-  <!-- Alerts List -->
-  <div class="card">
-    <div class="card-title">آلارم‌های ثبت‌شده</div>
-    <div class="alerts-list" id="alertsList">
-      <div class="empty-state">
-        <div class="emoji">🔕</div>
-        <p>هنوز آلارمی ثبت نشده</p>
-      </div>
-    </div>
-  </div>
-
-</div>
-
-<!-- Toast container -->
-<div class="toast-container" id="toastContainer"></div>
-
-<script>
-const API = '';  // empty = same origin (the Flask server)
-
-// ─── Toast ──────────────────────────────────────────────────────────────────
-function toast(msg, type = 'success') {
-  const el = document.createElement('div');
-  el.className = `toast ${type}`;
-  el.textContent = msg;
-  document.getElementById('toastContainer').appendChild(el);
-  setTimeout(() => el.remove(), 3100);
-}
-
-// ─── Symbol hint ─────────────────────────────────────────────────────────────
-function updateSymbolHint() {
-  const type = document.getElementById('assetType').value;
-  const hint = document.getElementById('symbolHint');
-  const sym = document.getElementById('symbol');
-  if (type === 'crypto') {
-    hint.textContent = '(مثال: BTC, ETH, SOL)';
-    sym.placeholder = 'BTC';
-  } else {
-    hint.textContent = '(مثال: EURUSD, GBPUSD)';
-    sym.placeholder = 'EURUSD';
-  }
-}
-
-// ─── Telegram ────────────────────────────────────────────────────────────────
-async function loadConfig() {
-  try {
-    const r = await fetch(API + '/api/config');
-    const d = await r.json();
-    document.getElementById('botToken').value = d.bot_token || '';
-    document.getElementById('chatId').value = d.chat_id || '';
-  } catch(e) {}
-}
-
-async function saveTelegram() {
-  const bot_token = document.getElementById('botToken').value.trim();
-  const chat_id = document.getElementById('chatId').value.trim();
-  if (!bot_token || !chat_id) { toast('توکن و Chat ID رو وارد کن', 'error'); return; }
-  await fetch(API + '/api/config', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ bot_token, chat_id })
-  });
-  toast('✅ تنظیمات ذخیره شد');
-}
-
-async function testTelegram() {
-  const r = await fetch(API + '/api/test-telegram', { method: 'POST' });
-  const d = await r.json();
-  if (d.ok) toast('📨 پیام تست ارسال شد!');
-  else toast('❌ خطا در ارسال. توکن و ID رو چک کن', 'error');
-}
-
-// ─── Live price check ────────────────────────────────────────────────────────
-async function checkLivePrice() {
-  const sym = document.getElementById('symbol').value.trim().toUpperCase();
-  const type = document.getElementById('assetType').value;
-  if (!sym) { toast('نماد رو وارد کن', 'error'); return; }
-  toast('⏳ در حال دریافت قیمت...');
-  try {
-    const r = await fetch(`${API}/api/price/${type}/${sym}`);
-    const d = await r.json();
-    if (d.price !== undefined) {
-      toast(`💰 ${sym}: $${d.price.toLocaleString('en', {minimumFractionDigits: 2, maximumFractionDigits: 6})}`);
-      document.getElementById('targetPrice').value = d.price;
-    } else {
-      toast(`❌ نماد پیدا نشد: ${sym}`, 'error');
-    }
-  } catch(e) {
-    toast('❌ خطا در ارتباط با سرور', 'error');
-  }
-}
-
-// ─── Add Alert ───────────────────────────────────────────────────────────────
-async function addAlert() {
-  const symbol = document.getElementById('symbol').value.trim().toUpperCase();
-  const type = document.getElementById('assetType').value;
-  const target_price = parseFloat(document.getElementById('targetPrice').value);
-  const condition = document.getElementById('condition').value;
-
-  if (!symbol) { toast('نماد رو وارد کن', 'error'); return; }
-  if (!target_price || target_price <= 0) { toast('قیمت هدف رو وارد کن', 'error'); return; }
-
-  const r = await fetch(API + '/api/alerts', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ symbol, type, target_price, condition })
-  });
-  const d = await r.json();
-  if (d.ok) {
-    toast(`✅ آلارم ${symbol} ثبت شد`);
-    document.getElementById('symbol').value = '';
-    document.getElementById('targetPrice').value = '';
-    loadAlerts();
-  }
-}
-
-// ─── Load & Render Alerts ─────────────────────────────────────────────────────
-async function loadAlerts() {
-  const r = await fetch(API + '/api/alerts');
-  const alerts = await r.json();
-
-  const total = alerts.length;
-  const active = alerts.filter(a => a.active).length;
-  document.getElementById('totalAlerts').textContent = total;
-  document.getElementById('activeAlerts').textContent = active;
-
-  // last checked
-  const checked = alerts.filter(a => a.last_checked).map(a => a.last_checked);
-  if (checked.length) {
-    const latest = checked.sort().pop();
-    const t = new Date(latest);
-    document.getElementById('lastCheck').textContent = t.toLocaleTimeString('fa-IR');
-  }
-
-  const list = document.getElementById('alertsList');
-  if (total === 0) {
-    list.innerHTML = `<div class="empty-state"><div class="emoji">🔕</div><p>هنوز آلارمی ثبت نشده</p></div>`;
-    return;
-  }
-
-  list.innerHTML = alerts.reverse().map(a => {
-    const icon = a.type === 'crypto' ? '🪙' : '💱';
-    const iconClass = a.type;
-    const badgeClass = !a.active ? 'badge-fired' : (a.condition === 'above' ? 'badge-above' : 'badge-below');
-    const badgeText = !a.active ? '⚡ فعال شد' : (a.condition === 'above' ? '📈 بالاتر' : '📉 پایین‌تر');
-    const currentStr = a.last_price ? `قیمت فعلی: $${parseFloat(a.last_price).toLocaleString('en', {maximumFractionDigits:6})}` : 'هنوز چک نشده';
-    const targetStr = parseFloat(a.target_price).toLocaleString('en', {maximumFractionDigits:6});
-    return `
-      <div class="alert-item ${a.active ? '' : 'inactive'}" id="alert-${a.id}">
-        <div class="alert-icon ${iconClass}">${icon}</div>
-        <div class="alert-info">
-          <div class="alert-symbol">${a.symbol}</div>
-          <div class="alert-detail">
-            <span class="badge ${badgeClass}">${badgeText}</span>
-            <span>${currentStr}</span>
+  <div class="pnl on" id="pnl-alerts">
+    <div class="sec">
+      <div class="sec-hd"><div class="sec-ttl"><span class="sec-dot green"></span>آلارم جدید</div></div>
+      <div class="sec-bd">
+        <div class="fgrid">
+          <div class="fld"><label>نوع بازار</label><select id="mkt" onchange="onMktChange()"><option value="crypto">کریپتو</option><option value="forex">فارکس</option></select></div>
+          <div class="fld"><label>نماد <span id="sym-hint" style="color:var(--blue);font-size:10px">(BTC, ETH...)</span></label><input type="text" id="sym" placeholder="BTC" dir="ltr" style="text-transform:uppercase"></div>
+          <div class="fld"><label>قیمت هدف (USD)</label><input type="number" id="tprice" placeholder="0.00" step="any" dir="ltr"></div>
+          <div class="fld"><label>جهت</label><select id="adir"><option value="above">↑ بالاتر از</option><option value="below">↓ پایین‌تر از</option></select></div>
+          <div class="fld" style="display:flex;align-items:flex-end;gap:8px">
+            <button class="btn btn-blue" style="flex:1" onclick="checkPrice()">👁 قیمت الان</button>
+            <button class="btn btn-green" style="flex:1" onclick="addAlert()">+ افزودن</button>
           </div>
         </div>
-        <div class="alert-price">
-          <div class="target">$${targetStr}</div>
-          <div class="current">${a.created_at ? a.created_at.slice(0,10) : ''}</div>
+      </div>
+    </div>
+    <div class="sec">
+      <div class="sec-hd">
+        <div class="sec-ttl"><span class="sec-dot"></span>آلارم‌های در حال رصد</div>
+        <span id="upd-lbl" style="font-size:10px;color:var(--text3);font-family:var(--mono)"></span>
+      </div>
+      <div class="sec-bd slim">
+        <div class="atbl">
+          <div class="atbl-hd"><span>نماد</span><span>قیمت فعلی</span><span class="col-h">هدف</span><span class="col-h">فاصله</span><span>جهت</span><span></span></div>
+          <div id="atbl-body"></div>
         </div>
-        <div class="alert-actions">
-          <button class="btn btn-secondary btn-sm" onclick="toggleAlert('${a.id}')" title="${a.active ? 'غیرفعال کن' : 'فعال کن'}">
-            ${a.active ? '⏸' : '▶️'}
-          </button>
-          <button class="btn btn-danger btn-sm" onclick="deleteAlert('${a.id}')" title="حذف">🗑</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="pnl" id="pnl-archive">
+    <div class="sec">
+      <div class="sec-hd">
+        <div class="sec-ttl"><span class="sec-dot red"></span>آلارم‌های فعال‌شده</div>
+        <button class="btn btn-sm" onclick="clearArchive()">پاک کردن</button>
+      </div>
+      <div class="sec-bd" id="arch-body"><div class="empty"><div class="empty-ico">◎</div><p>بایگانی خالی است</p></div></div>
+    </div>
+  </div>
+
+  <div class="pnl" id="pnl-users">
+    <div class="note">👥 هر کسی که ربات شما را پیدا کند و <b>/start</b> بزند، خودکار ثبت می‌شود و آلارم‌ها دریافت می‌کند.</div>
+    <div class="sec">
+      <div class="sec-hd">
+        <div class="sec-ttl"><span class="sec-dot purple"></span>کاربران ثبت‌شده</div>
+        <button class="btn btn-sm btn-blue" onclick="loadUsers()">🔄 بروزرسانی</button>
+      </div>
+      <div class="sec-bd" id="users-body"><div class="empty"><div class="empty-ico">👥</div><p>هنوز کاربری /start نزده</p></div></div>
+    </div>
+  </div>
+
+  <div class="pnl" id="pnl-guide">
+    <div class="sec">
+      <div class="sec-hd"><div class="sec-ttl"><span class="sec-dot blue"></span>راه‌اندازی تلگرام گروهی</div></div>
+      <div class="sec-bd">
+        <div class="gstep"><div class="gsn">1</div><div class="gst">شما یک بار ربات می‌سازید: <a href="https://t.me/BotFather" target="_blank">@BotFather</a> → <b>/newbot</b> → Token می‌گیرید</div></div>
+        <div class="gstep"><div class="gsn">2</div><div class="gst">Token را در ⚙ تنظیمات این سایت ذخیره کنید</div></div>
+        <div class="gstep"><div class="gsn">3</div><div class="gst">آدرس ربات تلگرام را برای اعضای گروه بفرستید</div></div>
+        <div class="gstep"><div class="gsn">4</div><div class="gst">هر نفر ربات را باز کند و <b>/start</b> بزند — خودکار ثبت می‌شود ✅</div></div>
+        <div class="gstep"><div class="gsn">5</div><div class="gst">نیازی به BotFather یا Chat ID برای کاربران نیست — فقط /start کافیست!</div></div>
+      </div>
+    </div>
+    <div class="sec">
+      <div class="sec-hd"><div class="sec-ttl"><span class="sec-dot green"></span>نمادهای پشتیبانی‌شده</div></div>
+      <div class="sec-bd">
+        <div style="font-size:12px;color:var(--text2);font-family:var(--mono);line-height:2.2">
+          <div><span style="color:var(--gold)">کریپتو:</span> &nbsp;BTC · ETH · BNB · SOL · XRP · ADA · DOGE · TRX · TON · AVAX و هر ارزی در Binance</div>
+          <div style="margin-top:6px"><span style="color:var(--blue)">فارکس:</span> &nbsp;EURUSD · GBPUSD · USDJPY · XAUUSD (طلا) · GBPJPY · AUDUSD و هر جفت‌ارز دیگر</div>
+          <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)"><span style="color:var(--text3)">فرمت:</span> &nbsp;EURUSD یا EUR/USD — هر دو قبول است</div>
         </div>
-      </div>`;
-  }).join('');
-}
+      </div>
+    </div>
+  </div>
+</div>
 
-async function deleteAlert(id) {
-  if (!confirm('آلارم حذف بشه؟')) return;
-  await fetch(`${API}/api/alerts/${id}`, { method: 'DELETE' });
-  toast('🗑 آلارم حذف شد');
-  loadAlerts();
-}
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="modal-ttl"><span>⚙</span> تنظیمات تلگرام</div>
+    <div class="mrow">
+      <div class="fld"><label>BOT TOKEN</label><input type="text" id="tg-tok" placeholder="123456:ABCdef..." dir="ltr"></div>
+      <div class="fld"><label>CHAT ID (اختیاری)</label><input type="text" id="tg-cid" placeholder="123456789" dir="ltr"></div>
+    </div>
+    <div style="font-size:11px;color:var(--text3);font-family:var(--mono);line-height:1.7;margin-top:4px">Chat ID اختیاری است — اعضا با /start خودکار ثبت می‌شوند.</div>
+    <div class="tg-note" id="tg-note"></div>
+    <div class="mfooter">
+      <button class="btn" onclick="closeModal()">بستن</button>
+      <button class="btn btn-blue" onclick="testTg()">📨 تست</button>
+      <button class="btn btn-green" onclick="saveTg()">ذخیره</button>
+    </div>
+  </div>
+</div>
 
-async function toggleAlert(id) {
-  await fetch(`${API}/api/alerts/${id}/toggle`, { method: 'POST' });
-  loadAlerts();
-}
+<div id="toast"></div>
 
-// ─── Init ────────────────────────────────────────────────────────────────────
-loadConfig();
-loadAlerts();
-setInterval(loadAlerts, 30000);  // refresh UI every 30s
+<script>
+const API='';
+function fmt(n,sym){if(n===undefined||n===null)return'—';if(n<0.00001)return n.toFixed(8);if(n<0.001)return n.toFixed(6);if(n<0.1)return n.toFixed(5);if(n<10)return n.toFixed(4);if(n<1000)return n.toFixed(2);return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function calcDist(cur,target,sym){if(cur===undefined||cur===null)return'—';const diff=cur-target;const s=(sym||'').toUpperCase();if(s.includes('JPY'))return(diff/0.01).toFixed(1)+' pip';if(s.includes('XAU')||s.includes('XAG'))return(diff>=0?'+':'')+diff.toFixed(2)+'$';if(!s.includes('USD')&&!s.includes('EUR')&&!s.includes('GBP')&&!s.includes('CHF')){const pct=(diff/target*100);return(pct>=0?'+':'')+pct.toFixed(2)+'%';}return(diff/0.0001).toFixed(1)+' pip';}
+function toast(msg,cls=''){const el=document.getElementById('toast');el.textContent=msg;el.className='on '+cls;clearTimeout(el._t);el._t=setTimeout(()=>el.className='',3200);}
+function switchTab(name){['alerts','archive','users','guide'].forEach((n,i)=>{document.querySelectorAll('.tab')[i].classList.toggle('on',n===name);document.getElementById('pnl-'+n).classList.toggle('on',n===name);});if(name==='archive')loadArchive();if(name==='users')loadUsers();}
+function onMktChange(){const m=document.getElementById('mkt').value;const h=document.getElementById('sym-hint');const i=document.getElementById('sym');if(m==='crypto'){h.textContent='(BTC, ETH, SOL...)';i.placeholder='BTC';}else{h.textContent='(EURUSD, XAUUSD...)';i.placeholder='EURUSD';}}
+async function checkPrice(){const sym=document.getElementById('sym').value.trim().toUpperCase();const mkt=document.getElementById('mkt').value;if(!sym){toast('نماد را وارد کنید','er');return;}toast('⏳ در حال دریافت...');try{const r=await fetch(`${API}/api/price/${mkt}/${sym}`);const d=await r.json();if(d.price!==undefined){toast(`💰 ${sym}: $${fmt(d.price,sym)}`,'ok');document.getElementById('tprice').value=d.price;}else toast(`❌ ${sym} پیدا نشد`,'er');}catch(e){toast('❌ خطا در سرور','er');}}
+async function addAlert(){const sym=document.getElementById('sym').value.trim().toUpperCase();const mkt=document.getElementById('mkt').value;const target=parseFloat(document.getElementById('tprice').value);const dir=document.getElementById('adir').value;if(!sym){toast('نماد را وارد کنید','er');return;}if(!target||target<=0){toast('قیمت هدف را وارد کنید','er');return;}try{const r=await fetch(`${API}/api/alerts`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:sym,type:mkt,target_price:target,condition:dir})});const d=await r.json();if(d.ok){toast(`✅ آلارم ${sym} ثبت شد`,'ok');document.getElementById('sym').value='';document.getElementById('tprice').value='';loadAlerts();}}catch(e){toast('❌ خطا','er');}}
+async function deleteAlert(id){if(!confirm('آلارم حذف شود؟'))return;await fetch(`${API}/api/alerts/${id}`,{method:'DELETE'});toast('حذف شد');loadAlerts();}
+async function loadAlerts(){try{const r=await fetch(`${API}/api/alerts`);const alerts=await r.json();renderAlerts(alerts);document.getElementById('sc-alerts').textContent=alerts.length;document.getElementById('sc-alerts-sub').textContent=alerts.length>0?alerts.filter(a=>a.active).length+' فعال':'بدون آلارم';const checked=alerts.filter(a=>a.last_checked).map(a=>a.last_checked).sort();if(checked.length){const t=new Date(checked[checked.length-1]);document.getElementById('upd-lbl').textContent='آخرین چک: '+t.toLocaleTimeString('fa-IR');}}catch(e){}}
+function renderAlerts(alerts){const body=document.getElementById('atbl-body');if(!alerts.length){body.innerHTML='<div class="empty"><div class="empty-ico">◎</div><p>آلارمی ثبت نشده</p></div>';return;}body.innerHTML=alerts.map(a=>{const isCrypto=a.type==='crypto';const short=(a.symbol||'').slice(0,4);const cur=a.last_price;const dist=calcDist(cur,a.target_price,a.symbol);const dcls=cur!==undefined?(cur>=a.target_price?'green11':'red11'):'mono11';const dotCls=!a.active?'hit':(cur!==undefined?'watch':'pend');const dp=a.condition==='above'?'<span class="dpill up">↑ ABOVE</span>':'<span class="dpill dn">↓ BELOW</span>';return`<div class="atbl-row ${!a.active?'hit':''}"><div class="acell"><div class="abadge ${isCrypto?'c':'f'}">${short}</div><div><div class="aname">${a.symbol}</div><div class="atype">${a.type.toUpperCase()}</div></div></div><div><div class="mono13">${cur!==undefined?'$'+fmt(cur,a.symbol):'<span class="loading">...</span>'}</div></div><div class="col-h"><div class="mono11">$${fmt(a.target_price,a.symbol)}</div></div><div class="col-h"><div class="${dcls}">${dist}</div></div><div>${dp}</div><div style="display:flex;align-items:center;gap:5px"><div class="sdot ${dotCls}"></div><button class="btn btn-red btn-sm" onclick="deleteAlert('${a.id}')">✕</button></div></div>`;}).join('');}
+async function loadArchive(){try{const r=await fetch(`${API}/api/archive`);const items=await r.json();const body=document.getElementById('arch-body');if(!items.length){body.innerHTML='<div class="empty"><div class="empty-ico">◎</div><p>بایگانی خالی است</p></div>';return;}body.innerHTML=items.slice().reverse().map(a=>{const dt=new Date(a.fired_at||a.created_at);const ts=dt.toLocaleDateString('fa-IR')+' · '+dt.toLocaleTimeString('fa-IR');return`<div class="arch-row"><span class="arch-tag">✓ فعال</span><div><div class="arch-name">${a.symbol}</div><div class="arch-detail">${a.condition==='above'?'↑':'↓'} هدف: $${fmt(a.target_price,a.symbol)} · فعال‌سازی: $${fmt(a.fired_price,a.symbol)} · ${ts}</div></div></div>`;}).join('');}catch(e){}}
+async function clearArchive(){if(!confirm('بایگانی پاک شود؟'))return;await fetch(`${API}/api/archive`,{method:'DELETE'});loadArchive();toast('پاک شد');}
+async function loadUsers(){try{const r=await fetch(`${API}/api/users`);const users=await r.json();document.getElementById('sc-users').textContent=users.length;const body=document.getElementById('users-body');if(!users.length){body.innerHTML='<div class="empty"><div class="empty-ico">👥</div><p>هنوز کاربری /start نزده</p></div>';return;}body.innerHTML=users.map(u=>`<div class="user-row"><div class="user-av">👤</div><div><div class="user-name">${u.username||'کاربر'}</div><div class="user-id">${u.chat_id}</div></div><div class="user-date">${u.joined_at||''}</div><button class="btn btn-red btn-sm" onclick="deleteUser('${u.chat_id}')">حذف</button></div>`).join('');}catch(e){}}
+async function deleteUser(chatId){if(!confirm('این کاربر حذف شود؟'))return;await fetch(`${API}/api/users/${chatId}`,{method:'DELETE'});loadUsers();toast('کاربر حذف شد');}
+async function loadConfig(){try{const r=await fetch(`${API}/api/config`);const d=await r.json();document.getElementById('tg-tok').value=d.bot_token||'';document.getElementById('tg-cid').value=d.chat_id||'';document.getElementById('sc-users').textContent=d.user_count||0;}catch(e){}}
+function openModal(){document.getElementById('overlay').classList.add('on');setTgNote('','');}
+function closeModal(){document.getElementById('overlay').classList.remove('on');}
+document.getElementById('overlay').addEventListener('click',function(e){if(e.target===this)closeModal();});
+function setTgNote(cls,msg){const el=document.getElementById('tg-note');el.className='tg-note '+(cls||'');el.textContent=msg;}
+async function saveTg(){const tok=document.getElementById('tg-tok').value.trim();const cid=document.getElementById('tg-cid').value.trim();if(!tok){toast('توکن را وارد کنید','er');return;}await fetch(`${API}/api/config`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bot_token:tok,chat_id:cid})});setTgNote('ok','✓ ذخیره شد');toast('تنظیمات ذخیره شد','ok');}
+async function testTg(){const tok=document.getElementById('tg-tok').value.trim();if(!tok){toast('توکن را وارد کنید','er');return;}setTgNote('inf','◌ در حال ارسال...');try{const r=await fetch(`${API}/api/test-telegram`,{method:'POST'});const d=await r.json();if(d.ok)setTgNote('ok',`✓ پیام برای ${d.sent} کاربر ارسال شد`);else setTgNote('err','✗ خطا — توکن را بررسی کنید');}catch(e){setTgNote('err','✗ خطا در ارتباط');}}
+async function fetchTicker(){try{const[rBTC,rGold,rEUR,rGBP]=await Promise.allSettled([fetch(`${API}/api/price/crypto/BTC`),fetch(`${API}/api/price/forex/XAUUSD`),fetch(`${API}/api/price/forex/EURUSD`),fetch(`${API}/api/price/forex/GBPUSD`)]);const prices={};for(const[k,res]of[['BTC',rBTC],['XAU',rGold],['EUR',rEUR],['GBP',rGBP]]){if(res.status==='fulfilled'&&res.value.ok){const d=await res.value.json();if(d.price)prices[k]=d.price;}}if(prices.XAU)document.getElementById('sc-gold').textContent='$'+fmt(prices.XAU,'XAU');if(prices.BTC)document.getElementById('sc-btc').textContent='$'+fmt(prices.BTC,'BTC');const chips=[prices.XAU?`<span class="tchip"><span class="tsym">طلا</span><span class="tval">$${fmt(prices.XAU,'XAU')}</span></span>`:'',prices.BTC?`<span class="tchip"><span class="tsym">BTC</span><span class="tval">$${fmt(prices.BTC,'BTC')}</span></span>`:'',prices.EUR?`<span class="tchip"><span class="tsym">EUR/USD</span><span class="tval">${fmt(prices.EUR,'EUR')}</span></span>`:'',prices.GBP?`<span class="tchip"><span class="tsym">GBP/USD</span><span class="tval">${fmt(prices.GBP,'GBP')}</span></span>`:''].filter(Boolean).join('');document.getElementById('ticker').innerHTML=`<span class="tlbl">LIVE</span>${chips||'<span class="loading">در حال بارگذاری...</span>'}`;}catch(e){}}
+function updateClock(){document.getElementById('hdr-time').textContent=new Date().toLocaleTimeString('fa-IR');}
+loadConfig();loadAlerts();fetchTicker();updateClock();
+setInterval(loadAlerts,30000);setInterval(fetchTicker,180000);setInterval(updateClock,1000);
 </script>
 </body>
 </html>
