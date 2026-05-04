@@ -6,34 +6,73 @@
 <title>PriceAlert — آلارم قیمت</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Vazirmatn:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root{
-  --bg:#07090c;--bg2:#0c0f14;--bg3:#121720;--bg4:#181e29;--bg5:#1e2535;
-  --border:rgba(255,255,255,0.055);--border2:rgba(255,255,255,0.10);--border3:rgba(255,255,255,0.16);
-  --text:#dce4f0;--text2:#7a8799;--text3:#3d4a5c;
-  --green:#00d98b;--green2:#00f5a0;--gdim:rgba(0,217,139,0.09);
-  --red:#ff4560;--rdim:rgba(255,69,96,0.09);
-  --gold:#f0a500;--gdold:rgba(240,165,0,0.09);
-  --blue:#4da8ff;--bluedim:rgba(77,168,255,0.09);
-  --purple:#a070ff;--purdim:rgba(160,112,255,0.09);
-  --mono:'IBM Plex Mono',monospace;--sans:'Vazirmatn',sans-serif;
-  --rad:12px;--rad2:16px;
-  --grid-line:rgba(255,255,255,0.016);
-  --orb1:rgba(0,217,139,0.03);--orb2:rgba(77,168,255,0.025);--orb3:rgba(160,112,255,0.018);
+/* ── Dark theme (default) ── */
+:root {
+  --bg:      #07090c;
+  --bg2:     #0c0f14;
+  --bg3:     #121720;
+  --bg4:     #181e29;
+  --bg5:     #1e2535;
+  --border:  rgba(255,255,255,0.055);
+  --border2: rgba(255,255,255,0.10);
+  --border3: rgba(255,255,255,0.16);
+  --text:    #dce4f0;
+  --text2:   #7a8799;
+  --text3:   #3d4a5c;
+  --green:   #00d98b;
+  --green2:  #00f5a0;
+  --gdim:    rgba(0,217,139,0.09);
+  --gdim2:   rgba(0,217,139,0.04);
+  --red:     #ff4560;
+  --rdim:    rgba(255,69,96,0.09);
+  --gold:    #f0a500;
+  --gdold:   rgba(240,165,0,0.09);
+  --blue:    #4da8ff;
+  --bluedim: rgba(77,168,255,0.09);
+  --purple:  #a070ff;
+  --purdim:  rgba(160,112,255,0.09);
+  --mono:    'IBM Plex Mono', monospace;
+  --sans:    'Vazirmatn', sans-serif;
+  --rad:     12px;
+  --rad2:    16px;
+  --grid-line: rgba(255,255,255,0.016);
+  --orb1: rgba(0,217,139,0.03);
+  --orb2: rgba(77,168,255,0.025);
+  --orb3: rgba(160,112,255,0.018);
 }
-body.light{
-  --bg:#f0f3f8;--bg2:#ffffff;--bg3:#e8ecf3;--bg4:#dde2ec;--bg5:#d0d6e4;
-  --border:rgba(0,0,0,0.07);--border2:rgba(0,0,0,0.12);--border3:rgba(0,0,0,0.18);
-  --text:#1a2233;--text2:#4a5568;--text3:#9aa3b4;
-  --green:#00b87a;--green2:#00d98b;--gdim:rgba(0,184,122,0.10);
-  --red:#e53050;--rdim:rgba(229,48,80,0.09);
-  --gold:#c87a00;--gdold:rgba(200,122,0,0.10);
-  --blue:#2276d4;--bluedim:rgba(34,118,212,0.09);
-  --purple:#7040cc;--purdim:rgba(112,64,204,0.09);
-  --grid-line:rgba(0,0,0,0.03);
-  --orb1:rgba(0,184,122,0.04);--orb2:rgba(34,118,212,0.03);--orb3:rgba(112,64,204,0.02);
+
+/* ── Light theme ── */
+body.light {
+  --bg:      #f0f3f8;
+  --bg2:     #ffffff;
+  --bg3:     #e8ecf3;
+  --bg4:     #dde2ec;
+  --bg5:     #d0d6e4;
+  --border:  rgba(0,0,0,0.07);
+  --border2: rgba(0,0,0,0.12);
+  --border3: rgba(0,0,0,0.18);
+  --text:    #1a2233;
+  --text2:   #4a5568;
+  --text3:   #9aa3b4;
+  --green:   #00b87a;
+  --green2:  #00d98b;
+  --gdim:    rgba(0,184,122,0.10);
+  --gdim2:   rgba(0,184,122,0.05);
+  --red:     #e53050;
+  --rdim:    rgba(229,48,80,0.09);
+  --gold:    #c87a00;
+  --gdold:   rgba(200,122,0,0.10);
+  --blue:    #2276d4;
+  --bluedim: rgba(34,118,212,0.09);
+  --purple:  #7040cc;
+  --purdim:  rgba(112,64,204,0.09);
+  --grid-line: rgba(0,0,0,0.03);
+  --orb1: rgba(0,184,122,0.04);
+  --orb2: rgba(34,118,212,0.03);
+  --orb3: rgba(112,64,204,0.02);
 }
+
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
-html{scroll-behavior:smooth;}
 body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;overflow-x:hidden;transition:background .28s,color .28s;}
 body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(var(--grid-line) 1px,transparent 1px),linear-gradient(90deg,var(--grid-line) 1px,transparent 1px);background-size:50px 50px;pointer-events:none;z-index:0;}
 .orb{position:fixed;border-radius:50%;pointer-events:none;z-index:0;}
@@ -41,7 +80,6 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .o2{width:500px;height:500px;bottom:-200px;left:-100px;background:radial-gradient(circle,var(--orb2) 0%,transparent 65%);}
 .o3{width:350px;height:350px;top:50%;left:30%;background:radial-gradient(circle,var(--orb3) 0%,transparent 65%);}
 .wrap{position:relative;z-index:1;max-width:980px;margin:0 auto;padding:2rem 1.25rem 5rem;}
-/* HEADER */
 .hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:2rem;padding-bottom:1.5rem;border-bottom:1px solid var(--border);}
 .brand{display:flex;align-items:center;gap:13px;}
 .brand-logo{width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,rgba(0,217,139,0.15),rgba(77,168,255,0.15));border:1px solid rgba(0,217,139,0.2);display:flex;align-items:center;justify-content:center;box-shadow:0 0 20px rgba(0,217,139,0.08);}
@@ -55,30 +93,29 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .icon-btn{width:36px;height:36px;border-radius:9px;background:var(--bg3);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text3);transition:.18s;}
 .icon-btn:hover{color:var(--text);border-color:var(--border2);}
 .icon-btn svg{width:15px;height:15px;}
-.theme-btn{width:36px;height:36px;border-radius:9px;background:var(--bg3);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:.18s;line-height:1;}
+/* theme toggle */
+.theme-btn{width:36px;height:36px;border-radius:9px;background:var(--bg3);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;transition:.18s;line-height:1;}
 .theme-btn:hover{border-color:var(--border2);transform:scale(1.08);}
-/* STATS */
+
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:1.5rem;}
 @media(max-width:640px){.stats{grid-template-columns:1fr 1fr;}}
 .scard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rad2);padding:1.1rem 1.1rem .9rem;position:relative;overflow:hidden;transition:.2s;}
 .scard:hover{border-color:var(--border2);}
-.scard::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,0.012) 0%,transparent 60%);pointer-events:none;}
+.scard::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,0.014) 0%,transparent 60%);pointer-events:none;}
 .scard-lbl{font-size:10px;font-family:var(--mono);color:var(--text3);letter-spacing:.09em;text-transform:uppercase;margin-bottom:9px;}
-.scard-val{font-size:22px;font-weight:700;font-family:var(--mono);line-height:1;letter-spacing:-.02em;}
+.scard-val{font-size:24px;font-weight:700;font-family:var(--mono);line-height:1;letter-spacing:-.02em;}
 .scard-val.gold{color:var(--gold);}
 .scard-val.green{color:var(--green);}
 .scard-val.blue{color:var(--blue);}
 .scard-val.purple{color:var(--purple);}
 .scard-sub{font-size:11px;color:var(--text2);margin-top:5px;font-family:var(--mono);}
-.scard-src{font-size:9px;color:var(--text3);font-family:var(--mono);margin-top:3px;}
 .scard-ico{position:absolute;top:.9rem;left:.9rem;font-size:20px;opacity:.12;}
-/* TABS */
 .tabs{display:flex;gap:4px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rad);padding:4px;margin-bottom:1.25rem;width:fit-content;}
 .tab{padding:7px 18px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;color:var(--text2);border:none;background:transparent;font-family:var(--sans);transition:.18s;}
 .tab.on{background:var(--bg4);color:var(--text);border:1px solid var(--border2);}
 .tab:hover:not(.on){color:var(--text);}
-.pnl{display:none;}.pnl.on{display:block;}
-/* SECTION */
+.pnl{display:none;}
+.pnl.on{display:block;}
 .sec{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rad2);margin-bottom:1rem;overflow:hidden;transition:.2s;}
 .sec:hover{border-color:var(--border2);}
 .sec-hd{display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.25rem;border-bottom:1px solid var(--border);}
@@ -90,14 +127,12 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .sec-dot.red{background:var(--red);}
 .sec-bd{padding:1.25rem;}
 .sec-bd.slim{padding:.75rem 1.25rem 1.25rem;}
-/* FORM */
-.fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;align-items:end;}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;align-items:end;}
 .fld label{display:block;font-size:10px;color:var(--text3);font-family:var(--mono);letter-spacing:.08em;margin-bottom:5px;}
 .fld input,.fld select{width:100%;background:var(--bg4);border:1px solid var(--border2);border-radius:var(--rad);padding:9px 11px;color:var(--text);font-size:13px;font-family:var(--mono);outline:none;transition:.18s;-webkit-appearance:none;}
 .fld input:focus,.fld select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(0,217,139,0.06);}
 .fld input::placeholder{color:var(--text3);}
 .fld select option{background:var(--bg4);}
-/* BUTTONS */
 .btn{padding:9px 16px;border-radius:var(--rad);font-size:13px;font-weight:500;cursor:pointer;font-family:var(--sans);border:1px solid var(--border2);background:var(--bg3);color:var(--text2);transition:.18s;white-space:nowrap;}
 .btn:hover{color:var(--text);background:var(--bg4);}
 .btn-green{background:var(--green);color:#07090c;border-color:var(--green);font-weight:700;}
@@ -107,15 +142,17 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .btn-red{color:var(--red);border-color:rgba(255,69,96,0.2);background:transparent;padding:5px 10px;font-size:12px;}
 .btn-red:hover{background:var(--rdim);}
 .btn-sm{padding:5px 10px;font-size:11px;border-radius:7px;}
-/* ALERT TABLE */
+.row-end{display:flex;gap:8px;justify-content:flex-end;margin-top:1rem;}
+
+/* ── Alert table ── */
 .atbl{width:100%;}
-.atbl-hd{display:grid;grid-template-columns:1.7fr 1fr .8fr 1.6fr .8fr 60px;gap:8px;padding:0 0 8px;border-bottom:1px solid var(--border);}
+.atbl-hd{display:grid;grid-template-columns:1.8fr 1fr .9fr 1.4fr .8fr 64px;gap:8px;padding:0 0 8px;border-bottom:1px solid var(--border);}
 .atbl-hd span{font-size:10px;font-family:var(--mono);color:var(--text3);letter-spacing:.08em;}
-.atbl-row{display:grid;grid-template-columns:1.7fr 1fr .8fr 1.6fr .8fr 60px;gap:8px;padding:12px 0;border-bottom:1px solid var(--border);align-items:center;transition:.15s;}
+.atbl-row{display:grid;grid-template-columns:1.8fr 1fr .9fr 1.4fr .8fr 64px;gap:8px;padding:12px 0;border-bottom:1px solid var(--border);align-items:center;transition:.15s;}
 .atbl-row:last-child{border-bottom:none;}
 .atbl-row:hover{background:rgba(255,255,255,.012);border-radius:7px;margin:0 -6px;padding:12px 6px;}
 .atbl-row.hit{background:rgba(0,217,139,.03);}
-@media(max-width:680px){.atbl-hd,.atbl-row{grid-template-columns:1fr 1fr 1.4fr 44px;}.col-h{display:none;}}
+@media(max-width:640px){.atbl-hd,.atbl-row{grid-template-columns:1fr .9fr 1fr 48px;}.col-h{display:none;}}
 .acell{display:flex;align-items:center;gap:8px;}
 .abadge{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;font-weight:600;flex-shrink:0;}
 .abadge.c{background:var(--gdold);color:var(--gold);border:1px solid rgba(240,165,0,.15);}
@@ -124,44 +161,41 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .atype{font-size:10px;color:var(--text3);font-family:var(--mono);margin-top:1px;}
 .mono13{font-family:var(--mono);font-size:13px;color:var(--text);}
 .mono11{font-family:var(--mono);font-size:11px;color:var(--text2);}
-.src-tag{font-family:var(--mono);font-size:9px;color:var(--text3);}
-/* DISTANCE CELL */
-.dist-cell{display:flex;flex-direction:column;gap:5px;}
-.dist-val{font-family:var(--mono);font-size:13px;font-weight:700;}
-.dist-val.far{color:var(--green);}
-.dist-val.close{color:var(--red);}
-.dist-val.neutral{color:var(--text2);}
-.dist-bar-bg{width:100%;height:4px;border-radius:3px;background:var(--bg4);overflow:hidden;}
-.dist-bar{height:4px;border-radius:3px;transition:width .7s ease;}
-.dist-bar.far{background:linear-gradient(90deg,var(--green),var(--green2));}
-.dist-bar.close{background:linear-gradient(90deg,var(--red),#ff8090);}
-.dist-time{font-family:var(--mono);font-size:9px;color:var(--text3);}
-/* DIR PILL */
+.green11{font-family:var(--mono);font-size:11px;color:var(--green);}
+.red11{font-family:var(--mono);font-size:11px;color:var(--red);}
 .dpill{display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:5px;font-size:10px;font-family:var(--mono);font-weight:700;letter-spacing:.04em;}
 .dpill.up{background:var(--gdim);color:var(--green);}
 .dpill.dn{background:var(--rdim);color:var(--red);}
-/* STATUS DOT */
 .sdot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
 .sdot.watch{background:var(--gold);box-shadow:0 0 5px rgba(240,165,0,.5);animation:blink 2s infinite;}
 .sdot.hit{background:var(--green);box-shadow:0 0 5px rgba(0,217,139,.6);}
 .sdot.pend{background:var(--text3);}
-.sdot.err{background:var(--red);}
-/* ERROR BANNER */
-.err-banner{background:rgba(255,69,96,.06);border:1px solid rgba(255,69,96,.2);border-radius:var(--rad);padding:10px 14px;font-size:11px;font-family:var(--mono);color:var(--red);line-height:1.8;margin-top:1rem;display:none;}
-.err-banner.show{display:block;}
-/* ARCH / USERS */
-.arch-row{display:flex;align-items:flex-start;gap:12px;padding:11px 0;border-bottom:1px solid var(--border);}
+
+/* ── Distance indicator ── */
+.dist-wrap{display:flex;flex-direction:column;gap:4px;}
+.dist-val{font-family:var(--mono);font-size:12px;font-weight:600;}
+.dist-val.far{color:var(--green);}
+.dist-val.close{color:var(--red);}
+.dist-val.neutral{color:var(--text2);}
+.dist-bar-bg{width:100%;height:3px;border-radius:2px;background:var(--bg4);overflow:hidden;}
+.dist-bar{height:3px;border-radius:2px;transition:width .6s ease;}
+.dist-bar.far{background:linear-gradient(90deg,var(--green),var(--green2));}
+.dist-bar.close{background:linear-gradient(90deg,var(--red),#ff7a90);}
+
+/* ── Archive / Users ── */
+.arch-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border);}
 .arch-row:last-child{border-bottom:none;}
-.arch-tag{font-size:10px;padding:2px 8px;border-radius:5px;background:var(--gdim);color:var(--green);font-family:var(--mono);font-weight:600;white-space:nowrap;margin-top:2px;}
+.arch-tag{font-size:10px;padding:2px 8px;border-radius:5px;background:var(--gdim);color:var(--green);font-family:var(--mono);font-weight:600;white-space:nowrap;}
 .arch-name{font-size:13px;font-family:var(--mono);font-weight:600;color:var(--text);}
-.arch-detail{font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:3px;line-height:1.6;}
+.arch-detail{font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:2px;}
 .user-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);}
 .user-row:last-child{border-bottom:none;}
 .user-av{width:34px;height:34px;border-radius:8px;background:var(--purdim);border:1px solid rgba(160,112,255,.15);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;}
 .user-name{font-size:13px;font-weight:600;color:var(--text);}
 .user-id{font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:1px;}
 .user-date{font-size:11px;color:var(--text3);font-family:var(--mono);margin-right:auto;}
-/* MODAL */
+
+/* ── Modal ── */
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:100;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(5px);opacity:0;pointer-events:none;transition:.22s;}
 .overlay.on{opacity:1;pointer-events:all;}
 .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:18px;width:min(500px,94vw);padding:1.75rem;transform:translateY(18px);transition:.22s;}
@@ -174,7 +208,8 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .tg-note.ok{display:block;background:var(--gdim);color:var(--green);border:1px solid rgba(0,217,139,.2);}
 .tg-note.err{display:block;background:var(--rdim);color:var(--red);border:1px solid rgba(255,69,96,.2);}
 .tg-note.inf{display:block;background:var(--bluedim);color:var(--blue);border:1px solid rgba(77,168,255,.2);}
-/* GUIDE */
+
+/* ── Guide ── */
 .gstep{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--border);}
 .gstep:last-child{border-bottom:none;}
 .gsn{width:24px;height:24px;border-radius:6px;background:var(--bg4);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:11px;font-family:var(--mono);color:var(--gold);flex-shrink:0;}
@@ -185,7 +220,8 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .empty{text-align:center;padding:2.5rem 1rem;color:var(--text3);}
 .empty-ico{font-size:24px;margin-bottom:6px;opacity:.35;}
 .empty p{font-size:12px;font-family:var(--mono);}
-/* TOAST */
+
+/* ── Toast ── */
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(70px);background:var(--bg4);border:1px solid var(--border2);color:var(--text);padding:11px 20px;border-radius:10px;font-size:13px;font-family:var(--mono);z-index:999;opacity:0;transition:all .28s cubic-bezier(.34,1.56,.64,1);white-space:nowrap;backdrop-filter:blur(10px);}
 #toast.on{opacity:1;transform:translateX(-50%) translateY(0);}
 #toast.ok{border-color:rgba(0,217,139,.4);color:var(--green);}
@@ -196,161 +232,120 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 <body>
 <div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div>
 <div class="wrap">
-
-<!-- HEADER -->
-<header class="hdr">
-  <div class="brand">
-    <div class="brand-logo">
-      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <path d="M10 2L16 6.5V13.5L10 18L4 13.5V6.5L10 2Z" stroke="#00d98b" stroke-width="1.5" fill="none"/>
-        <circle cx="10" cy="10" r="2.8" fill="#00d98b"/>
-      </svg>
+  <header class="hdr">
+    <div class="brand">
+      <div class="brand-logo">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M10 2L16 6.5V13.5L10 18L4 13.5V6.5L10 2Z" stroke="#00d98b" stroke-width="1.5" fill="none"/>
+          <circle cx="10" cy="10" r="2.8" fill="#00d98b"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-name">Price<em>Alert</em></div>
+        <div class="brand-sub">forex · crypto · real-time</div>
+      </div>
     </div>
-    <div>
-      <div class="brand-name">Price<em>Alert</em></div>
-      <div class="brand-sub">forex · crypto · real-time</div>
+    <div class="hdr-right">
+      <div class="live-pill"><span class="ldot"></span><span id="hdr-time">—</span></div>
+      <button class="theme-btn" id="theme-toggle" onclick="toggleTheme()" title="تغییر تم">🌙</button>
+      <button class="icon-btn" onclick="openModal()" title="تنظیمات تلگرام">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/>
+        </svg>
+      </button>
     </div>
-  </div>
-  <div class="hdr-right">
-    <div class="live-pill"><span class="ldot"></span><span id="hdr-time">—</span></div>
-    <button class="theme-btn" id="theme-toggle" onclick="toggleTheme()" title="تغییر تم">🌙</button>
-    <button class="icon-btn" onclick="openModal()" title="تنظیمات تلگرام">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-        <circle cx="12" cy="12" r="3"/>
-        <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/>
-      </svg>
-    </button>
-  </div>
-</header>
+  </header>
 
-<!-- STAT CARDS -->
-<div class="stats">
-  <div class="scard">
-    <div class="scard-ico">⬡</div>
-    <div class="scard-lbl">طلا · XAU/USD</div>
-    <div class="scard-val gold" id="sc-gold">—</div>
-    <div class="scard-sub">دلار / اونس</div>
-    <div class="scard-src" id="sc-gold-src"></div>
+  <div class="stats">
+    <div class="scard"><div class="scard-ico">⬡</div><div class="scard-lbl">طلا · XAU/USD</div><div class="scard-val gold" id="sc-gold">—</div><div class="scard-sub">دلار / اونس</div></div>
+    <div class="scard"><div class="scard-ico">₿</div><div class="scard-lbl">بیتکوین · BTC</div><div class="scard-val green" id="sc-btc">—</div><div class="scard-sub">دلار</div></div>
+    <div class="scard"><div class="scard-ico">🔔</div><div class="scard-lbl">آلارم‌های فعال</div><div class="scard-val blue" id="sc-alerts">0</div><div class="scard-sub" id="sc-alerts-sub">در حال رصد</div></div>
+    <div class="scard"><div class="scard-ico">👥</div><div class="scard-lbl">کاربران ربات</div><div class="scard-val purple" id="sc-users">0</div><div class="scard-sub">نفر ثبت‌شده</div></div>
   </div>
-  <div class="scard">
-    <div class="scard-ico">₿</div>
-    <div class="scard-lbl">بیتکوین · BTC</div>
-    <div class="scard-val green" id="sc-btc">—</div>
-    <div class="scard-sub">دلار</div>
-    <div class="scard-src" id="sc-btc-src"></div>
-  </div>
-  <div class="scard">
-    <div class="scard-ico">🔔</div>
-    <div class="scard-lbl">آلارم‌های فعال</div>
-    <div class="scard-val blue" id="sc-alerts">0</div>
-    <div class="scard-sub" id="sc-alerts-sub">در حال رصد</div>
-  </div>
-  <div class="scard">
-    <div class="scard-ico">👥</div>
-    <div class="scard-lbl">کاربران ربات</div>
-    <div class="scard-val purple" id="sc-users">0</div>
-    <div class="scard-sub">نفر ثبت‌شده</div>
-  </div>
-</div>
 
-<!-- TABS -->
-<div class="tabs">
-  <button class="tab on" onclick="switchTab('alerts')">آلارم‌ها</button>
-  <button class="tab" onclick="switchTab('archive')">بایگانی</button>
-  <button class="tab" onclick="switchTab('users')">کاربران</button>
-  <button class="tab" onclick="switchTab('guide')">راهنما</button>
-</div>
+  <div class="tabs">
+    <button class="tab on" onclick="switchTab('alerts')">آلارم‌ها</button>
+    <button class="tab" onclick="switchTab('archive')">بایگانی</button>
+    <button class="tab" onclick="switchTab('users')">کاربران</button>
+    <button class="tab" onclick="switchTab('guide')">راهنما</button>
+  </div>
 
-<!-- PANEL: ALERTS -->
-<div class="pnl on" id="pnl-alerts">
-  <div class="sec">
-    <div class="sec-hd"><div class="sec-ttl"><span class="sec-dot green"></span>آلارم جدید</div></div>
-    <div class="sec-bd">
-      <div class="fgrid">
-        <div class="fld"><label>نوع بازار</label><select id="mkt" onchange="onMktChange()"><option value="crypto">کریپتو</option><option value="forex">فارکس</option></select></div>
-        <div class="fld"><label>نماد <span id="sym-hint" style="color:var(--blue);font-size:10px">(BTC, ETH...)</span></label><input type="text" id="sym" placeholder="BTC" dir="ltr" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"></div>
-        <div class="fld"><label>قیمت هدف (USD)</label><input type="number" id="tprice" placeholder="0.00000" step="any" dir="ltr"></div>
-        <div class="fld"><label>جهت</label><select id="adir"><option value="above">↑ بالاتر از</option><option value="below">↓ پایین‌تر از</option></select></div>
-        <div class="fld" style="display:flex;align-items:flex-end;gap:8px">
-          <button class="btn btn-blue" style="flex:1" onclick="checkPrice()">👁 قیمت الان</button>
-          <button class="btn btn-green" style="flex:1" onclick="addAlert()">+ افزودن</button>
+  <div class="pnl on" id="pnl-alerts">
+    <div class="sec">
+      <div class="sec-hd"><div class="sec-ttl"><span class="sec-dot green"></span>آلارم جدید</div></div>
+      <div class="sec-bd">
+        <div class="fgrid">
+          <div class="fld"><label>نوع بازار</label><select id="mkt" onchange="onMktChange()"><option value="crypto">کریپتو</option><option value="forex">فارکس</option></select></div>
+          <div class="fld"><label>نماد <span id="sym-hint" style="color:var(--blue);font-size:10px">(BTC, ETH...)</span></label><input type="text" id="sym" placeholder="BTC" dir="ltr" style="text-transform:uppercase"></div>
+          <div class="fld"><label>قیمت هدف (USD)</label><input type="number" id="tprice" placeholder="0.00" step="any" dir="ltr"></div>
+          <div class="fld"><label>جهت</label><select id="adir"><option value="above">↑ بالاتر از</option><option value="below">↓ پایین‌تر از</option></select></div>
+          <div class="fld" style="display:flex;align-items:flex-end;gap:8px">
+            <button class="btn btn-blue" style="flex:1" onclick="checkPrice()">👁 قیمت الان</button>
+            <button class="btn btn-green" style="flex:1" onclick="addAlert()">+ افزودن</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="sec">
+      <div class="sec-hd">
+        <div class="sec-ttl"><span class="sec-dot"></span>آلارم‌های در حال رصد</div>
+        <span id="upd-lbl" style="font-size:10px;color:var(--text3);font-family:var(--mono)"></span>
+      </div>
+      <div class="sec-bd slim">
+        <div class="atbl">
+          <div class="atbl-hd"><span>نماد</span><span>قیمت فعلی</span><span class="col-h">هدف</span><span>فاصله تا آلارم</span><span>جهت</span><span></span></div>
+          <div id="atbl-body"></div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="sec">
-    <div class="sec-hd">
-      <div class="sec-ttl"><span class="sec-dot"></span>آلارم‌های در حال رصد</div>
-      <span id="upd-lbl" style="font-size:10px;color:var(--text3);font-family:var(--mono)"></span>
+  <div class="pnl" id="pnl-archive">
+    <div class="sec">
+      <div class="sec-hd">
+        <div class="sec-ttl"><span class="sec-dot red"></span>آلارم‌های فعال‌شده</div>
+        <button class="btn btn-sm" onclick="clearArchive()">پاک کردن</button>
+      </div>
+      <div class="sec-bd" id="arch-body"><div class="empty"><div class="empty-ico">◎</div><p>بایگانی خالی است</p></div></div>
     </div>
-    <div class="sec-bd slim">
-      <div class="atbl">
-        <div class="atbl-hd">
-          <span>نماد</span>
-          <span>قیمت فعلی</span>
-          <span class="col-h">هدف</span>
-          <span>فاصله تا آلارم</span>
-          <span>جهت</span>
-          <span></span>
+  </div>
+
+  <div class="pnl" id="pnl-users">
+    <div class="note">👥 هر کسی که ربات شما را پیدا کند و <b>/start</b> بزند، خودکار ثبت می‌شود و آلارم‌ها دریافت می‌کند.</div>
+    <div class="sec">
+      <div class="sec-hd">
+        <div class="sec-ttl"><span class="sec-dot purple"></span>کاربران ثبت‌شده</div>
+        <button class="btn btn-sm btn-blue" onclick="loadUsers()">🔄 بروزرسانی</button>
+      </div>
+      <div class="sec-bd" id="users-body"><div class="empty"><div class="empty-ico">👥</div><p>هنوز کاربری /start نزده</p></div></div>
+    </div>
+  </div>
+
+  <div class="pnl" id="pnl-guide">
+    <div class="sec">
+      <div class="sec-hd"><div class="sec-ttl"><span class="sec-dot blue"></span>راه‌اندازی تلگرام گروهی</div></div>
+      <div class="sec-bd">
+        <div class="gstep"><div class="gsn">1</div><div class="gst">شما یک بار ربات می‌سازید: <a href="https://t.me/BotFather" target="_blank">@BotFather</a> → <b>/newbot</b> → Token می‌گیرید</div></div>
+        <div class="gstep"><div class="gsn">2</div><div class="gst">Token از قبل در سیستم ذخیره شده — نیازی به وارد کردن مجدد نیست ✅</div></div>
+        <div class="gstep"><div class="gsn">3</div><div class="gst">آدرس ربات تلگرام را برای اعضای گروه بفرستید</div></div>
+        <div class="gstep"><div class="gsn">4</div><div class="gst">هر نفر ربات را باز کند و <b>/start</b> بزند — خودکار ثبت می‌شود ✅</div></div>
+        <div class="gstep"><div class="gsn">5</div><div class="gst">نیازی به BotFather یا Chat ID برای کاربران نیست — فقط /start کافیست!</div></div>
+      </div>
+    </div>
+    <div class="sec">
+      <div class="sec-hd"><div class="sec-ttl"><span class="sec-dot green"></span>نمادهای پشتیبانی‌شده</div></div>
+      <div class="sec-bd">
+        <div style="font-size:12px;color:var(--text2);font-family:var(--mono);line-height:2.2">
+          <div><span style="color:var(--gold)">کریپتو:</span> &nbsp;BTC · ETH · BNB · SOL · XRP · ADA · DOGE · TRX · TON · AVAX و هر ارزی در Binance</div>
+          <div style="margin-top:6px"><span style="color:var(--blue)">فارکس:</span> &nbsp;EURUSD · GBPUSD · USDJPY · XAUUSD (طلا) · GBPJPY · AUDUSD و هر جفت‌ارز دیگر</div>
+          <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)"><span style="color:var(--text3)">فرمت:</span> &nbsp;EURUSD یا EUR/USD — هر دو قبول است</div>
         </div>
-        <div id="atbl-body"></div>
-      </div>
-      <!-- Error banner at bottom -->
-      <div class="err-banner" id="err-banner"></div>
-    </div>
-  </div>
-</div>
-
-<!-- PANEL: ARCHIVE -->
-<div class="pnl" id="pnl-archive">
-  <div class="sec">
-    <div class="sec-hd">
-      <div class="sec-ttl"><span class="sec-dot red"></span>آلارم‌های فعال‌شده</div>
-      <button class="btn btn-sm" onclick="clearArchive()">پاک کردن</button>
-    </div>
-    <div class="sec-bd" id="arch-body"><div class="empty"><div class="empty-ico">◎</div><p>بایگانی خالی است</p></div></div>
-  </div>
-</div>
-
-<!-- PANEL: USERS -->
-<div class="pnl" id="pnl-users">
-  <div class="note">👥 هر کسی که ربات را پیدا کند و <b>/start</b> بزند، خودکار ثبت می‌شود و آلارم‌ها دریافت می‌کند.</div>
-  <div class="sec">
-    <div class="sec-hd">
-      <div class="sec-ttl"><span class="sec-dot purple"></span>کاربران ثبت‌شده</div>
-      <button class="btn btn-sm btn-blue" onclick="loadUsers()">🔄 بروزرسانی</button>
-    </div>
-    <div class="sec-bd" id="users-body"><div class="empty"><div class="empty-ico">👥</div><p>هنوز کاربری /start نزده</p></div></div>
-  </div>
-</div>
-
-<!-- PANEL: GUIDE -->
-<div class="pnl" id="pnl-guide">
-  <div class="sec">
-    <div class="sec-hd"><div class="sec-ttl"><span class="sec-dot blue"></span>راه‌اندازی تلگرام گروهی</div></div>
-    <div class="sec-bd">
-      <div class="gstep"><div class="gsn">1</div><div class="gst">ربات تلگرام از قبل آماده است — توکن در سرور ذخیره شده ✅</div></div>
-      <div class="gstep"><div class="gsn">2</div><div class="gst">آدرس ربات را برای اعضای گروه بفرستید</div></div>
-      <div class="gstep"><div class="gsn">3</div><div class="gst">هر نفر ربات را باز کند و <b>/start</b> بزند — خودکار ثبت می‌شود ✅</div></div>
-      <div class="gstep"><div class="gsn">4</div><div class="gst">نیازی به BotFather یا Chat ID برای کاربران نیست!</div></div>
-    </div>
-  </div>
-  <div class="sec">
-    <div class="sec-hd"><div class="sec-ttl"><span class="sec-dot green"></span>نمادهای پشتیبانی‌شده</div></div>
-    <div class="sec-bd">
-      <div style="font-size:12px;color:var(--text2);font-family:var(--mono);line-height:2.2">
-        <div><span style="color:var(--gold)">کریپتو (۴ منبع):</span> &nbsp;BTC · ETH · BNB · SOL · XRP · ADA · DOGE · TRX · TON · AVAX · LINK · و هر ارزی در Binance</div>
-        <div style="margin-top:6px"><span style="color:var(--blue)">فارکس (۳ منبع):</span> &nbsp;EURUSD · GBPUSD · USDJPY · XAUUSD (طلا) · GBPJPY · AUDUSD · و هر جفت‌ارز دیگر</div>
-        <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)"><span style="color:var(--text3)">فرمت:</span> &nbsp;EURUSD یا EUR/USD — هر دو قبول است · طلا: XAUUSD</div>
       </div>
     </div>
   </div>
 </div>
 
-</div><!-- /wrap -->
-
-<!-- MODAL: TELEGRAM -->
 <div class="overlay" id="overlay">
   <div class="modal">
     <div class="modal-ttl"><span>⚙</span> تنظیمات تلگرام</div>
@@ -371,218 +366,207 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 <div id="toast"></div>
 
 <script>
+// ── Hardcoded bot token — not shown to users ──
 const HARDCODED_TOKEN = '8792456550:AAEuvnzzCUXniBhIWz6C-qabX96EvPWqN7A';
 const API = '';
 
-// ── Theme ─────────────────────────────────────────────────────────────────────
-function initTheme(){
-  const t = localStorage.getItem('pa_theme')||'dark';
-  applyTheme(t);
+// ── Theme management (per-user via localStorage) ──
+function initTheme() {
+  const saved = localStorage.getItem('pa_theme') || 'dark';
+  applyTheme(saved);
 }
-function applyTheme(t){
-  if(t==='light'){document.body.classList.add('light');document.getElementById('theme-toggle').textContent='☀️';}
-  else{document.body.classList.remove('light');document.getElementById('theme-toggle').textContent='🌙';}
+function applyTheme(t) {
+  if (t === 'light') {
+    document.body.classList.add('light');
+    document.getElementById('theme-toggle').textContent = '☀️';
+  } else {
+    document.body.classList.remove('light');
+    document.getElementById('theme-toggle').textContent = '🌙';
+  }
 }
-function toggleTheme(){
-  const next = document.body.classList.contains('light')?'dark':'light';
-  localStorage.setItem('pa_theme',next);
+function toggleTheme() {
+  const isLight = document.body.classList.contains('light');
+  const next = isLight ? 'dark' : 'light';
+  localStorage.setItem('pa_theme', next);
   applyTheme(next);
 }
 initTheme();
 
-// ── Formatting ────────────────────────────────────────────────────────────────
-function fmt(n,sym){
-  if(n===undefined||n===null)return'—';
-  const s=(sym||'').toUpperCase().replace('/','');
-  if(s.includes('JPY'))return n.toLocaleString('en-US',{minimumFractionDigits:3,maximumFractionDigits:3});
-  if(s.includes('XAU')||s.includes('XAG'))return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-  if(n>=10000)return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-  if(n>=1000) return n.toFixed(2);
-  if(n>=100)  return n.toFixed(3);
-  if(n>=1)    return n.toFixed(5);
-  if(n>=0.01) return n.toFixed(6);
-  return n.toFixed(8);
+// ── Formatting ──
+function fmt(n, sym) {
+  if (n === undefined || n === null) return '—';
+  if (n < 0.00001) return n.toFixed(8);
+  if (n < 0.001) return n.toFixed(6);
+  if (n < 0.1) return n.toFixed(5);
+  if (n < 10) return n.toFixed(4);
+  if (n < 1000) return n.toFixed(2);
+  return n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 
-// ── Distance calculation ──────────────────────────────────────────────────────
-function calcDist(cur, target, sym, atype){
-  if(cur===undefined||cur===null||!target)return{text:'—',barPct:0,cls:'neutral'};
-  const s=(sym||'').toUpperCase().replace('/','');
-  const diff=Math.abs(cur-target);
-  const sign=cur>=target?'+':'-';
-  let text,raw,maxRaw;
+// ── Distance calculation — pip for forex, % for crypto ──
+function calcDistInfo(cur, target, sym) {
+  if (cur === undefined || cur === null || cur === 0) return { text: '—', pct: null };
+  const s = (sym || '').toUpperCase();
+  const diff = Math.abs(cur - target);
+  const isForex = s.length === 6 && !['BTC','ETH','BNB','SOL','XRP','ADA','DOGE','TRX','TON','AVA'].some(c => s.startsWith(c));
+  const isXAU = s.includes('XAU') || s.includes('XAG');
+  const isJPY = s.includes('JPY');
 
-  if(atype==='crypto'){
-    const pct=diff/target*100;
-    text=sign+pct.toFixed(2)+'%';
-    raw=pct; maxRaw=15;
-  } else if(s.includes('JPY')){
-    const p=diff/0.01;
-    text=sign+p.toFixed(1)+' pip';
-    raw=p; maxRaw=300;
-  } else if(s.includes('XAU')||s.includes('XAG')){
-    text=sign+'$'+diff.toFixed(2);
-    raw=diff; maxRaw=target*0.05;
+  let text, rawDist, maxDist;
+
+  if (isXAU) {
+    // Gold — show dollar distance
+    const sign = cur >= target ? '+' : '-';
+    text = sign + '$' + diff.toFixed(2);
+    rawDist = diff;
+    maxDist = target * 0.05; // 5% of price as max scale
+  } else if (isJPY) {
+    const pips = diff / 0.01;
+    text = (cur >= target ? '+' : '-') + pips.toFixed(1) + ' pip';
+    rawDist = pips;
+    maxDist = 200;
+  } else if (isForex) {
+    const pips = diff / 0.0001;
+    text = (cur >= target ? '+' : '-') + pips.toFixed(1) + ' pip';
+    rawDist = pips;
+    maxDist = 500;
   } else {
-    const p=diff/0.0001;
-    text=sign+p.toFixed(1)+' pip';
-    raw=p; maxRaw=400;
+    // Crypto — percentage
+    const pct = (diff / target) * 100;
+    const sign = cur >= target ? '+' : '-';
+    text = sign + pct.toFixed(2) + '%';
+    rawDist = pct;
+    maxDist = 20;
   }
-  const barPct=Math.min(100,(raw/maxRaw)*100);
-  // close to target = bar full = red; far = bar small = green
-  const cls=barPct>60?'close':'far';
-  return{text,barPct,cls};
+
+  const barPct = Math.min(100, (rawDist / maxDist) * 100);
+  // Far = green (target not close), Close = red (almost hit)
+  const isFar = barPct > 30;
+  return { text, barPct, isFar };
 }
 
-function toast(msg,cls=''){
-  const el=document.getElementById('toast');
-  el.textContent=msg; el.className='on '+cls;
-  clearTimeout(el._t); el._t=setTimeout(()=>el.className='',3200);
+function toast(msg, cls = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'on ' + cls;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.className = '', 3200);
 }
 
-function switchTab(name){
-  ['alerts','archive','users','guide'].forEach((n,i)=>{
-    document.querySelectorAll('.tab')[i].classList.toggle('on',n===name);
-    document.getElementById('pnl-'+n).classList.toggle('on',n===name);
+function switchTab(name) {
+  ['alerts','archive','users','guide'].forEach((n, i) => {
+    document.querySelectorAll('.tab')[i].classList.toggle('on', n === name);
+    document.getElementById('pnl-' + n).classList.toggle('on', n === name);
   });
-  if(name==='archive')loadArchive();
-  if(name==='users')loadUsers();
+  if (name === 'archive') loadArchive();
+  if (name === 'users') loadUsers();
 }
 
-function onMktChange(){
-  const m=document.getElementById('mkt').value;
-  const h=document.getElementById('sym-hint');
-  const i=document.getElementById('sym');
-  if(m==='crypto'){h.textContent='(BTC, ETH, SOL...)';i.placeholder='BTC';}
-  else{h.textContent='(EURUSD, XAUUSD=طلا)';i.placeholder='EURUSD';}
+function onMktChange() {
+  const m = document.getElementById('mkt').value;
+  const h = document.getElementById('sym-hint');
+  const i = document.getElementById('sym');
+  if (m === 'crypto') { h.textContent = '(BTC, ETH, SOL...)'; i.placeholder = 'BTC'; }
+  else { h.textContent = '(EURUSD, XAUUSD, طلا)'; i.placeholder = 'EURUSD'; }
 }
 
-// ── Price check ───────────────────────────────────────────────────────────────
-async function checkPrice(){
-  const sym=document.getElementById('sym').value.trim().toUpperCase();
-  const mkt=document.getElementById('mkt').value;
-  if(!sym){toast('نماد را وارد کنید','er');return;}
-  toast('⏳ دریافت از چند منبع...');
-  try{
-    const r=await fetch(`${API}/api/price/${mkt}/${sym}`);
-    const d=await r.json();
-    if(d.price!==undefined){
-      toast(`💰 ${sym}: $${fmt(d.price,sym)} [${d.source}]`,'ok');
-      document.getElementById('tprice').value=d.price;
+async function checkPrice() {
+  const sym = document.getElementById('sym').value.trim().toUpperCase();
+  const mkt = document.getElementById('mkt').value;
+  if (!sym) { toast('نماد را وارد کنید', 'er'); return; }
+  toast('⏳ در حال دریافت...');
+  try {
+    const r = await fetch(`${API}/api/price/${mkt}/${sym}`);
+    const d = await r.json();
+    if (d.price !== undefined) {
+      toast(`💰 ${sym}: $${fmt(d.price, sym)}`, 'ok');
+      document.getElementById('tprice').value = d.price;
     } else {
-      toast(`❌ ${sym} پیدا نشد — ${d.detail||''}` ,'er');
+      toast(`❌ ${sym} پیدا نشد — اگر طلا می‌خواهید XAUUSD بزنید`, 'er');
     }
-  }catch(e){toast('❌ خطا در سرور','er');}
+  } catch(e) { toast('❌ خطا در سرور', 'er'); }
 }
 
-// ── Add alert ─────────────────────────────────────────────────────────────────
-async function addAlert(){
-  const sym=document.getElementById('sym').value.trim().toUpperCase();
-  const mkt=document.getElementById('mkt').value;
-  const target=parseFloat(document.getElementById('tprice').value);
-  const dir=document.getElementById('adir').value;
-  if(!sym){toast('نماد را وارد کنید','er');return;}
-  if(!target||target<=0){toast('قیمت هدف را وارد کنید','er');return;}
-  toast('⏳ در حال ثبت و دریافت قیمت...');
-  try{
-    const r=await fetch(`${API}/api/alerts`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({symbol:sym,type:mkt,target_price:target,condition:dir})
+async function addAlert() {
+  const sym = document.getElementById('sym').value.trim().toUpperCase();
+  const mkt = document.getElementById('mkt').value;
+  const target = parseFloat(document.getElementById('tprice').value);
+  const dir = document.getElementById('adir').value;
+  if (!sym) { toast('نماد را وارد کنید', 'er'); return; }
+  if (!target || target <= 0) { toast('قیمت هدف را وارد کنید', 'er'); return; }
+  try {
+    const r = await fetch(`${API}/api/alerts`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({symbol:sym, type:mkt, target_price:target, condition:dir})
     });
-    const d=await r.json();
-    if(d.ok){
-      if(d.current_price)
-        toast(`✅ ${sym} ثبت شد · قیمت: $${fmt(d.current_price,sym)} [${d.source}]`,'ok');
-      else
-        toast(`✅ ${sym} ثبت شد — قیمت در چک بعدی دریافت می‌شود`,'ok');
-      document.getElementById('sym').value='';
-      document.getElementById('tprice').value='';
+    const d = await r.json();
+    if (d.ok) {
+      toast(`✅ آلارم ${sym} ثبت شد`, 'ok');
+      document.getElementById('sym').value = '';
+      document.getElementById('tprice').value = '';
       loadAlerts();
     }
-  }catch(e){toast('❌ خطا','er');}
+  } catch(e) { toast('❌ خطا', 'er'); }
 }
 
-async function deleteAlert(id){
-  if(!confirm('آلارم حذف شود؟'))return;
-  await fetch(`${API}/api/alerts/${id}`,{method:'DELETE'});
+async function deleteAlert(id) {
+  if (!confirm('آلارم حذف شود؟')) return;
+  await fetch(`${API}/api/alerts/${id}`, {method:'DELETE'});
   toast('حذف شد');
   loadAlerts();
 }
 
-// ── Load & render alerts ──────────────────────────────────────────────────────
-async function loadAlerts(){
-  try{
-    const[rA,rE]=await Promise.allSettled([
-      fetch(`${API}/api/alerts`),
-      fetch(`${API}/api/errors`)
-    ]);
-    if(rA.status!=='fulfilled'||!rA.value.ok)return;
-    const alerts=await rA.value.json();
-    const errors=rA.status==='fulfilled'&&rE.value?.ok ? await rE.value.json() : {};
-    renderAlerts(alerts,errors);
-    document.getElementById('sc-alerts').textContent=alerts.length;
-    document.getElementById('sc-alerts-sub').textContent=
-      alerts.length>0?alerts.filter(a=>a.active).length+' فعال':'بدون آلارم';
-    // last checked time
-    const times=alerts.filter(a=>a.last_checked).map(a=>a.last_checked).sort();
-    if(times.length){
-      document.getElementById('upd-lbl').textContent='آخرین چک: '+times[times.length-1].slice(11,16)+' (تهران)';
+async function loadAlerts() {
+  try {
+    const r = await fetch(`${API}/api/alerts`);
+    const alerts = await r.json();
+    renderAlerts(alerts);
+    document.getElementById('sc-alerts').textContent = alerts.length;
+    document.getElementById('sc-alerts-sub').textContent = alerts.length > 0 ? alerts.filter(a => a.active).length + ' فعال' : 'بدون آلارم';
+    const checked = alerts.filter(a => a.last_checked).map(a => a.last_checked).sort();
+    if (checked.length) {
+      const t = new Date(checked[checked.length - 1]);
+      document.getElementById('upd-lbl').textContent = 'آخرین چک: ' + t.toLocaleTimeString('fa-IR');
     }
-    // error banner
-    const errBanner=document.getElementById('err-banner');
-    const errAlerts=alerts.filter(a=>a.last_error);
-    if(errAlerts.length){
-      errBanner.className='err-banner show';
-      errBanner.innerHTML='⚠️ خطا در دریافت قیمت:<br>'+
-        errAlerts.map(a=>`<b>${a.symbol}</b>: ${a.last_error||'نامشخص'}`).join('<br>');
-    } else {
-      errBanner.className='err-banner';
-    }
-  }catch(e){}
+  } catch(e) {}
 }
 
-function renderAlerts(alerts,errors){
-  const body=document.getElementById('atbl-body');
-  if(!alerts.length){
-    body.innerHTML='<div class="empty"><div class="empty-ico">◎</div><p>آلارمی ثبت نشده</p></div>';
+function renderAlerts(alerts) {
+  const body = document.getElementById('atbl-body');
+  if (!alerts.length) {
+    body.innerHTML = '<div class="empty"><div class="empty-ico">◎</div><p>آلارمی ثبت نشده</p></div>';
     return;
   }
-  body.innerHTML=alerts.map(a=>{
-    const isCrypto=a.type==='crypto';
-    const short=(a.symbol||'').slice(0,4);
-    const cur=a.last_price;
-    const hasErr=!!a.last_error;
-    const dist=calcDist(cur,a.target_price,a.symbol,a.type);
-    const dotCls=hasErr?'err':(!a.active?'hit':(cur!==undefined?'watch':'pend'));
-    const dp=a.condition==='above'?'<span class="dpill up">↑ ABOVE</span>':'<span class="dpill dn">↓ BELOW</span>';
-    const timeStr=a.last_checked?a.last_checked.slice(11,16):'';
-    const srcStr=a.last_source?`<div class="src-tag">${a.last_source}</div>`:'';
+  body.innerHTML = alerts.map(a => {
+    const isCrypto = a.type === 'crypto';
+    const short = (a.symbol || '').slice(0, 4);
+    const cur = a.last_price;
+    const distInfo = calcDistInfo(cur, a.target_price, a.symbol);
+    const dotCls = !a.active ? 'hit' : (cur !== undefined ? 'watch' : 'pend');
+    const dp = a.condition === 'above'
+      ? '<span class="dpill up">↑ ABOVE</span>'
+      : '<span class="dpill dn">↓ BELOW</span>';
 
-    let distHtml;
-    if(hasErr){
-      distHtml=`<span style="color:var(--red);font-size:11px;font-family:var(--mono)">❌ خطا</span>`;
-    } else if(cur!==undefined&&cur!==null){
-      distHtml=`
-        <div class="dist-cell">
-          <span class="dist-val ${dist.cls}">${dist.text}</span>
-          <div class="dist-bar-bg"><div class="dist-bar ${dist.cls}" style="width:${dist.barPct}%"></div></div>
-          <span class="dist-time">${timeStr} تهران</span>
+    let distHtml = '<span class="loading">...</span>';
+    if (cur !== undefined && cur !== null && distInfo.barPct !== null) {
+      const cls = distInfo.isFar ? 'far' : 'close';
+      distHtml = `
+        <div class="dist-wrap">
+          <span class="dist-val ${cls}">${distInfo.text}</span>
+          <div class="dist-bar-bg"><div class="dist-bar ${cls}" style="width:${distInfo.barPct}%"></div></div>
         </div>`;
-    } else {
-      distHtml=`<span class="loading">در انتظار...</span>`;
+    } else if (cur !== undefined) {
+      distHtml = `<span class="mono11">${distInfo.text}</span>`;
     }
 
-    return `<div class="atbl-row ${!a.active?'hit':''}">
+    return `<div class="atbl-row ${!a.active ? 'hit' : ''}">
       <div class="acell">
-        <div class="abadge ${isCrypto?'c':'f'}">${short}</div>
+        <div class="abadge ${isCrypto ? 'c' : 'f'}">${short}</div>
         <div><div class="aname">${a.symbol}</div><div class="atype">${a.type.toUpperCase()}</div></div>
       </div>
-      <div>
-        <div class="mono13">${cur!==undefined&&cur!==null?'$'+fmt(cur,a.symbol):'<span class="loading">...</span>'}</div>
-        ${srcStr}
-      </div>
-      <div class="col-h"><div class="mono11">$${fmt(a.target_price,a.symbol)}</div></div>
+      <div><div class="mono13">${cur !== undefined ? '$' + fmt(cur, a.symbol) : '<span class="loading">...</span>'}</div></div>
+      <div class="col-h"><div class="mono11">$${fmt(a.target_price, a.symbol)}</div></div>
       <div>${distHtml}</div>
       <div>${dp}</div>
       <div style="display:flex;align-items:center;gap:5px">
@@ -593,136 +577,135 @@ function renderAlerts(alerts,errors){
   }).join('');
 }
 
-// ── Archive ───────────────────────────────────────────────────────────────────
-async function loadArchive(){
-  try{
-    const r=await fetch(`${API}/api/archive`);
-    const items=await r.json();
-    const body=document.getElementById('arch-body');
-    if(!items.length){body.innerHTML='<div class="empty"><div class="empty-ico">◎</div><p>بایگانی خالی است</p></div>';return;}
-    body.innerHTML=items.slice().reverse().map(a=>`
-      <div class="arch-row">
+async function loadArchive() {
+  try {
+    const r = await fetch(`${API}/api/archive`);
+    const items = await r.json();
+    const body = document.getElementById('arch-body');
+    if (!items.length) { body.innerHTML = '<div class="empty"><div class="empty-ico">◎</div><p>بایگانی خالی است</p></div>'; return; }
+    body.innerHTML = items.slice().reverse().map(a => {
+      const dt = new Date(a.fired_at || a.created_at);
+      const ts = dt.toLocaleDateString('fa-IR') + ' · ' + dt.toLocaleTimeString('fa-IR');
+      return `<div class="arch-row">
         <span class="arch-tag">✓ فعال</span>
         <div>
           <div class="arch-name">${a.symbol}</div>
-          <div class="arch-detail">
-            ${a.condition==='above'?'↑':'↓'} هدف: $${fmt(a.target_price,a.symbol)}<br>
-            قیمت فعال‌سازی: $${fmt(a.fired_price,a.symbol)}<br>
-            ⏰ ${a.fired_at||a.created_at} (تهران)
-          </div>
+          <div class="arch-detail">${a.condition==='above'?'↑':'↓'} هدف: $${fmt(a.target_price,a.symbol)} · فعال‌سازی: $${fmt(a.fired_price,a.symbol)} · ${ts}</div>
         </div>
-      </div>`).join('');
-  }catch(e){}
+      </div>`;
+    }).join('');
+  } catch(e) {}
 }
 
-async function clearArchive(){
-  if(!confirm('بایگانی پاک شود؟'))return;
-  await fetch(`${API}/api/archive`,{method:'DELETE'});
-  loadArchive(); toast('پاک شد');
+async function clearArchive() {
+  if (!confirm('بایگانی پاک شود؟')) return;
+  await fetch(`${API}/api/archive`, {method:'DELETE'});
+  loadArchive();
+  toast('پاک شد');
 }
 
-// ── Users ─────────────────────────────────────────────────────────────────────
-async function loadUsers(){
-  try{
-    const r=await fetch(`${API}/api/users`);
-    const users=await r.json();
-    document.getElementById('sc-users').textContent=users.length;
-    const body=document.getElementById('users-body');
-    if(!users.length){body.innerHTML='<div class="empty"><div class="empty-ico">👥</div><p>هنوز کاربری /start نزده</p></div>';return;}
-    body.innerHTML=users.map(u=>`
+async function loadUsers() {
+  try {
+    const r = await fetch(`${API}/api/users`);
+    const users = await r.json();
+    document.getElementById('sc-users').textContent = users.length;
+    const body = document.getElementById('users-body');
+    if (!users.length) { body.innerHTML = '<div class="empty"><div class="empty-ico">👥</div><p>هنوز کاربری /start نزده</p></div>'; return; }
+    body.innerHTML = users.map(u => `
       <div class="user-row">
         <div class="user-av">👤</div>
-        <div><div class="user-name">${u.username||'کاربر'}</div><div class="user-id">${u.chat_id}</div></div>
-        <div class="user-date">${u.joined_at||''}</div>
+        <div>
+          <div class="user-name">${u.username || 'کاربر'}</div>
+          <div class="user-id">${u.chat_id}</div>
+        </div>
+        <div class="user-date">${u.joined_at || ''}</div>
         <button class="btn btn-red btn-sm" onclick="deleteUser('${u.chat_id}')">حذف</button>
       </div>`).join('');
-  }catch(e){}
+  } catch(e) {}
 }
 
-async function deleteUser(cid){
-  if(!confirm('این کاربر حذف شود؟'))return;
-  await fetch(`${API}/api/users/${cid}`,{method:'DELETE'});
-  loadUsers(); toast('کاربر حذف شد');
+async function deleteUser(chatId) {
+  if (!confirm('این کاربر حذف شود؟')) return;
+  await fetch(`${API}/api/users/${chatId}`, {method:'DELETE'});
+  loadUsers();
+  toast('کاربر حذف شد');
 }
 
-// ── Config / Telegram ─────────────────────────────────────────────────────────
-async function initConfig(){
-  try{
-    const r=await fetch(`${API}/api/config`);
-    const d=await r.json();
-    if(!d.bot_token||d.bot_token!==HARDCODED_TOKEN){
-      await fetch(`${API}/api/config`,{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({bot_token:HARDCODED_TOKEN,chat_id:d.chat_id||''})
+// ── Config: auto-push hardcoded token on load ──
+async function initConfig() {
+  try {
+    const r = await fetch(`${API}/api/config`);
+    const d = await r.json();
+    // If no token saved yet, push hardcoded one
+    if (!d.bot_token || d.bot_token !== HARDCODED_TOKEN) {
+      await fetch(`${API}/api/config`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({bot_token: HARDCODED_TOKEN, chat_id: d.chat_id || ''})
       });
     }
-    document.getElementById('tg-tok').value='••••••••••••••••';
-    document.getElementById('tg-cid').value=d.chat_id||'';
-    document.getElementById('sc-users').textContent=d.user_count||0;
-  }catch(e){}
+    document.getElementById('tg-tok').value = '••••••••••••••••';
+    document.getElementById('tg-cid').value = d.chat_id || '';
+    document.getElementById('sc-users').textContent = d.user_count || 0;
+  } catch(e) {}
 }
 
-function openModal(){document.getElementById('overlay').classList.add('on');setTgNote('','');}
-function closeModal(){document.getElementById('overlay').classList.remove('on');}
-document.getElementById('overlay').addEventListener('click',function(e){if(e.target===this)closeModal();});
-function setTgNote(cls,msg){const el=document.getElementById('tg-note');el.className='tg-note '+(cls||'');el.textContent=msg;}
+function openModal() { document.getElementById('overlay').classList.add('on'); setTgNote('', ''); }
+function closeModal() { document.getElementById('overlay').classList.remove('on'); }
+document.getElementById('overlay').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
+function setTgNote(cls, msg) { const el = document.getElementById('tg-note'); el.className = 'tg-note ' + (cls || ''); el.textContent = msg; }
 
-async function saveTg(){
-  const cid=document.getElementById('tg-cid').value.trim();
-  await fetch(`${API}/api/config`,{
-    method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({bot_token:HARDCODED_TOKEN,chat_id:cid})
+async function saveTg() {
+  const cid = document.getElementById('tg-cid').value.trim();
+  await fetch(`${API}/api/config`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({bot_token: HARDCODED_TOKEN, chat_id: cid})
   });
-  setTgNote('ok','✓ ذخیره شد');
-  toast('ذخیره شد','ok');
+  setTgNote('ok', '✓ ذخیره شد');
+  toast('تنظیمات ذخیره شد', 'ok');
 }
 
-async function testTg(){
-  setTgNote('inf','◌ در حال ارسال...');
-  try{
-    const r=await fetch(`${API}/api/test-telegram`,{method:'POST'});
-    const d=await r.json();
-    if(d.ok)setTgNote('ok',`✓ پیام برای ${d.sent} کاربر ارسال شد`);
-    else setTgNote('err','✗ خطا — کاربری /start نزده یا توکن اشتباه');
-  }catch(e){setTgNote('err','✗ خطا در ارتباط');}
+async function testTg() {
+  setTgNote('inf', '◌ در حال ارسال...');
+  try {
+    const r = await fetch(`${API}/api/test-telegram`, {method: 'POST'});
+    const d = await r.json();
+    if (d.ok) setTgNote('ok', `✓ پیام برای ${d.sent} کاربر ارسال شد`);
+    else setTgNote('err', '✗ خطا — توکن را بررسی کنید');
+  } catch(e) { setTgNote('err', '✗ خطا در ارتباط'); }
 }
 
-// ── Stat cards: BTC + Gold ────────────────────────────────────────────────────
-async function loadStatCards(){
-  try{
-    const[rB,rG]=await Promise.allSettled([
+// ── Load stats cards (only BTC & Gold for stats, no live ticker strip) ──
+async function loadStatCards() {
+  try {
+    const [rBTC, rGold] = await Promise.allSettled([
       fetch(`${API}/api/price/crypto/BTC`),
       fetch(`${API}/api/price/forex/XAUUSD`)
     ]);
-    if(rB.status==='fulfilled'&&rB.value.ok){
-      const d=await rB.value.json();
-      if(d.price){
-        document.getElementById('sc-btc').textContent='$'+fmt(d.price,'BTC');
-        document.getElementById('sc-btc-src').textContent=d.source;
-      }
+    if (rBTC.status === 'fulfilled' && rBTC.value.ok) {
+      const d = await rBTC.value.json();
+      if (d.price) document.getElementById('sc-btc').textContent = '$' + fmt(d.price, 'BTC');
     }
-    if(rG.status==='fulfilled'&&rG.value.ok){
-      const d=await rG.value.json();
-      if(d.price){
-        document.getElementById('sc-gold').textContent='$'+fmt(d.price,'XAU');
-        document.getElementById('sc-gold-src').textContent=d.source;
-      }
+    if (rGold.status === 'fulfilled' && rGold.value.ok) {
+      const d = await rGold.value.json();
+      if (d.price) document.getElementById('sc-gold').textContent = '$' + fmt(d.price, 'XAU');
     }
-  }catch(e){}
+  } catch(e) {}
 }
 
-function updateClock(){
-  document.getElementById('hdr-time').textContent=new Date().toLocaleTimeString('fa-IR');
+function updateClock() {
+  document.getElementById('hdr-time').textContent = new Date().toLocaleTimeString('fa-IR');
 }
 
-// ── Init ──────────────────────────────────────────────────────────────────────
+// ── Init ──
 initConfig();
 loadAlerts();
 loadStatCards();
 updateClock();
-setInterval(loadAlerts,30000);
-setInterval(loadStatCards,300000);
-setInterval(updateClock,1000);
+setInterval(loadAlerts, 30000);
+setInterval(loadStatCards, 300000); // every 5 min — minimal API calls
+setInterval(updateClock, 1000);
 </script>
 </body>
 </html>
