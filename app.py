@@ -95,123 +95,138 @@ def _cg_price(base):
 
 def get_forex_price(symbol):
     """
-    Get forex/gold price — real-time sources with full decimal precision.
-    symbol: EURUSD, XAUUSD, GBPUSD, USDJPY, XAGUSD ...
+    قیمت فارکس و طلا — چند منبع موازی، اولین جواب درست برگردانده میشه.
     """
     sym   = symbol.upper().replace("/","").replace(" ","").strip()
     if len(sym) < 6: return None
     base  = sym[:3]
     quote = sym[3:6]
 
-    # ── Gold / Silver special ──────────────────────────────────────
-    # These APIs return spot price per troy ounce in USD (real-time)
+    # ── طلا و نقره ────────────────────────────────────────────────
     if base in ("XAU", "XAG"):
         metal = "gold" if base == "XAU" else "silver"
         sources = [
-            # metals.live — real-time spot, no key
-            ("metals.live",
-             lambda: float(_get(f"https://api.metals.live/v1/spot/{metal}")[0]["price"])),
-            # gold-api.com — real-time, no key
-            ("gold-api",
-             lambda: float(_get(f"https://api.gold-api.com/price/{base}")["price"])),
-            # Frankfurter supports XAU natively as real-time spot
-            ("frankfurter-xau",
-             lambda: float(_get(f"https://api.frankfurter.app/latest?from={base}&to=USD")["rates"]["USD"])),
-            # Fallback: USD/XAU inverse from exchangerate (updated every few minutes)
-            ("er-api-xau",
-             lambda: _er_xau()),
-            # CoinGecko Tether Gold (XAUT) — tracks spot very closely
-            ("CG-XAUT",
-             lambda: float(_get("https://api.coingecko.com/api/v3/simple/price?ids=tether-gold&vs_currencies=usd")["tether-gold"]["usd"])),
-            # CoinGecko PAX Gold
-            ("CG-PAXG",
-             lambda: float(_get("https://api.coingecko.com/api/v3/simple/price?ids=pax-gold&vs_currencies=usd")["pax-gold"]["usd"])),
+            ("metals.live",  lambda: float(_get(f"https://api.metals.live/v1/spot/{metal}")[0]["price"])),
+            ("gold-api",     lambda: float(_get(f"https://api.gold-api.com/price/{base}")["price"])),
+            ("CG-XAUT",      lambda: float(_get("https://api.coingecko.com/api/v3/simple/price?ids=tether-gold&vs_currencies=usd")["tether-gold"]["usd"])),
+            ("CG-PAXG",      lambda: float(_get("https://api.coingecko.com/api/v3/simple/price?ids=pax-gold&vs_currencies=usd")["pax-gold"]["usd"])),
+            ("er-api-xau",   lambda: _er_xau()),
         ]
         for name, fn in sources:
             try:
                 p = fn()
-                if p and p > 100:  # sanity: gold always > $100
+                if p and p > 100:
                     print(f"[price] {sym} = {p:.2f} via {name}")
                     return float(p)
             except Exception as e:
                 print(f"[{name}] {sym} failed: {e}")
-        log_error(f"All gold/silver sources failed for {symbol}")
+        log_error(f"All gold sources failed for {symbol}")
         return None
 
-    # ── Regular Forex — با اعشار کامل ────────────────────────────
+    # ── جفت‌ارزهای فارکس ─────────────────────────────────────────
     sources = [
-        # 1. Yahoo Finance — real-time tick، بهترین منبع، 4-5 اعشار
-        ("yahoo",           lambda: _yahoo(base, quote)),
-        # 2. fawaz — API مستقیم (نه CDN)، 6 اعشار، آپدیت چند دقیقه‌ای
-        ("fawaz-api",       lambda: _fawaz_direct(base, quote)),
-        # 3. open.er-api — هر ساعت آپدیت، 6 اعشار
-        ("open-er-api",     lambda: float(_get(f"https://open.er-api.com/v6/latest/{base}")["rates"][quote])),
-        # 4. fxratesapi
-        ("fxratesapi",      lambda: float(_get(f"https://api.fxratesapi.com/latest?base={base}&currencies={quote}")["rates"][quote])),
-        # 5. Frankfurter — روزانه ECB، آخرین fallback
-        ("frankfurter",     lambda: float(_get(f"https://api.frankfurter.app/latest?from={base}&to={quote}")["rates"][quote])),
-        # 6. exchangerate-api
-        ("exchangerate-api",lambda: float(_get(f"https://api.exchangerate-api.com/v4/latest/{base}")["rates"][quote])),
+        # 1. exchangerate.host — رایگان، بدون ثبت‌نام، real-time، 6 اعشار
+        ("exchangerate.host",
+         lambda: _erhost(base, quote)),
+        # 2. open.er-api — رایگان، بدون key
+        ("open-er-api",
+         lambda: float(_get(f"https://open.er-api.com/v6/latest/{base}")["rates"][quote])),
+        # 3. fxratesapi
+        ("fxratesapi",
+         lambda: float(_get(f"https://api.fxratesapi.com/latest?base={base}&currencies={quote}")["rates"][quote])),
+        # 4. Coinbase cross rate
+        ("coinbase",
+         lambda: _coinbase_forex(base, quote)),
+        # 5. exchangerate-api — آخرین fallback
+        ("exchangerate-api",
+         lambda: float(_get(f"https://api.exchangerate-api.com/v4/latest/{base}")["rates"][quote])),
     ]
     for name, fn in sources:
         try:
             p = fn()
-            if p and p > 0:
-                print(f"[price] {sym} = {p:.6f} via {name}")
+            if p and float(p) > 0:
+                print(f"[price] {sym} = {float(p):.6f} via {name}")
                 return float(p)
         except Exception as e:
             print(f"[{name}] {sym} failed: {e}")
+
     log_error(f"All forex sources failed for {symbol}")
     return None
 
-def _yahoo(base, quote):
-    """Yahoo Finance — real-time tick، 4-5 رقم اعشار، بدون API key"""
-    ticker = f"{base}{quote}=X"
-    # query2 معمولاً محدودیت کمتری داره
-    for host in ["query2", "query1"]:
-        try:
-            url = f"https://{host}.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1m&range=1d"
-            r = requests.get(url, headers={**H, "Accept": "application/json"}, timeout=8)
-            if r.status_code != 200:
-                continue
-            meta = r.json()["chart"]["result"][0]["meta"]
-            p = meta.get("regularMarketPrice") or meta.get("previousClose")
-            if p and p > 0:
-                return float(p)
-        except Exception:
-            continue
-    return None
 
-def _fawaz_direct(base, quote):
+def _erhost(base, quote):
     """
-    fawazahmed0 — API مستقیم (نه CDN cache)، داده‌های دقیق با 6 اعشار.
-    endpoint مستقیم API به‌روزتر از CDN است.
+    exchangerate.host — کاملاً رایگان، بدون ثبت‌نام، real-time، 6 رقم اعشار.
+    دو endpoint دارد — هر کدام جواب داد استفاده می‌شود.
     """
-    # endpoint اصلی API — نه jsdelivr CDN
     for url in [
-        f"https://latest.currency-api.pages.dev/v1/currencies/{base.lower()}.json",
-        f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{base.lower()}.min.json",
-        f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{base.lower()}.json",
+        f"https://api.exchangerate.host/live?source={base}&currencies={quote}&places=6",
+        f"https://api.exchangerate.host/latest?base={base}&symbols={quote}&places=6",
     ]:
         try:
-            r = requests.get(url, headers=H, timeout=8)
-            if r.status_code != 200:
-                continue
-            d = r.json()
-            # ساختار: {"date":"...","eur":{"usd":1.17302,...}}
-            val = d.get(base.lower(), {}).get(quote.lower())
-            if val and float(val) > 0:
-                return float(val)
+            d = _get(url)
+            # endpoint live: {"quotes": {"EURUSD": 1.173024}}
+            quotes = d.get("quotes", {})
+            key = f"{base}{quote}"
+            if key in quotes and float(quotes[key]) > 0:
+                return float(quotes[key])
+            # endpoint latest: {"rates": {"USD": 1.173024}}
+            rates = d.get("rates", {})
+            if quote in rates and float(rates[quote]) > 0:
+                return float(rates[quote])
         except Exception:
             continue
     return None
 
-def _er_xau():
-    """Gold via USD/XAU inverse"""
-    d = _get("https://api.exchangerate-api.com/v4/latest/USD")
-    xau = d["rates"].get("XAU")
-    if xau and xau > 0: return float(1 / xau)
+
+def _coinbase_forex(base, quote):
+    """
+    Coinbase Advanced API — real-time spot price، بدون API key.
+    برای EURUSD: EUR-USD product را میگیرد.
+    برای USDJPY: USD-JPY نیست، باید جفت معکوس را محاسبه کرد.
+    """
+    try:
+        # حالت مستقیم: مثلاً EUR/USD → EUR-USD
+        r = requests.get(
+            f"https://api.coinbase.com/v2/prices/{base}-{quote}/spot",
+            headers=H, timeout=6)
+        if r.status_code == 200:
+            p = float(r.json()["data"]["amount"])
+            if p > 0:
+                print(f"[price] {base}{quote} = {p:.6f} via coinbase-direct")
+                return p
+    except Exception:
+        pass
+
+    try:
+        # حالت کراس: هر دو را به USD تبدیل کن و تقسیم کن
+        rb = requests.get(f"https://api.coinbase.com/v2/prices/{base}-USD/spot", headers=H, timeout=6)
+        rq = requests.get(f"https://api.coinbase.com/v2/prices/{quote}-USD/spot", headers=H, timeout=6)
+        if rb.status_code == 200 and rq.status_code == 200:
+            pb = float(rb.json()["data"]["amount"])
+            pq = float(rq.json()["data"]["amount"])
+            if pb > 0 and pq > 0:
+                p = pb / pq
+                print(f"[price] {base}{quote} = {p:.6f} via coinbase-cross")
+                return p
+    except Exception:
+        pass
+
     return None
+
+
+
+
+
+def _er_xau():
+    """طلا از طریق نرخ معکوس USD/XAU"""
+    try:
+        d = _get("https://api.exchangerate-api.com/v4/latest/USD")
+        xau = d["rates"].get("XAU")
+        if xau and float(xau) > 0:
+            return float(1 / xau)
+    except Exception:
+        pass
     return None
 
 def get_price(symbol, asset_type):
