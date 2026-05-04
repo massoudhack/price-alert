@@ -1,430 +1,445 @@
-import os, json, time, threading, requests, pytz
+import os, json, time, threading, requests
 from flask import Flask, request, jsonify, send_from_directory
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 app = Flask(__name__, static_folder='static')
-
 DATA_FILE = "alerts.json"
-TEHRAN    = pytz.timezone("Asia/Tehran")
 
-def now_teh():
+# ── Tehran timezone (UTC+3:30) ─────────────────────────────────────────────────
+TEHRAN = timezone(timedelta(hours=3, minutes=30))
+def now_ir():
     return datetime.now(TEHRAN).strftime("%Y-%m-%d %H:%M:%S")
 
-def now_pretty():
-    return datetime.now(TEHRAN).strftime("%Y/%m/%d %H:%M")
+# ── Storage ────────────────────────────────────────────────────────────────────
+_data_lock = threading.Lock()
 
-# ── Storage ───────────────────────────────────────────────────────
 def load_data():
     if os.path.exists(DATA_FILE):
         try:
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
+            with open(DATA_FILE, "r") as f:
                 return json.load(f)
         except Exception:
             pass
-    return {
-        "alerts": [], "candle_alerts": [],
-        "archive": [],
-        "telegram": {"bot_token": "", "chat_ids": []},
-        "users": [], "errors": [], "last_update": None
-    }
+    return {"alerts": [], "archive": [],
+            "telegram": {"bot_token": "8792456550:AAEuvnzzCUXniBhIWz6C-qabX96EvPWqN7A", "chat_ids": []},
+            "users": []}
 
 def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    with _data_lock:
+        with open(DATA_FILE, "w") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
 
-def log_error(msg):
-    try:
-        data = load_data()
-        errs = data.get("errors", [])
-        errs.append({"time": now_teh(), "msg": str(msg)})
-        data["errors"] = errs[-20:]
-        save_data(data)
-    except Exception:
-        pass
-    print(f"[ERR] {msg}")
+# ── Price engine: multi-source with fallback ───────────────────────────────────
+price_errors = {}   # symbol -> {msg, ts}
+price_cache  = {}   # symbol -> {price, source, ts}
+CACHE_TTL    = 90   # seconds — use cached price if fresher than this
 
-# ── Price Fetching — multi-source with full precision ─────────────
-H = {"User-Agent": "Mozilla/5.0 (compatible; PriceBot/1.0)"}
+def _cached(symbol):
+    c = price_cache.get(symbol)
+    if c and (time.time() - c["t"]) < CACHE_TTL:
+        return c["price"], c["source"]
+    return None, None
 
-def _get(url, timeout=8):
-    r = requests.get(url, timeout=timeout, headers=H)
-    r.raise_for_status()
-    return r.json()
+def _store(symbol, price, source):
+    price_cache[symbol] = {"price": price, "source": source, "t": time.time()}
+    price_errors.pop(symbol, None)
+    return price, source
 
-def get_crypto_price(symbol):
-    """Try 6 sources in order, return first successful price"""
-    base = symbol.upper()
-    for s in ["USDT","USDC","USD","BUSD"]:
-        base = base.replace(s,"")
-    base = base.replace("/","").strip()
+def _fail(symbol, errors):
+    price_errors[symbol] = {"msg": " | ".join(errors), "ts": now_ir()}
+    return None, " | ".join(errors)
 
-    sources = [
-        ("Binance-USDT",   lambda: float(_get(f"https://api.binance.com/api/v3/ticker/price?symbol={base}USDT")["price"])),
-        ("Binance-USDC",   lambda: float(_get(f"https://api.binance.com/api/v3/ticker/price?symbol={base}USDC")["price"])),
-        ("Bybit",          lambda: float(_get(f"https://api.bybit.com/v5/market/tickers?category=spot&symbol={base}USDT")["result"]["list"][0]["lastPrice"])),
-        ("OKX",            lambda: float(_get(f"https://www.okx.com/api/v5/market/ticker?instId={base}-USDT")["data"][0]["last"])),
-        ("KuCoin",         lambda: float(_get(f"https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={base}-USDT")["data"]["price"])),
-        ("CoinGecko",      lambda: _cg_price(base)),
-        ("CryptoCompare",  lambda: float(_get(f"https://min-api.cryptocompare.com/data/price?fsym={base}&tsyms=USD")["USD"])),
-    ]
-    for name, fn in sources:
+# ── Crypto ─────────────────────────────────────────────────────────────────────
+def get_crypto_price(raw_symbol):
+    # Normalise: strip /USD /USDT suffixes but keep the coin name intact
+    sym = raw_symbol.upper().strip()
+    for s in ("/USDT", "/USDC", "/USD", "USDT", "USDC", "USD"):
+        if sym.endswith(s):
+            sym = sym[: -len(s)]
+            break
+
+    cached, src = _cached(sym)
+    if cached:
+        return cached, src
+
+    errors = []
+
+    # ── Source 1: Binance spot
+    for q in ("USDT", "USDC"):
         try:
-            p = fn()
-            if p and p > 0:
-                print(f"[price] {base} = {p} via {name}")
-                return float(p)
+            r = requests.get(
+                f"https://api.binance.com/api/v3/ticker/price?symbol={sym}{q}",
+                timeout=6)
+            if r.ok and "price" in r.json():
+                return _store(sym, float(r.json()["price"]), f"Binance({q})")
+            errors.append(f"Binance {sym}{q}:{r.status_code}")
         except Exception as e:
-            print(f"[{name}] {base} failed: {e}")
-    log_error(f"All crypto sources failed for {symbol}")
-    return None
+            errors.append(f"Binance:{e}")
 
-CG_MAP = {
-    "BTC":"bitcoin","ETH":"ethereum","BNB":"binancecoin","SOL":"solana",
-    "XRP":"ripple","ADA":"cardano","DOGE":"dogecoin","TRX":"tron",
-    "TON":"toncoin","AVAX":"avalanche-2","LINK":"chainlink","DOT":"polkadot",
-    "MATIC":"matic-network","UNI":"uniswap","ATOM":"cosmos","LTC":"litecoin",
-    "SHIB":"shiba-inu","OP":"optimism","ARB":"arbitrum","NEAR":"near",
-    "FTM":"fantom","SAND":"the-sandbox","MANA":"decentraland",
-}
+    # ── Source 2: CoinGecko (free, no key)
+    CG = {"BTC":"bitcoin","ETH":"ethereum","BNB":"binancecoin","SOL":"solana",
+          "XRP":"ripple","ADA":"cardano","DOGE":"dogecoin","TRX":"tron",
+          "TON":"toncoin","AVAX":"avalanche-2","LINK":"chainlink","DOT":"polkadot",
+          "MATIC":"matic-network","UNI":"uniswap","ATOM":"cosmos","LTC":"litecoin",
+          "SHIB":"shiba-inu","OP":"optimism","ARB":"arbitrum","FTM":"fantom",
+          "NEAR":"near","APT":"aptos","SUI":"sui"}
+    cg_id = CG.get(sym)
+    if cg_id:
+        try:
+            r = requests.get(
+                f"https://api.coingecko.com/api/v3/simple/price"
+                f"?ids={cg_id}&vs_currencies=usd&precision=8", timeout=10)
+            if r.ok and cg_id in r.json():
+                return _store(sym, float(r.json()[cg_id]["usd"]), "CoinGecko")
+            errors.append(f"CoinGecko:{r.status_code}")
+        except Exception as e:
+            errors.append(f"CoinGecko:{e}")
 
-def _cg_price(base):
-    gid = CG_MAP.get(base)
-    if not gid: return None
-    d = _get(f"https://api.coingecko.com/api/v3/simple/price?ids={gid}&vs_currencies=usd")
-    return float(d[gid]["usd"])
+    # ── Source 3: CryptoCompare (free tier, no key for basic)
+    try:
+        r = requests.get(
+            f"https://min-api.cryptocompare.com/data/price?fsym={sym}&tsyms=USD",
+            timeout=8)
+        if r.ok:
+            d = r.json()
+            if "USD" in d:
+                return _store(sym, float(d["USD"]), "CryptoCompare")
+        errors.append(f"CryptoCompare:{r.status_code}")
+    except Exception as e:
+        errors.append(f"CryptoCompare:{e}")
 
-def get_forex_price(symbol):
-    """
-    قیمت فارکس و طلا — چند منبع موازی، اولین جواب درست برگردانده میشه.
-    """
-    sym   = symbol.upper().replace("/","").replace(" ","").strip()
-    if len(sym) < 6: return None
+    # ── Source 4: KuCoin
+    try:
+        r = requests.get(
+            f"https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={sym}-USDT",
+            timeout=8)
+        if r.ok:
+            d = r.json()
+            if d.get("code") == "200000" and d.get("data", {}).get("price"):
+                return _store(sym, float(d["data"]["price"]), "KuCoin")
+        errors.append(f"KuCoin:{r.status_code}")
+    except Exception as e:
+        errors.append(f"KuCoin:{e}")
+
+    return _fail(sym, errors)
+
+# ── Forex & Gold ───────────────────────────────────────────────────────────────
+def get_forex_price(raw_symbol):
+    sym = raw_symbol.upper().replace("/", "").replace(" ", "")
+    if len(sym) < 6:
+        return None, "نماد کوتاه است"
+
     base  = sym[:3]
     quote = sym[3:6]
 
-    # ── طلا و نقره ────────────────────────────────────────────────
-    if base in ("XAU", "XAG"):
-        metal = "gold" if base == "XAU" else "silver"
-        sources = [
-            ("metals.live",  lambda: float(_get(f"https://api.metals.live/v1/spot/{metal}")[0]["price"])),
-            ("gold-api",     lambda: float(_get(f"https://api.gold-api.com/price/{base}")["price"])),
-            ("CG-XAUT",      lambda: float(_get("https://api.coingecko.com/api/v3/simple/price?ids=tether-gold&vs_currencies=usd")["tether-gold"]["usd"])),
-            ("CG-PAXG",      lambda: float(_get("https://api.coingecko.com/api/v3/simple/price?ids=pax-gold&vs_currencies=usd")["pax-gold"]["usd"])),
-            ("er-api-xau",   lambda: _er_xau()),
-        ]
-        for name, fn in sources:
-            try:
-                p = fn()
-                if p and p > 100:
-                    print(f"[price] {sym} = {p:.2f} via {name}")
-                    return float(p)
-            except Exception as e:
-                print(f"[{name}] {sym} failed: {e}")
-        log_error(f"All gold sources failed for {symbol}")
-        return None
+    cached, src = _cached(sym)
+    if cached:
+        return cached, src
 
-    # ── جفت‌ارزهای فارکس ─────────────────────────────────────────
-    sources = [
-        # 1. exchangerate.host — رایگان، بدون ثبت‌نام، real-time، 6 اعشار
-        ("exchangerate.host",
-         lambda: _erhost(base, quote)),
-        # 2. open.er-api — رایگان، بدون key
-        ("open-er-api",
-         lambda: float(_get(f"https://open.er-api.com/v6/latest/{base}")["rates"][quote])),
-        # 3. fxratesapi
-        ("fxratesapi",
-         lambda: float(_get(f"https://api.fxratesapi.com/latest?base={base}&currencies={quote}")["rates"][quote])),
-        # 4. Coinbase cross rate
-        ("coinbase",
-         lambda: _coinbase_forex(base, quote)),
-        # 5. exchangerate-api — آخرین fallback
-        ("exchangerate-api",
-         lambda: float(_get(f"https://api.exchangerate-api.com/v4/latest/{base}")["rates"][quote])),
-    ]
-    for name, fn in sources:
+    # ── Gold special path ──────────────────────────────────────────────────────
+    if base == "XAU":
+        errors = []
+
+        # 1. metals.live  — returns [{metal,price,ask,bid,...}]
         try:
-            p = fn()
-            if p and float(p) > 0:
-                print(f"[price] {sym} = {float(p):.6f} via {name}")
-                return float(p)
+            r = requests.get("https://api.metals.live/v1/spot/gold", timeout=7)
+            if r.ok:
+                d = r.json()
+                p = None
+                if isinstance(d, list) and d:
+                    item = d[0]
+                    p = item.get("price") or item.get("ask")
+                elif isinstance(d, dict):
+                    p = d.get("price") or d.get("ask")
+                if p and float(p) > 500:
+                    return _store(sym, float(p), "metals.live")
+            errors.append(f"metals.live:{r.status_code}")
         except Exception as e:
-            print(f"[{name}] {sym} failed: {e}")
+            errors.append(f"metals.live:{e}")
 
-    log_error(f"All forex sources failed for {symbol}")
-    return None
-
-
-def _erhost(base, quote):
-    """
-    exchangerate.host — کاملاً رایگان، بدون ثبت‌نام، real-time، 6 رقم اعشار.
-    دو endpoint دارد — هر کدام جواب داد استفاده می‌شود.
-    """
-    for url in [
-        f"https://api.exchangerate.host/live?source={base}&currencies={quote}&places=6",
-        f"https://api.exchangerate.host/latest?base={base}&symbols={quote}&places=6",
-    ]:
+        # 2. ExchangeRate-API — XAU rate = oz per USD → invert
         try:
-            d = _get(url)
-            # endpoint live: {"quotes": {"EURUSD": 1.173024}}
-            quotes = d.get("quotes", {})
-            key = f"{base}{quote}"
-            if key in quotes and float(quotes[key]) > 0:
-                return float(quotes[key])
-            # endpoint latest: {"rates": {"USD": 1.173024}}
-            rates = d.get("rates", {})
-            if quote in rates and float(rates[quote]) > 0:
-                return float(rates[quote])
-        except Exception:
-            continue
-    return None
+            r = requests.get("https://api.exchangerate-api.com/v4/latest/USD", timeout=7)
+            if r.ok:
+                xau = r.json().get("rates", {}).get("XAU")
+                if xau and float(xau) > 0:
+                    p = round(1.0 / float(xau), 2)
+                    if 500 < p < 20000:
+                        return _store(sym, p, "ExchangeRate-API")
+            errors.append("ExchangeRate-API no XAU")
+        except Exception as e:
+            errors.append(f"ExchangeRate-API:{e}")
 
+        # 3. open.er-api.com
+        try:
+            r = requests.get("https://open.er-api.com/v6/latest/USD", timeout=7)
+            if r.ok:
+                xau = r.json().get("rates", {}).get("XAU")
+                if xau and float(xau) > 0:
+                    p = round(1.0 / float(xau), 2)
+                    if 500 < p < 20000:
+                        return _store(sym, p, "Open.er-api")
+            errors.append("open.er-api no XAU")
+        except Exception as e:
+            errors.append(f"open.er-api:{e}")
 
-def _coinbase_forex(base, quote):
-    """
-    Coinbase Advanced API — real-time spot price، بدون API key.
-    برای EURUSD: EUR-USD product را میگیرد.
-    برای USDJPY: USD-JPY نیست، باید جفت معکوس را محاسبه کرد.
-    """
+        # 4. CoinGecko PAXG (1 PAXG ≈ 1 oz gold)
+        for cg_id in ("pax-gold", "tether-gold"):
+            try:
+                r = requests.get(
+                    f"https://api.coingecko.com/api/v3/simple/price?ids={cg_id}&vs_currencies=usd",
+                    timeout=10)
+                if r.ok and cg_id in r.json():
+                    p = float(r.json()[cg_id]["usd"])
+                    if p > 500:
+                        return _store(sym, p, f"CoinGecko({cg_id})")
+            except Exception as e:
+                errors.append(f"CoinGecko {cg_id}:{e}")
+
+        return _fail(sym, errors)
+
+    # ── Regular forex ──────────────────────────────────────────────────────────
+    errors = []
+
+    # 1. Frankfurter (ECB data, up to 5 decimal places, very accurate)
     try:
-        # حالت مستقیم: مثلاً EUR/USD → EUR-USD
         r = requests.get(
-            f"https://api.coinbase.com/v2/prices/{base}-{quote}/spot",
-            headers=H, timeout=6)
-        if r.status_code == 200:
-            p = float(r.json()["data"]["amount"])
-            if p > 0:
-                print(f"[price] {base}{quote} = {p:.6f} via coinbase-direct")
-                return p
-    except Exception:
-        pass
+            f"https://api.frankfurter.app/latest?from={base}&to={quote}",
+            timeout=7)
+        if r.ok:
+            rate = r.json().get("rates", {}).get(quote)
+            if rate:
+                return _store(sym, float(rate), "Frankfurter(ECB)")
+        errors.append(f"Frankfurter:{r.status_code}")
+    except Exception as e:
+        errors.append(f"Frankfurter:{e}")
 
+    # 2. open.er-api (6 decimal places)
     try:
-        # حالت کراس: هر دو را به USD تبدیل کن و تقسیم کن
-        rb = requests.get(f"https://api.coinbase.com/v2/prices/{base}-USD/spot", headers=H, timeout=6)
-        rq = requests.get(f"https://api.coinbase.com/v2/prices/{quote}-USD/spot", headers=H, timeout=6)
-        if rb.status_code == 200 and rq.status_code == 200:
-            pb = float(rb.json()["data"]["amount"])
-            pq = float(rq.json()["data"]["amount"])
-            if pb > 0 and pq > 0:
-                p = pb / pq
-                print(f"[price] {base}{quote} = {p:.6f} via coinbase-cross")
-                return p
-    except Exception:
-        pass
+        r = requests.get(f"https://open.er-api.com/v6/latest/{base}", timeout=7)
+        if r.ok:
+            rate = r.json().get("rates", {}).get(quote)
+            if rate:
+                return _store(sym, float(rate), "Open.er-api")
+        errors.append(f"Open.er-api:{r.status_code}")
+    except Exception as e:
+        errors.append(f"Open.er-api:{e}")
 
-    return None
-
-
-
-
-
-def _er_xau():
-    """طلا از طریق نرخ معکوس USD/XAU"""
+    # 3. exchangerate-api (fallback)
     try:
-        d = _get("https://api.exchangerate-api.com/v4/latest/USD")
-        xau = d["rates"].get("XAU")
-        if xau and float(xau) > 0:
-            return float(1 / xau)
-    except Exception:
-        pass
-    return None
+        r = requests.get(
+            f"https://api.exchangerate-api.com/v4/latest/{base}", timeout=7)
+        if r.ok:
+            rate = r.json().get("rates", {}).get(quote)
+            if rate:
+                return _store(sym, float(rate), "ExchangeRate-API")
+        errors.append(f"ExchangeRate-API:{r.status_code}")
+    except Exception as e:
+        errors.append(f"ExchangeRate-API:{e}")
 
-def get_price(symbol, asset_type):
-    if asset_type == "crypto": return get_crypto_price(symbol)
-    return get_forex_price(symbol)
+    return _fail(sym, errors)
 
-def calc_dist(symbol, atype, cur, tgt):
-    if not cur or not tgt: return ""
-    diff = abs(tgt - cur)
+def get_price_full(symbol, asset_type):
+    if asset_type == "crypto":
+        return get_crypto_price(symbol)
+    if asset_type == "forex":
+        return get_forex_price(symbol)
+    return None, "نوع دارایی نامعتبر"
+
+def fmt_price(price, symbol, atype):
+    if price is None:
+        return "—"
+    sym = symbol.upper().replace("/", "")
     if atype == "crypto":
-        return f"{diff/cur*100:.2f}%"
-    is_jpy = "JPY" in symbol.upper()
-    return f"{round(diff*(100 if is_jpy else 10000)):,} pip"
+        if price >= 1000: return f"{price:,.2f}"
+        if price >= 1:    return f"{price:,.4f}"
+        return f"{price:.8f}"
+    if "JPY" in sym: return f"{price:,.3f}"
+    if "XAU" in sym or "XAG" in sym: return f"{price:,.2f}"
+    return f"{price:,.5f}"
 
-# ── Telegram ──────────────────────────────────────────────────────
-def send_tg(token, chat_id, text):
+def pips_str(cur, target, symbol, atype):
+    diff = cur - target
+    sym  = symbol.upper().replace("/", "")
+    if atype == "crypto":
+        return f"{diff/target*100:+.2f}%"
+    if "JPY" in sym:
+        return f"{diff/0.01:+.1f} pip"
+    if "XAU" in sym or "XAG" in sym:
+        return f"{diff:+.2f} USD"
+    return f"{diff/0.0001:+.1f} pip"
+
+# ── Telegram helpers ───────────────────────────────────────────────────────────
+def tg_send(token, chat_id, text):
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
-            json={"chat_id": str(chat_id), "text": text, "parse_mode": "HTML"},
-            timeout=10, headers=H)
-        return r.status_code == 200
+            json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
+            timeout=10)
+        return r.ok
     except Exception:
         return False
 
-def broadcast(token, chat_ids, text):
-    return [send_tg(token, c, text) for c in chat_ids]
-
-def _get_token_and_cids():
-    data  = load_data()
-    tg    = data.get("telegram", {})
-    token = tg.get("bot_token", "")
-    cids  = list(tg.get("chat_ids", []))
-    leg   = tg.get("chat_id", "")
-    if leg and leg not in [str(x) for x in cids]:
-        cids.append(leg)
-    return token, cids, data
-
-# ── Telegram polling ──────────────────────────────────────────────
-def poll_telegram():
+# ── Telegram /start poller ─────────────────────────────────────────────────────
+def poll_tg():
     last_id = 0
     while True:
         try:
-            token, _, data = _get_token_and_cids()
+            data  = load_data()
+            token = data.get("telegram", {}).get("bot_token", "")
             if not token:
-                time.sleep(30)
-                continue
+                time.sleep(30); continue
+
             r = requests.get(
                 f"https://api.telegram.org/bot{token}/getUpdates",
-                params={"offset": last_id+1, "timeout": 20, "limit": 100},
-                timeout=30, headers=H)
-            if r.status_code != 200:
-                time.sleep(10)
-                continue
+                params={"offset": last_id + 1, "timeout": 20, "limit": 100},
+                timeout=30)
+            if not r.ok:
+                time.sleep(10); continue
+
             for upd in r.json().get("result", []):
                 last_id = upd["update_id"]
-                msg   = upd.get("message", {})
-                txt   = msg.get("text", "")
-                ch    = msg.get("chat", {})
-                cid   = str(ch.get("id", ""))
-                uname = ch.get("username", "") or ch.get("first_name", "")
-                if txt.startswith("/start") and cid:
+                msg     = upd.get("message", {})
+                text    = msg.get("text", "")
+                chat    = msg.get("chat", {})
+                cid     = str(chat.get("id", ""))
+                uname   = chat.get("username", "") or chat.get("first_name", "ناشناس")
+                if text.startswith("/start") and cid:
                     data  = load_data()
                     users = data.get("users", [])
                     if cid not in [str(u["chat_id"]) for u in users]:
-                        users.append({"chat_id": cid, "username": uname, "joined_at": now_teh()})
+                        users.append({"chat_id": cid, "username": uname, "joined_at": now_ir()})
                         data["users"] = users
-                        ids = data.get("telegram", {}).get("chat_ids", [])
+                        ids = data["telegram"].setdefault("chat_ids", [])
                         if cid not in [str(x) for x in ids]:
                             ids.append(cid)
-                        data["telegram"]["chat_ids"] = ids
                         save_data(data)
-                        send_tg(token, cid,
-                            f"👋 سلام <b>{uname}</b>!\n✅ در سیستم آلارم ثبت شدید. 🔔")
+                        tg_send(token, cid,
+                            f"👋 سلام <b>{uname}</b>!\n\n"
+                            "✅ ثبت شدید — آلارم‌های قیمت برای شما ارسال می‌شود 🔔")
+                        print(f"[TG] new user: {uname} ({cid})")
         except Exception as e:
-            print(f"[poll] {e}")
+            print(f"[TG poll] {e}")
         time.sleep(5)
 
-# ── Price alert checker — every 1 minute ─────────────────────────
+# ── Alert checker — every 3 min ────────────────────────────────────────────────
 notified = set()
 
-def check_alerts():
+def check_loop():
     while True:
         try:
-            token, cids, data = _get_token_and_cids()
-            fired = []
-            for a in data.get("alerts", []):
-                if not a.get("active"):
+            data    = load_data()
+            tg      = data.get("telegram", {})
+            token   = tg.get("bot_token", "")
+            ids     = list(tg.get("chat_ids", []))
+            legacy  = tg.get("chat_id", "")
+            if legacy and legacy not in [str(x) for x in ids]:
+                ids.append(legacy)
+
+            fired   = []
+            changed = False
+
+            for al in data.get("alerts", []):
+                if not al.get("active", True):
                     continue
-                sym, atype = a["symbol"], a.get("type", "crypto")
-                tgt  = float(a["target_price"])
-                cond = a.get("condition", "above")
-                cur  = get_price(sym, atype)
-                if cur is None:
+                aid   = al["id"]
+                sym   = al["symbol"]
+                atype = al.get("type", "crypto")
+                tgt   = float(al["target_price"])
+                cond  = al.get("condition", "above")
+
+                price, source = get_price_full(sym, atype)
+                ts = now_ir()
+                al["last_checked"] = ts
+                changed = True
+
+                if price is None:
+                    al["last_error"] = price_errors.get(sym, {}).get("msg", "خطا")
                     continue
-                a["last_price"]   = cur
-                a["last_checked"] = now_teh()
-                data["last_update"] = now_teh()
-                triggered = (cond == "above" and cur >= tgt) or (cond == "below" and cur <= tgt)
-                if triggered and a["id"] not in notified:
-                    notified.add(a["id"])
-                    a["active"] = False
-                    a["fired_at"]    = now_teh()
-                    a["fired_price"] = cur
-                    fired.append(a["id"])
-                    if token and cids:
-                        dist = calc_dist(sym, atype, cur, tgt)
-                        cmt  = f"\n💬 <i>{a['comment']}</i>" if a.get("comment") else ""
-                        msg  = (
-                            f"🚨 <b>آلارم قیمت!</b>\n\n"
-                            f"💰 <b>{sym}</b> "
-                            f"{'📈 از هدف رد شد' if cond=='above' else '📉 به هدف رسید'}\n\n"
-                            f"🎯 هدف: <b>${tgt:,.5f}</b>\n"
-                            f"📊 قیمت: <b>${cur:,.5f}</b>\n"
-                            f"📏 فاصله: <b>{dist}</b>"
-                            f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
+
+                al["last_price"]  = price
+                al["last_source"] = source
+                al.pop("last_error", None)
+
+                hit = (cond == "above" and price >= tgt) or \
+                      (cond == "below" and price <= tgt)
+
+                if hit and aid not in notified:
+                    notified.add(aid)
+                    al["active"]     = False
+                    al["fired_at"]   = ts
+                    al["fired_price"]= price
+                    fired.append(aid)
+
+                    if token and ids:
+                        dirstr = "📈 از هدف بالا رفت" if cond == "above" else "📉 به هدف پایین آمد"
+                        msg = (
+                            f"🚨 <b>آلارم فعال شد!</b>\n\n"
+                            f"💰 <b>{sym}</b> {dirstr}\n\n"
+                            f"🎯 هدف: <b>${fmt_price(tgt,sym,atype)}</b>\n"
+                            f"📊 قیمت: <b>${fmt_price(price,sym,atype)}</b>\n"
+                            f"📏 فاصله: <b>{pips_str(price,tgt,sym,atype)}</b>\n"
+                            f"📡 منبع: {source}\n\n"
+                            f"⏰ {ts} (تهران)"
                         )
-                        broadcast(token, cids, msg)
+                        for cid in ids:
+                            tg_send(token, str(cid), msg)
+                        print(f"[ALERT] {sym} fired → {len(ids)} users")
+
             if fired:
                 arch = data.get("archive", [])
-                for fid in fired:
-                    obj = next((x for x in data["alerts"] if x["id"] == fid), None)
-                    if obj: arch.append(obj)
+                for aid in fired:
+                    a = next((x for x in data["alerts"] if x["id"] == aid), None)
+                    if a: arch.append(a)
                 data["archive"] = arch
                 data["alerts"]  = [x for x in data["alerts"] if x["id"] not in fired]
-            save_data(data)
+
+            if changed:
+                save_data(data)
+
         except Exception as e:
-            log_error(f"check_alerts: {e}")
-        time.sleep(60)   # every 1 minute
+            print(f"[CHECK] {e}")
+        time.sleep(180)
 
-# ── Candle close checker ──────────────────────────────────────────
-def check_candles():
-    while True:
-        try:
-            token, cids, data = _get_token_and_cids()
-            now = datetime.now(TEHRAN)
-            TF_LABEL = {5:"۵ دقیقه", 15:"۱۵ دقیقه", 30:"۳۰ دقیقه", 60:"۱ ساعت", 240:"۴ ساعت"}
-
-            for a in data.get("candle_alerts", []):
-                if not a.get("active"):
-                    continue
-                tf     = int(a.get("timeframe", 60))
-                last_f = a.get("last_fired")
-                fire   = True
-                if last_f:
-                    try:
-                        lt   = TEHRAN.localize(datetime.strptime(last_f, "%Y-%m-%d %H:%M:%S"))
-                        fire = (now - lt).total_seconds() / 60 >= tf
-                    except Exception:
-                        fire = True
-                if not fire:
-                    continue
-                sym, atype = a["symbol"], a.get("type", "crypto")
-                cur = get_price(sym, atype)
-                if cur is None:
-                    continue
-                a["last_fired"] = now_teh()
-                a["last_price"] = cur
-                if token and cids:
-                    tf_l = TF_LABEL.get(tf, f"{tf} دقیقه")
-                    cmt  = f"\n💬 <i>{a['comment']}</i>" if a.get("comment") else ""
-                    msg  = (
-                        f"🕯 <b>کلوز کندل {tf_l}</b>\n\n"
-                        f"💰 <b>{sym}</b>\n"
-                        f"📊 قیمت کلوز: <b>${cur:,.5f}</b>"
-                        f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
-                    )
-                    broadcast(token, cids, msg)
-            save_data(data)
-        except Exception as e:
-            log_error(f"check_candles: {e}")
-        time.sleep(60)   # every 1 minute
-
-# ── Routes ────────────────────────────────────────────────────────
+# ── Flask routes ───────────────────────────────────────────────────────────────
 @app.route("/")
 def index():
     return send_from_directory("static", "index.html")
 
-@app.route("/api/config", methods=["GET","POST"])
-def config():
+@app.route("/api/config", methods=["GET", "POST"])
+def cfg():
     data = load_data()
     if request.method == "POST":
         body = request.json or {}
-        tg   = data.get("telegram", {})
+        tg   = data.setdefault("telegram", {})
         if body.get("bot_token"):
             tg["bot_token"] = body["bot_token"]
         if body.get("chat_id"):
             cid = str(body["chat_id"])
             ids = [str(x) for x in tg.get("chat_ids", [])]
-            if cid not in ids: ids.append(cid)
+            if cid not in ids:
+                ids.append(cid)
             tg["chat_ids"] = ids
             tg["chat_id"]  = cid
-        data["telegram"] = tg
         save_data(data)
         return jsonify({"ok": True})
     tg = data.get("telegram", {})
-    return jsonify({"bot_token": tg.get("bot_token",""), "chat_id": tg.get("chat_id",""),
-                    "chat_ids": tg.get("chat_ids",[]), "user_count": len(data.get("users",[]))})
+    return jsonify({"bot_token": tg.get("bot_token", ""),
+                    "chat_id":   tg.get("chat_id", ""),
+                    "chat_ids":  tg.get("chat_ids", []),
+                    "user_count":len(data.get("users", []))})
+
+@app.route("/api/users", methods=["GET"])
+def users():
+    return jsonify(load_data().get("users", []))
+
+@app.route("/api/users/<cid>", methods=["DELETE"])
+def del_user(cid):
+    data = load_data()
+    data["users"] = [u for u in data.get("users",[]) if str(u["chat_id"]) != cid]
+    data["telegram"]["chat_ids"] = [x for x in data["telegram"].get("chat_ids",[]) if str(x) != cid]
+    save_data(data)
+    return jsonify({"ok": True})
 
 @app.route("/api/alerts", methods=["GET"])
 def get_alerts():
@@ -434,21 +449,30 @@ def get_alerts():
 def add_alert():
     data = load_data()
     body = request.json or {}
-    a = {
-        "id": str(int(time.time() * 1000)),
-        "symbol":       body.get("symbol","").upper().strip(),
-        "type":         body.get("type","crypto"),
-        "target_price": float(body.get("target_price", 0)),
+    sym  = body.get("symbol","").upper().strip()
+    atype= body.get("type","crypto")
+    tgt  = float(body.get("target_price", 0))
+
+    # Fetch price right now so list shows it immediately
+    price, source = get_price_full(sym, atype)
+
+    al = {
+        "id":           str(int(time.time()*1000)),
+        "symbol":       sym,
+        "type":         atype,
+        "target_price": tgt,
         "condition":    body.get("condition","above"),
-        "comment":      body.get("comment","").strip(),
         "active":       True,
-        "last_price":   None,
-        "last_checked": None,
-        "created_at":   now_teh()
+        "last_price":   price,
+        "last_source":  source if price else None,
+        "last_error":   None if price else source,
+        "last_checked": now_ir(),
+        "created_at":   now_ir()
     }
-    data["alerts"].append(a)
+    data["alerts"].append(al)
     save_data(data)
-    return jsonify({"ok": True, "alert": a})
+    return jsonify({"ok": True, "alert": al,
+                    "current_price": price, "source": source})
 
 @app.route("/api/alerts/<aid>", methods=["DELETE"])
 def del_alert(aid):
@@ -458,112 +482,55 @@ def del_alert(aid):
     notified.discard(aid)
     return jsonify({"ok": True})
 
-@app.route("/api/candle-alerts", methods=["GET"])
-def get_candles():
-    return jsonify(load_data().get("candle_alerts", []))
-
-@app.route("/api/candle-alerts", methods=["POST"])
-def add_candle():
-    data = load_data()
-    body = request.json or {}
-    a = {
-        "id":         str(int(time.time() * 1000)),
-        "symbol":     body.get("symbol","").upper().strip(),
-        "type":       body.get("type","crypto"),
-        "timeframe":  int(body.get("timeframe", 60)),
-        "comment":    body.get("comment","").strip(),
-        "active":     True,
-        "last_price": None,
-        "last_fired": None,
-        "created_at": now_teh()
-    }
-    if not a["symbol"]:
-        return jsonify({"ok": False, "error": "نماد الزامی است"}), 400
-    data.setdefault("candle_alerts", []).append(a)
-    save_data(data)
-    return jsonify({"ok": True, "alert": a})
-
-@app.route("/api/candle-alerts/<aid>", methods=["DELETE"])
-def del_candle(aid):
-    data = load_data()
-    data["candle_alerts"] = [a for a in data.get("candle_alerts",[]) if a["id"] != aid]
-    save_data(data)
-    return jsonify({"ok": True})
-
-@app.route("/api/candle-alerts/<aid>/toggle", methods=["POST"])
-def toggle_candle(aid):
-    data = load_data()
-    for a in data.get("candle_alerts", []):
-        if a["id"] == aid:
-            a["active"] = not a.get("active", True)
-            break
-    save_data(data)
-    return jsonify({"ok": True})
-
 @app.route("/api/archive", methods=["GET"])
 def get_archive():
     return jsonify(load_data().get("archive", []))
 
 @app.route("/api/archive", methods=["DELETE"])
-def clear_archive():
+def del_archive():
     data = load_data()
     data["archive"] = []
     save_data(data)
     return jsonify({"ok": True})
 
-@app.route("/api/archive/<aid>", methods=["DELETE"])
-def del_archive(aid):
-    data = load_data()
-    data["archive"] = [a for a in data.get("archive",[]) if a["id"] != aid]
-    save_data(data)
-    return jsonify({"ok": True})
+@app.route("/api/price/<atype>/<path:sym>", methods=["GET"])
+def price_endpoint(atype, sym):
+    sym = sym.upper().replace("-", "/")
+    price, source = get_price_full(sym, atype)
+    if price is None:
+        return jsonify({"error": "قیمت پیدا نشد", "detail": source}), 404
+    return jsonify({"symbol": sym, "price": price, "source": source, "ts": now_ir()})
 
-@app.route("/api/users", methods=["GET"])
-def get_users():
-    return jsonify(load_data().get("users", []))
-
-@app.route("/api/users/<cid>", methods=["DELETE"])
-def del_user(cid):
-    data = load_data()
-    data["users"] = [u for u in data.get("users",[]) if str(u["chat_id"]) != str(cid)]
-    data["telegram"]["chat_ids"] = [x for x in data["telegram"].get("chat_ids",[]) if str(x) != str(cid)]
-    save_data(data)
-    return jsonify({"ok": True})
-
-@app.route("/api/price/<atype>/<symbol>")
-def live_price(atype, symbol):
-    p = get_price(symbol.upper(), atype)
-    if p is None:
-        return jsonify({"error": "قیمت پیدا نشد"}), 404
-    return jsonify({"symbol": symbol.upper(), "price": p})
+@app.route("/api/errors", methods=["GET"])
+def get_errors():
+    return jsonify(price_errors)
 
 @app.route("/api/test-telegram", methods=["POST"])
 def test_tg():
-    token, cids, _ = _get_token_and_cids()
-    if not token or not cids:
-        return jsonify({"ok": False, "error": "توکن یا chat_id ست نشده"})
-    res = broadcast(token, cids, f"✅ <b>تست موفق</b>\n🔔 اتصال برقرار است.\n⏰ {now_pretty()} (تهران)")
-    return jsonify({"ok": any(res), "sent": sum(res), "total": len(cids)})
-
-@app.route("/api/status")
-def status():
-    data = load_data()
-    return jsonify({
-        "status":      "ok",
-        "last_update": data.get("last_update"),
-        "errors":      data.get("errors", [])[-5:],
-        "time_tehran": now_teh(),
-        "alert_count": len(data.get("alerts",[])),
-        "candle_count":len(data.get("candle_alerts",[])),
-    })
+    data  = load_data()
+    tg    = data.get("telegram", {})
+    token = tg.get("bot_token","")
+    ids   = list(tg.get("chat_ids",[]))
+    legacy= tg.get("chat_id","")
+    if legacy and legacy not in [str(x) for x in ids]:
+        ids.append(legacy)
+    if not token or not ids:
+        return jsonify({"ok":False,"error":"توکن یا chat_id نیست"})
+    sent = sum(tg_send(token,str(c),
+        f"✅ <b>تست موفق</b>\n⏰ {now_ir()} (تهران)") for c in ids)
+    return jsonify({"ok": sent > 0, "sent": sent, "total": len(ids)})
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok", "time": now_teh()})
+    data = load_data()
+    return jsonify({"status":"ok","time_tehran":now_ir(),
+                    "alerts":len(data.get("alerts",[])),
+                    "users":len(data.get("users",[])),
+                    "errors":len(price_errors)})
 
-threading.Thread(target=check_alerts,  daemon=True).start()
-threading.Thread(target=check_candles, daemon=True).start()
-threading.Thread(target=poll_telegram, daemon=True).start()
+# ── Start ──────────────────────────────────────────────────────────────────────
+threading.Thread(target=check_loop, daemon=True).start()
+threading.Thread(target=poll_tg,    daemon=True).start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))

@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PriceAlert — آلارم قیمت</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Vazirmatn:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#07090c;--bg2:#0c0f14;--bg3:#121720;--bg4:#181e29;
+  --border:rgba(255,255,255,0.055);--border2:rgba(255,255,255,0.10);
+  --text:#dce4f0;--text2:#7a8799;--text3:#3d4a5c;
+  --green:#00d98b;--green2:#00f5a0;--gdim:rgba(0,217,139,0.09);
+  --red:#ff4560;--rdim:rgba(255,69,96,0.09);
+  --gold:#f0a500;--gdold:rgba(240,165,0,0.09);
+  --blue:#4da8ff;--bluedim:rgba(77,168,255,0.09);
+  --purple:#a070ff;--purdim:rgba(160,112,255,0.09);
+  --mono:'IBM Plex Mono',monospace;--sans:'Vazirmatn',sans-serif;
+  --rad:12px;--rad2:16px;
+  --shadow:0 2px 16px rgba(0,0,0,0.3);
+}
+body.light{
+  --bg:#f0f3f8;--bg2:#ffffff;--bg3:#e8ecf3;--bg4:#dde2ec;
+  --border:rgba(0,0,0,0.07);--border2:rgba(0,0,0,0.13);
+  --text:#1a2233;--text2:#4a5568;--text3:#9aa3b4;
+  --green:#009e63;--green2:#00b87a;--gdim:rgba(0,158,99,0.10);
+  --red:#d42a45;--rdim:rgba(212,42,69,0.09);
+  --gold:#b36a00;--gdold:rgba(179,106,0,0.10);
+  --blue:#1a6fcc;--bluedim:rgba(26,111,204,0.09);
+  --purple:#6c3fcf;--purdim:rgba(108,63,207,0.09);
+  --shadow:0 2px 16px rgba(0,0,0,0.08);
+}
+
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;overflow-x:hidden;transition:background .3s,color .3s;}
+
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:linear-gradient(rgba(255,255,255,0.018) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,0.018) 1px,transparent 1px);
+  background-size:50px 50px;
+  transition:opacity .3s;
+}
+body.light::before{opacity:0.4;}
+
+.orb{position:fixed;border-radius:50%;pointer-events:none;z-index:0;transition:opacity .3s;}
+.o1{width:700px;height:700px;top:-250px;right:-180px;background:radial-gradient(circle,rgba(0,217,139,0.04) 0%,transparent 65%);}
+.o2{width:500px;height:500px;bottom:-180px;left:-100px;background:radial-gradient(circle,rgba(77,168,255,0.03) 0%,transparent 65%);}
+body.light .orb{opacity:0.3;}
+
+.wrap{position:relative;z-index:1;max-width:980px;margin:0 auto;padding:1.75rem 1.25rem 5rem;}
+
+/* ── HEADER ── */
+.hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.75rem;padding-bottom:1.25rem;border-bottom:1px solid var(--border);}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand-logo{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,rgba(0,217,139,0.18),rgba(77,168,255,0.18));border:1px solid rgba(0,217,139,0.25);display:flex;align-items:center;justify-content:center;box-shadow:0 0 18px rgba(0,217,139,0.1);}
+.brand-name{font-family:var(--mono);font-size:17px;font-weight:600;letter-spacing:-.03em;}
+.brand-name em{color:var(--green);font-style:normal;}
+.brand-sub{font-size:10px;color:var(--text3);font-family:var(--mono);margin-top:2px;}
+.hdr-right{display:flex;align-items:center;gap:7px;}
+
+/* Theme toggle */
+.theme-btn{
+  display:flex;align-items:center;gap:6px;padding:6px 12px;
+  background:var(--bg3);border:1px solid var(--border);border-radius:8px;
+  cursor:pointer;font-size:12px;font-family:var(--mono);color:var(--text2);
+  transition:.18s;white-space:nowrap;
+}
+.theme-btn:hover{color:var(--text);border-color:var(--border2);}
+.theme-icon{font-size:13px;}
+
+.icon-btn{width:34px;height:34px;border-radius:8px;background:var(--bg3);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text3);transition:.18s;}
+.icon-btn:hover{color:var(--text);border-color:var(--border2);}
+.icon-btn svg{width:14px;height:14px;}
+
+/* ── STAT CARDS ── */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:1.5rem;}
+@media(max-width:560px){.stats{grid-template-columns:1fr 1fr;}}
+.scard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rad2);padding:1rem;position:relative;overflow:hidden;transition:border-color .2s,background .3s;}
+.scard:hover{border-color:var(--border2);}
+.scard::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,0.015) 0%,transparent 60%);pointer-events:none;}
+.scard-lbl{font-size:10px;font-family:var(--mono);color:var(--text3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;}
+.scard-val{font-size:22px;font-weight:700;font-family:var(--mono);line-height:1;letter-spacing:-.02em;}
+.scard-val.gold{color:var(--gold);}
+.scard-val.green{color:var(--green);}
+.scard-val.blue{color:var(--blue);}
+.scard-val.purple{color:var(--purple);}
+.scard-sub{font-size:10px;color:var(--text2);margin-top:4px;font-family:var(--mono);}
+.scard-ico{position:absolute;top:.85rem;left:.85rem;font-size:18px;opacity:.1;}
+
+/* ── TABS ── */
+.tabs{display:flex;gap:3px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rad);padding:4px;margin-bottom:1.25rem;width:fit-content;}
+.tab{padding:6px 16px;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;color:var(--text2);border:none;background:transparent;font-family:var(--sans);transition:.18s;}
+.tab.on{background:var(--bg4);color:var(--text);border:1px solid var(--border2);}
+.tab:hover:not(.on){color:var(--text);}
+.pnl{display:none;}
+.pnl.on{display:block;}
+
+/* ── SECTION ── */
+.sec{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rad2);margin-bottom:1rem;overflow:hidden;transition:border-color .2s,background .3s;}
+.sec:hover{border-color:var(--border2);}
+.sec-hd{display:flex;align-items:center;justify-content:space-between;padding:.85rem 1.2rem;border-bottom:1px solid var(--border);}
+.sec-ttl{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:600;color:var(--text2);font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase;}
+.sec-dot{width:3px;height:11px;border-radius:2px;background:var(--gold);}
+.sec-dot.g{background:var(--green);}
+.sec-dot.b{background:var(--blue);}
+.sec-dot.p{background:var(--purple);}
+.sec-dot.r{background:var(--red);}
+.sec-bd{padding:1.2rem;}
+.sec-bd.slim{padding:.6rem 1.2rem 1.2rem;}
+
+/* ── FORM ── */
+.fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;align-items:end;}
+.fld label{display:block;font-size:10px;color:var(--text3);font-family:var(--mono);letter-spacing:.08em;margin-bottom:5px;}
+.fld input,.fld select{width:100%;background:var(--bg4);border:1px solid var(--border2);border-radius:var(--rad);padding:8px 11px;color:var(--text);font-size:13px;font-family:var(--mono);outline:none;transition:.18s;-webkit-appearance:none;}
+.fld input:focus,.fld select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(0,217,139,0.07);}
+.fld input::placeholder{color:var(--text3);}
+.fld select option{background:#1e2535;}
+body.light .fld select option{background:#dde2ec;}
+
+/* ── BUTTONS ── */
+.btn{padding:8px 15px;border-radius:var(--rad);font-size:13px;font-weight:500;cursor:pointer;font-family:var(--sans);border:1px solid var(--border2);background:var(--bg3);color:var(--text2);transition:.18s;white-space:nowrap;}
+.btn:hover{color:var(--text);background:var(--bg4);}
+.btn-green{background:var(--green);color:#07090c;border-color:var(--green);font-weight:700;}
+.btn-green:hover{background:var(--green2);box-shadow:0 0 16px rgba(0,217,139,0.25);}
+.btn-blue{color:var(--blue);border-color:rgba(77,168,255,0.2);}
+.btn-blue:hover{background:var(--bluedim);}
+.btn-red{color:var(--red);border-color:rgba(255,69,96,0.15);background:transparent;padding:4px 9px;font-size:11px;}
+.btn-red:hover{background:var(--rdim);}
+.btn-sm{padding:5px 10px;font-size:11px;border-radius:7px;}
+
+/* ── ALERT TABLE ── */
+.atbl-hd{display:grid;grid-template-columns:1.6fr 1fr 1.6fr 0.9fr 52px;gap:8px;padding:0 0 8px;border-bottom:1px solid var(--border);}
+.atbl-hd span{font-size:10px;font-family:var(--mono);color:var(--text3);letter-spacing:.07em;}
+.atbl-row{display:grid;grid-template-columns:1.6fr 1fr 1.6fr 0.9fr 52px;gap:8px;padding:11px 0;border-bottom:1px solid var(--border);align-items:center;transition:.15s;}
+.atbl-row:last-child{border-bottom:none;}
+.atbl-row:hover{background:rgba(255,255,255,.013);border-radius:7px;margin:0 -8px;padding-right:8px;padding-left:8px;}
+@media(max-width:600px){
+  .atbl-hd,.atbl-row{grid-template-columns:1fr 1fr 52px;}
+  .col-h{display:none;}
+}
+
+.acell{display:flex;align-items:center;gap:8px;}
+.abadge{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;font-weight:600;flex-shrink:0;letter-spacing:-.02em;}
+.abadge.c{background:var(--gdold);color:var(--gold);border:1px solid rgba(240,165,0,.15);}
+.abadge.f{background:var(--bluedim);color:var(--blue);border:1px solid rgba(77,168,255,.15);}
+.aname{font-size:13px;font-weight:600;color:var(--text);font-family:var(--mono);}
+.atype{font-size:9px;color:var(--text3);font-family:var(--mono);margin-top:1px;letter-spacing:.06em;}
+.mono13{font-family:var(--mono);font-size:13px;color:var(--text);}
+
+/* ── DISTANCE INDICATOR ── */
+.dist-wrap{display:flex;flex-direction:column;gap:4px;}
+.dist-val{font-family:var(--mono);font-size:12px;font-weight:600;}
+.dist-val.far-up{color:var(--green);}
+.dist-val.close-up{color:#f0a500;}
+.dist-val.hit-up{color:var(--red);}
+.dist-val.far-dn{color:var(--green);}
+.dist-val.close-dn{color:#f0a500;}
+.dist-val.hit-dn{color:var(--red);}
+.dist-bar-wrap{height:4px;background:var(--border2);border-radius:4px;overflow:hidden;width:100%;max-width:120px;}
+.dist-bar{height:100%;border-radius:4px;transition:width .4s ease,background .4s;}
+
+.dpill{display:inline-flex;align-items:center;gap:3px;padding:3px 7px;border-radius:5px;font-size:10px;font-family:var(--mono);font-weight:700;}
+.dpill.up{background:var(--gdim);color:var(--green);}
+.dpill.dn{background:var(--rdim);color:var(--red);}
+
+.sdot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.sdot.watch{background:var(--gold);box-shadow:0 0 5px rgba(240,165,0,.5);animation:blink 2s infinite;}
+.sdot.hit{background:var(--green);box-shadow:0 0 5px rgba(0,217,139,.6);}
+.sdot.pend{background:var(--text3);}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ── ARCHIVE ── */
+.arch-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);}
+.arch-row:last-child{border-bottom:none;}
+.arch-tag{font-size:10px;padding:2px 7px;border-radius:5px;background:var(--gdim);color:var(--green);font-family:var(--mono);font-weight:600;white-space:nowrap;}
+.arch-name{font-size:13px;font-family:var(--mono);font-weight:600;color:var(--text);}
+.arch-detail{font-size:10px;color:var(--text3);font-family:var(--mono);margin-top:2px;}
+
+/* ── USERS ── */
+.user-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);}
+.user-row:last-child{border-bottom:none;}
+.user-av{width:32px;height:32px;border-radius:8px;background:var(--purdim);border:1px solid rgba(160,112,255,.15);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;}
+.user-name{font-size:13px;font-weight:600;color:var(--text);}
+.user-id{font-size:10px;color:var(--text3);font-family:var(--mono);margin-top:1px;}
+.user-date{font-size:10px;color:var(--text3);font-family:var(--mono);margin-right:auto;}
+
+/* ── MODAL ── */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:100;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(5px);opacity:0;pointer-events:none;transition:.22s;}
+.overlay.on{opacity:1;pointer-events:all;}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:18px;width:min(480px,93vw);padding:1.6rem;transform:translateY(18px);transition:.22s;}
+.overlay.on .modal{transform:translateY(0);}
+.modal-ttl{font-size:14px;font-weight:600;color:var(--text);margin-bottom:1.1rem;display:flex;align-items:center;gap:8px;font-family:var(--mono);}
+.modal-ttl span{color:var(--blue);}
+.mrow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;}
+.mfooter{display:flex;gap:8px;justify-content:flex-end;margin-top:1.1rem;}
+.tg-note{font-size:11px;font-family:var(--mono);margin-top:8px;padding:9px 11px;border-radius:8px;display:none;}
+.tg-note.ok{display:block;background:var(--gdim);color:var(--green);border:1px solid rgba(0,217,139,.2);}
+.tg-note.err{display:block;background:var(--rdim);color:var(--red);border:1px solid rgba(255,69,96,.2);}
+.tg-note.inf{display:block;background:var(--bluedim);color:var(--blue);border:1px solid rgba(77,168,255,.2);}
+
+/* ── GUIDE ── */
+.gstep{display:flex;gap:11px;padding:10px 0;border-bottom:1px solid var(--border);}
+.gstep:last-child{border-bottom:none;}
+.gsn{width:22px;height:22px;border-radius:6px;background:var(--bg4);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:10px;font-family:var(--mono);color:var(--gold);flex-shrink:0;}
+.gst{font-size:12px;color:var(--text2);font-family:var(--mono);line-height:1.8;}
+.gst b{color:var(--text);}
+.gst a{color:var(--blue);text-decoration:none;}
+.note{background:var(--gdold);border:1px solid rgba(240,165,0,.15);border-radius:var(--rad);padding:11px 13px;font-size:12px;color:var(--gold);font-family:var(--mono);line-height:1.8;margin-bottom:1rem;}
+
+/* ── EMPTY ── */
+.empty{text-align:center;padding:2.5rem 1rem;color:var(--text3);}
+.empty-ico{font-size:22px;margin-bottom:6px;opacity:.35;}
+.empty p{font-size:12px;font-family:var(--mono);}
+
+/* ── TOAST ── */
+#toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(70px);background:var(--bg4);border:1px solid var(--border2);color:var(--text);padding:10px 18px;border-radius:10px;font-size:12px;font-family:var(--mono);z-index:999;opacity:0;transition:all .28s cubic-bezier(.34,1.56,.64,1);white-space:nowrap;backdrop-filter:blur(12px);box-shadow:var(--shadow);}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0);}
+#toast.ok{border-color:rgba(0,217,139,.4);color:var(--green);}
+#toast.er{border-color:rgba(255,69,96,.4);color:var(--red);}
+
+.loading-txt{color:var(--text3);font-family:var(--mono);font-size:11px;}
+.row-end{display:flex;gap:7px;justify-content:flex-end;margin-top:.9rem;}
+</style>
+</head>
+<body>
+<div class="orb o1"></div>
+<div class="orb o2"></div>
+
+<div class="wrap">
+
+  <!-- HEADER -->
+  <header class="hdr">
+    <div class="brand">
+      <div class="brand-logo">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M10 2L16 6.5V13.5L10 18L4 13.5V6.5L10 2Z" stroke="#00d98b" stroke-width="1.4" fill="none"/>
+          <circle cx="10" cy="10" r="2.6" fill="#00d98b"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-name">Price<em>Alert</em></div>
+        <div class="brand-sub">forex · crypto · real-time</div>
+      </div>
+    </div>
+    <div class="hdr-right">
+      <!-- Theme toggle -->
+      <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">
+        <span class="theme-icon" id="theme-icon">☀️</span>
+        <span id="theme-lbl">روشن</span>
+      </button>
+      <!-- Settings -->
+      <button class="icon-btn" onclick="openModal()" title="تنظیمات">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- STAT CARDS (no live ticker — saves API calls) -->
+  <div class="stats">
+    <div class="scard">
+      <div class="scard-ico">🔔</div>
+      <div class="scard-lbl">آلارم‌های فعال</div>
+      <div class="scard-val blue" id="sc-alerts">0</div>
+      <div class="scard-sub" id="sc-alerts-sub">در حال رصد</div>
+    </div>
+    <div class="scard">
+      <div class="scard-ico">⚡</div>
+      <div class="scard-lbl">آخرین بررسی سرور</div>
+      <div class="scard-val green" id="sc-check" style="font-size:15px">—</div>
+      <div class="scard-sub">هر ۳ دقیقه یکبار</div>
+    </div>
+    <div class="scard">
+      <div class="scard-ico">👥</div>
+      <div class="scard-lbl">کاربران ربات</div>
+      <div class="scard-val purple" id="sc-users">0</div>
+      <div class="scard-sub">نفر ثبت‌شده</div>
+    </div>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <button class="tab on" onclick="switchTab('alerts')">آلارم‌ها</button>
+    <button class="tab" onclick="switchTab('archive')">بایگانی</button>
+    <button class="tab" onclick="switchTab('users')">کاربران</button>
+    <button class="tab" onclick="switchTab('guide')">راهنما</button>
+  </div>
+
+  <!-- PANEL: ALERTS -->
+  <div class="pnl on" id="pnl-alerts">
+    <!-- ADD -->
+    <div class="sec">
+      <div class="sec-hd"><div class="sec-ttl"><span class="sec-dot g"></span>آلارم جدید</div></div>
+      <div class="sec-bd">
+        <div class="fgrid">
+          <div class="fld">
+            <label>نوع بازار</label>
+            <select id="mkt" onchange="onMktChange()">
+              <option value="crypto">کریپتو</option>
+              <option value="forex">فارکس</option>
+            </select>
+          </div>
+          <div class="fld">
+            <label>نماد <span id="sym-hint" style="color:var(--blue);font-size:9px">(BTC, ETH...)</span></label>
+            <input type="text" id="sym" placeholder="BTC" dir="ltr" style="text-transform:uppercase">
+          </div>
+          <div class="fld">
+            <label>قیمت هدف (USD)</label>
+            <input type="number" id="tprice" placeholder="0.00" step="any" dir="ltr">
+          </div>
+          <div class="fld">
+            <label>جهت آلارم</label>
+            <select id="adir">
+              <option value="above">↑ بالاتر از</option>
+              <option value="below">↓ پایین‌تر از</option>
+            </select>
+          </div>
+          <div class="fld" style="display:flex;align-items:flex-end;gap:7px">
+            <button class="btn btn-blue" style="flex:1" onclick="checkPrice()">👁 قیمت الان</button>
+            <button class="btn btn-green" style="flex:1" onclick="addAlert()">+ ثبت آلارم</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LIST -->
+    <div class="sec">
+      <div class="sec-hd">
+        <div class="sec-ttl"><span class="sec-dot"></span>آلارم‌های در حال رصد</div>
+        <span id="upd-lbl" style="font-size:10px;color:var(--text3);font-family:var(--mono)"></span>
+      </div>
+      <div class="sec-bd slim">
+        <div class="atbl-hd col-h-wrap">
+          <span>نماد</span>
+          <span>قیمت فعلی</span>
+          <span class="col-h">فاصله تا هدف</span>
+          <span class="col-h">جهت</span>
+          <span></span>
+        </div>
+        <div id="atbl-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PANEL: ARCHIVE -->
+  <div class="pnl" id="pnl-archive">
+    <div class="sec">
+      <div class="sec-hd">
+        <div class="sec-ttl"><span class="sec-dot r"></span>بایگانی آلارم‌ها</div>
+        <button class="btn btn-sm" onclick="clearArchive()">پاک کردن</button>
+      </div>
+      <div class="sec-bd" id="arch-body">
+        <div class="empty"><div class="empty-ico">◎</div><p>بایگانی خالی است</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PANEL: USERS -->
+  <div class="pnl" id="pnl-users">
+    <div class="note">👥 هر کسی که ربات را در تلگرام پیدا کند و <b>/start</b> بزند، خودکار ثبت شده و آلارم‌ها دریافت می‌کند.</div>
+    <div class="sec">
+      <div class="sec-hd">
+        <div class="sec-ttl"><span class="sec-dot p"></span>کاربران ثبت‌شده</div>
+        <button class="btn btn-sm btn-blue" onclick="loadUsers()">🔄 بروزرسانی</button>
+      </div>
+      <div class="sec-bd" id="users-body">
+        <div class="empty"><div class="empty-ico">👥</div><p>هنوز کاربری ثبت نشده</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PANEL: GUIDE -->
+  <div class="pnl" id="pnl-guide">
+    <div class="sec">
+      <div class="sec-hd"><div class="sec-ttl"><span class="sec-dot b"></span>راه‌اندازی گروهی تلگرام</div></div>
+      <div class="sec-bd">
+        <div class="gstep"><div class="gsn">1</div><div class="gst">ربات یک بار ساخته شده — Token در سیستم ذخیره است</div></div>
+        <div class="gstep"><div class="gsn">2</div><div class="gst">آدرس ربات تلگرام را برای اعضا بفرستید</div></div>
+        <div class="gstep"><div class="gsn">3</div><div class="gst">هر نفر <b>/start</b> بزند — خودکار ثبت می‌شود و پیام خوش‌آمد دریافت می‌کند ✅</div></div>
+        <div class="gstep"><div class="gsn">4</div><div class="gst">نیازی به BotFather یا Chat ID برای کاربران نیست</div></div>
+      </div>
+    </div>
+    <div class="sec">
+      <div class="sec-hd"><div class="sec-ttl"><span class="sec-dot g"></span>نمادهای پشتیبانی‌شده</div></div>
+      <div class="sec-bd">
+        <div style="font-size:12px;color:var(--text2);font-family:var(--mono);line-height:2.2">
+          <div><span style="color:var(--gold)">کریپتو (Binance):</span> &nbsp;BTC · ETH · BNB · SOL · XRP · ADA · DOGE · TRX · TON · AVAX · و هر ارزی در Binance</div>
+          <div style="margin-top:6px"><span style="color:var(--blue)">فارکس:</span> &nbsp;EURUSD · GBPUSD · USDJPY · XAUUSD (طلا) · GBPJPY · AUDUSD · و هر جفت‌ارز دیگر</div>
+          <div style="margin-top:6px;padding-top:8px;border-top:1px solid var(--border)"><span style="color:var(--text3)">فرمت:</span> &nbsp;EURUSD یا EUR/USD — هر دو قبول است · برای طلا: XAUUSD</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /wrap -->
+
+<!-- MODAL: SETTINGS -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="modal-ttl"><span>⚙</span> تنظیمات</div>
+    <!-- Token is hardcoded — just show test button -->
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:12px;font-family:var(--mono);color:var(--text2);line-height:1.8;">
+      ✅ ربات تلگرام پیکربندی شده است.<br>
+      اعضا با زدن <b style="color:var(--text)">/start</b> در ربات، خودکار ثبت می‌شوند.
+    </div>
+    <div class="tg-note" id="tg-note"></div>
+    <div class="mfooter">
+      <button class="btn" onclick="closeModal()">بستن</button>
+      <button class="btn btn-blue" onclick="testTg()">📨 ارسال پیام تست</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── HARDCODED CONFIG ──────────────────────────────────────────────────────────
+// توکن در سرور ذخیره است — فقط API call می‌زنیم
+const API = '';
+
+// ── THEME ─────────────────────────────────────────────────────────────────────
+(function(){
+  const saved = localStorage.getItem('pa_theme') || 'dark';
+  if(saved === 'light') applyTheme('light', false);
+})();
+
+function applyTheme(mode, save=true){
+  document.body.classList.toggle('light', mode==='light');
+  const icon = document.getElementById('theme-icon');
+  const lbl  = document.getElementById('theme-lbl');
+  if(mode==='light'){ icon.textContent='🌙'; lbl.textContent='تاریک'; }
+  else              { icon.textContent='☀️'; lbl.textContent='روشن'; }
+  if(save) localStorage.setItem('pa_theme', mode);
+}
+
+function toggleTheme(){
+  const isLight = document.body.classList.contains('light');
+  applyTheme(isLight ? 'dark' : 'light');
+}
+
+// ── UTILS ─────────────────────────────────────────────────────────────────────
+function fmt(n){
+  if(n===undefined||n===null) return '—';
+  const v = parseFloat(n);
+  if(v<0.0001) return v.toFixed(8);
+  if(v<0.01)   return v.toFixed(6);
+  if(v<0.1)    return v.toFixed(5);
+  if(v<10)     return v.toFixed(4);
+  if(v<1000)   return v.toFixed(2);
+  return v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+
+function toast(msg,cls=''){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.className='on '+(cls||'');
+  clearTimeout(el._t); el._t=setTimeout(()=>el.className='',3200);
+}
+
+// ── DISTANCE INDICATOR ────────────────────────────────────────────────────────
+function buildDist(cur, target, sym, condition){
+  if(cur===null||cur===undefined||!target) return '<span style="color:var(--text3);font-family:var(--mono);font-size:11px">—</span>';
+  const c = parseFloat(cur), t = parseFloat(target);
+  const symU = (sym||'').toUpperCase().replace('/','');
+  const diff = c - t;
+  const absDiff = Math.abs(diff);
+
+  let valStr='', pct=0;
+
+  // Crypto → percentage distance
+  if(!symU.includes('USD')&&!symU.includes('EUR')&&!symU.includes('GBP')&&!symU.includes('JPY')&&!symU.includes('CHF')&&!symU.includes('XAU')&&!symU.includes('XAG')){
+    const p = (diff/t*100);
+    valStr = (p>=0?'+':'')+p.toFixed(2)+'%';
+    // bar: 0% = fully reached, 5%+ = far
+    pct = Math.min(Math.abs(p)/5*100, 100);
+  }
+  // JPY pairs → pip = 0.01
+  else if(symU.includes('JPY')){
+    const pips = (diff/0.01);
+    valStr = (pips>=0?'+':'')+pips.toFixed(1)+' pip';
+    pct = Math.min(Math.abs(pips)/200*100,100);
+  }
+  // Gold/Silver → dollar
+  else if(symU.includes('XAU')||symU.includes('XAG')){
+    valStr = (diff>=0?'+':'')+absDiff.toFixed(2)+' $';
+    pct = Math.min(absDiff/100*100,100);
+  }
+  // Forex → pip = 0.0001
+  else{
+    const pips = diff/0.0001;
+    valStr = (pips>=0?'+':'')+pips.toFixed(1)+' pip';
+    pct = Math.min(Math.abs(pips)/200*100,100);
+  }
+
+  // Color logic: if condition=above → we want price to rise → positive diff = getting closer (bad direction means already hit)
+  // distance from target: how far are we?
+  // actually "remaining distance" = target - current for above, current - target for below
+  let remaining;
+  if(condition==='above') remaining = t - c; // positive = still below target (ok)
+  else remaining = c - t;                     // positive = still above target (ok)
+
+  let cls, barColor;
+  if(remaining <= 0){
+    // Already past target
+    cls='hit-up'; barColor='var(--red)';
+    pct=100;
+  } else {
+    // remaining > 0: how close?
+    let relPct;
+    if(symU.includes('JPY')) relPct = (remaining/0.01)/200*100;
+    else if(symU.includes('XAU')||symU.includes('XAG')) relPct = remaining/100*100;
+    else if(!symU.match(/USD|EUR|GBP|JPY|CHF/)) relPct = (remaining/t*100)/5*100;
+    else relPct = (remaining/0.0001)/200*100;
+
+    relPct = Math.min(relPct,100);
+    pct = 100 - relPct; // bar fill = how close we are
+
+    if(relPct>50){ cls='far-up'; barColor='var(--green)'; }
+    else if(relPct>15){ cls='close-up'; barColor='var(--gold)'; }
+    else{ cls='hit-up'; barColor='var(--red)'; }
+  }
+
+  return `<div class="dist-wrap">
+    <span class="dist-val ${cls}">${valStr}</span>
+    <div class="dist-bar-wrap"><div class="dist-bar" style="width:${Math.max(pct,3)}%;background:${barColor}"></div></div>
+  </div>`;
+}
+
+// ── TABS ──────────────────────────────────────────────────────────────────────
+function switchTab(name){
+  ['alerts','archive','users','guide'].forEach((n,i)=>{
+    document.querySelectorAll('.tab')[i].classList.toggle('on',n===name);
+    document.getElementById('pnl-'+n).classList.toggle('on',n===name);
+  });
+  if(name==='archive') loadArchive();
+  if(name==='users') loadUsers();
+}
+
+// ── FORM ──────────────────────────────────────────────────────────────────────
+function onMktChange(){
+  const m=document.getElementById('mkt').value;
+  const h=document.getElementById('sym-hint');
+  const i=document.getElementById('sym');
+  if(m==='crypto'){h.textContent='(BTC, ETH, SOL...)';i.placeholder='BTC';}
+  else{h.textContent='(EURUSD, XAUUSD...)';i.placeholder='EURUSD';}
+}
+
+async function checkPrice(){
+  const sym=document.getElementById('sym').value.trim().toUpperCase();
+  const mkt=document.getElementById('mkt').value;
+  if(!sym){toast('نماد را وارد کنید','er');return;}
+  toast('⏳ در حال دریافت قیمت...');
+  try{
+    const r=await fetch(`${API}/api/price/${mkt}/${sym}`);
+    const d=await r.json();
+    if(d.price!==undefined){
+      toast(`💰 ${sym}: $${fmt(d.price)}`,'ok');
+      document.getElementById('tprice').value=d.price;
+    } else toast(`❌ ${sym} پیدا نشد — برای طلا: XAUUSD`,'er');
+  }catch(e){toast('❌ خطا در ارتباط با سرور','er');}
+}
+
+async function addAlert(){
+  const sym=document.getElementById('sym').value.trim().toUpperCase();
+  const mkt=document.getElementById('mkt').value;
+  const target=parseFloat(document.getElementById('tprice').value);
+  const dir=document.getElementById('adir').value;
+  if(!sym){toast('نماد را وارد کنید','er');return;}
+  if(!target||target<=0){toast('قیمت هدف را وارد کنید','er');return;}
+  try{
+    const r=await fetch(`${API}/api/alerts`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:sym,type:mkt,target_price:target,condition:dir})});
+    const d=await r.json();
+    if(d.ok){
+      toast(`✅ آلارم ${sym} ثبت شد`,'ok');
+      document.getElementById('sym').value='';
+      document.getElementById('tprice').value='';
+      loadAlerts();
+    }
+  }catch(e){toast('❌ خطا در ثبت آلارم','er');}
+}
+
+async function deleteAlert(id){
+  if(!confirm('آلارم حذف شود؟'))return;
+  await fetch(`${API}/api/alerts/${id}`,{method:'DELETE'});
+  toast('آلارم حذف شد');
+  loadAlerts();
+}
+
+// ── LOAD & RENDER ALERTS ──────────────────────────────────────────────────────
+async function loadAlerts(){
+  try{
+    const r=await fetch(`${API}/api/alerts`);
+    const alerts=await r.json();
+    renderAlerts(alerts);
+
+    const active=alerts.filter(a=>a.active).length;
+    document.getElementById('sc-alerts').textContent=alerts.length;
+    document.getElementById('sc-alerts-sub').textContent=active>0?active+' فعال':'بدون آلارم';
+
+    const checked=alerts.filter(a=>a.last_checked).map(a=>a.last_checked).sort();
+    if(checked.length){
+      const t=new Date(checked[checked.length-1]);
+      document.getElementById('sc-check').textContent=t.toLocaleTimeString('fa-IR');
+      document.getElementById('upd-lbl').textContent='آخرین چک: '+t.toLocaleTimeString('fa-IR');
+    }
+  }catch(e){}
+}
+
+function renderAlerts(alerts){
+  const body=document.getElementById('atbl-body');
+  if(!alerts.length){
+    body.innerHTML='<div class="empty"><div class="empty-ico">◎</div><p>آلارمی ثبت نشده — یک آلارم جدید اضافه کنید</p></div>';
+    return;
+  }
+  body.innerHTML=alerts.map(a=>{
+    const isCrypto=a.type==='crypto';
+    const short=(a.symbol||'').replace('/','').slice(0,4);
+    const cur=a.last_price!==null?a.last_price:undefined;
+    const dotCls=!a.active?'hit':(cur!==undefined?'watch':'pend');
+    const dp=a.condition==='above'?'<span class="dpill up">↑ بالاتر</span>':'<span class="dpill dn">↓ پایین‌تر</span>';
+    const distHtml=buildDist(cur,a.target_price,a.symbol,a.condition);
+    const curHtml=cur!==undefined?`$${fmt(cur)}`:'<span class="loading-txt">...</span>';
+
+    return `<div class="atbl-row ${!a.active?'':''}" style="${!a.active?'opacity:.5':''}">
+      <div class="acell">
+        <div class="abadge ${isCrypto?'c':'f'}">${short}</div>
+        <div>
+          <div class="aname">${a.symbol}</div>
+          <div class="atype">هدف: $${fmt(a.target_price)}</div>
+        </div>
+      </div>
+      <div><div class="mono13">${curHtml}</div></div>
+      <div class="col-h">${distHtml}</div>
+      <div class="col-h">${dp}</div>
+      <div style="display:flex;align-items:center;gap:5px">
+        <div class="sdot ${dotCls}"></div>
+        <button class="btn btn-red" onclick="deleteAlert('${a.id}')">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── ARCHIVE ───────────────────────────────────────────────────────────────────
+async function loadArchive(){
+  try{
+    const r=await fetch(`${API}/api/archive`);
+    const items=await r.json();
+    const body=document.getElementById('arch-body');
+    if(!items.length){body.innerHTML='<div class="empty"><div class="empty-ico">◎</div><p>بایگانی خالی است</p></div>';return;}
+    body.innerHTML=items.slice().reverse().map(a=>{
+      const dt=new Date(a.fired_at||a.created_at);
+      const ts=dt.toLocaleDateString('fa-IR')+' · '+dt.toLocaleTimeString('fa-IR');
+      return`<div class="arch-row">
+        <span class="arch-tag">✓ فعال</span>
+        <div>
+          <div class="arch-name">${a.symbol}</div>
+          <div class="arch-detail">${a.condition==='above'?'↑':'↓'} هدف: $${fmt(a.target_price)} · قیمت: $${fmt(a.fired_price)} · ${ts}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }catch(e){}
+}
+
+async function clearArchive(){
+  if(!confirm('بایگانی پاک شود؟'))return;
+  await fetch(`${API}/api/archive`,{method:'DELETE'});
+  loadArchive();toast('پاک شد');
+}
+
+// ── USERS ─────────────────────────────────────────────────────────────────────
+async function loadUsers(){
+  try{
+    const r=await fetch(`${API}/api/users`);
+    const users=await r.json();
+    document.getElementById('sc-users').textContent=users.length;
+    const body=document.getElementById('users-body');
+    if(!users.length){body.innerHTML='<div class="empty"><div class="empty-ico">👥</div><p>هنوز کاربری /start نزده است</p></div>';return;}
+    body.innerHTML=users.map(u=>`
+      <div class="user-row">
+        <div class="user-av">👤</div>
+        <div>
+          <div class="user-name">${u.username||'کاربر'}</div>
+          <div class="user-id">${u.chat_id}</div>
+        </div>
+        <div class="user-date">${u.joined_at||''}</div>
+        <button class="btn btn-red btn-sm" onclick="deleteUser('${u.chat_id}')">حذف</button>
+      </div>`).join('');
+  }catch(e){}
+}
+
+async function deleteUser(chatId){
+  if(!confirm('این کاربر از لیست حذف شود؟'))return;
+  await fetch(`${API}/api/users/${chatId}`,{method:'DELETE'});
+  loadUsers();toast('کاربر حذف شد');
+}
+
+// ── MODAL ─────────────────────────────────────────────────────────────────────
+function openModal(){document.getElementById('overlay').classList.add('on');setTgNote('','');}
+function closeModal(){document.getElementById('overlay').classList.remove('on');}
+document.getElementById('overlay').addEventListener('click',function(e){if(e.target===this)closeModal();});
+function setTgNote(cls,msg){const el=document.getElementById('tg-note');el.className='tg-note '+(cls||'');el.textContent=msg;}
+
+async function testTg(){
+  setTgNote('inf','◌ در حال ارسال...');
+  try{
+    const r=await fetch(`${API}/api/test-telegram`,{method:'POST'});
+    const d=await r.json();
+    if(d.ok) setTgNote('ok',`✓ پیام برای ${d.sent} کاربر ارسال شد`);
+    else setTgNote('err','✗ خطا — ربات پیکربندی نشده یا کاربری ثبت نشده');
+  }catch(e){setTgNote('err','✗ خطا در ارتباط با سرور');}
+}
+
+// ── CONFIG LOAD ───────────────────────────────────────────────────────────────
+async function loadConfig(){
+  try{
+    const r=await fetch(`${API}/api/config`);
+    const d=await r.json();
+    document.getElementById('sc-users').textContent=d.user_count||0;
+  }catch(e){}
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+loadConfig();
+loadAlerts();
+setInterval(loadAlerts, 30000); // refresh UI every 30s
+</script>
+</body>
+</html>
