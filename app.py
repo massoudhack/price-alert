@@ -95,8 +95,8 @@ def _cg_price(base):
 
 def get_forex_price(symbol):
     """
-    Get forex price with FULL precision (5 decimal places for EUR/USD etc).
-    symbol: EURUSD, XAUUSD, GBPUSD, USDJPY ...
+    Get forex/gold price — real-time sources with full decimal precision.
+    symbol: EURUSD, XAUUSD, GBPUSD, USDJPY, XAGUSD ...
     """
     sym   = symbol.upper().replace("/","").replace(" ","").strip()
     if len(sym) < 6: return None
@@ -104,41 +104,60 @@ def get_forex_price(symbol):
     quote = sym[3:6]
 
     # ── Gold / Silver special ──────────────────────────────────────
+    # These APIs return spot price per troy ounce in USD (real-time)
     if base in ("XAU", "XAG"):
-        metal_map = {"XAU": "gold", "XAG": "silver"}
-        metal = metal_map.get(base, "gold")
+        metal = "gold" if base == "XAU" else "silver"
         sources = [
-            ("metals.live",  lambda: float(_get(f"https://api.metals.live/v1/spot/{metal}")[0]["price"])),
-            ("gold-api",     lambda: float(_get("https://api.gold-api.com/price/XAU")["price"])),
-            ("er-api-xau",   lambda: _er_xau()),
-            ("CG-XAUT",      lambda: float(_get("https://api.coingecko.com/api/v3/simple/price?ids=tether-gold&vs_currencies=usd")["tether-gold"]["usd"])),
-            ("CG-PAXG",      lambda: float(_get("https://api.coingecko.com/api/v3/simple/price?ids=pax-gold&vs_currencies=usd")["pax-gold"]["usd"])),
+            # metals.live — real-time spot, no key
+            ("metals.live",
+             lambda: float(_get(f"https://api.metals.live/v1/spot/{metal}")[0]["price"])),
+            # gold-api.com — real-time, no key
+            ("gold-api",
+             lambda: float(_get(f"https://api.gold-api.com/price/{base}")["price"])),
+            # Frankfurter supports XAU natively as real-time spot
+            ("frankfurter-xau",
+             lambda: float(_get(f"https://api.frankfurter.app/latest?from={base}&to=USD")["rates"]["USD"])),
+            # Fallback: USD/XAU inverse from exchangerate (updated every few minutes)
+            ("er-api-xau",
+             lambda: _er_xau()),
+            # CoinGecko Tether Gold (XAUT) — tracks spot very closely
+            ("CG-XAUT",
+             lambda: float(_get("https://api.coingecko.com/api/v3/simple/price?ids=tether-gold&vs_currencies=usd")["tether-gold"]["usd"])),
+            # CoinGecko PAX Gold
+            ("CG-PAXG",
+             lambda: float(_get("https://api.coingecko.com/api/v3/simple/price?ids=pax-gold&vs_currencies=usd")["pax-gold"]["usd"])),
         ]
         for name, fn in sources:
             try:
                 p = fn()
-                if p and p > 0:
-                    print(f"[price] {sym} = {p} via {name}")
+                if p and p > 100:  # sanity: gold always > $100
+                    print(f"[price] {sym} = {p:.2f} via {name}")
                     return float(p)
             except Exception as e:
                 print(f"[{name}] {sym} failed: {e}")
-        log_error(f"All gold sources failed for {symbol}")
+        log_error(f"All gold/silver sources failed for {symbol}")
         return None
 
-    # ── Regular Forex — need 5 decimal precision ──────────────────
-    # Priority: sources that give most decimal places
+    # ── Regular Forex — real-time, 4-5 decimal precision ──────────
+    # NOTE: fawazahmed0 (CDN) removed — it serves daily snapshots,
+    # not real-time prices, causing rounding to 2dp (e.g. 1.17 not 1.1730).
     sources = [
-        # fawazahmed0 currency API — very precise free JSON
-        ("fawazahmed0-latest", lambda: _fawaz(base, quote)),
-        ("fawazahmed0-date",   lambda: _fawaz_date(base, quote)),
-        # frankfurter — 5dp
-        ("frankfurter",        lambda: float(_get(f"https://api.frankfurter.app/latest?from={base}&to={quote}")["rates"][quote])),
-        # open.er-api — 6dp
-        ("open-er-api",        lambda: float(_get(f"https://open.er-api.com/v6/latest/{base}")["rates"][quote])),
-        # exchangerate-api
-        ("exchangerate-api",   lambda: float(_get(f"https://api.exchangerate-api.com/v4/latest/{base}")["rates"][quote])),
-        # currencyapi.net (no key needed for some endpoints)
-        ("abstractapi",        lambda: _abstractapi(base, quote)),
+        # Frankfurter — ECB-based, updates every business day at ~16:00 CET
+        # gives 5 decimal places, most reliable for EUR pairs
+        ("frankfurter",
+         lambda: float(_get(f"https://api.frankfurter.app/latest?from={base}&to={quote}")["rates"][quote])),
+        # open.er-api — updates every ~1 hour, 6 decimal places
+        ("open-er-api",
+         lambda: float(_get(f"https://open.er-api.com/v6/latest/{base}")["rates"][quote])),
+        # exchangerate-api v4 — updates every ~1 hour
+        ("exchangerate-api",
+         lambda: float(_get(f"https://api.exchangerate-api.com/v4/latest/{base}")["rates"][quote])),
+        # fxratesapi — real-time, 6dp
+        ("fxratesapi",
+         lambda: float(_get(f"https://api.fxratesapi.com/latest?base={base}&currencies={quote}")["rates"][quote])),
+        # coinbase for USD pairs (inverted) — real-time
+        ("coinbase",
+         lambda: _coinbase(base, quote)),
     ]
     for name, fn in sources:
         try:
@@ -152,37 +171,33 @@ def get_forex_price(symbol):
     return None
 
 def _er_xau():
-    """Get gold price via USD/XAU inverse rate"""
+    """Gold via USD/XAU inverse — exchangerate updates every few minutes"""
     d = _get("https://api.exchangerate-api.com/v4/latest/USD")
     xau = d["rates"].get("XAU")
-    if xau: return float(1/xau)
+    if xau and xau > 0: return float(1 / xau)
     return None
 
-def _fawaz(base, quote):
-    """fawazahmed0 currency API — free, precise, no key"""
-    url = f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{base.lower()}.json"
-    d = _get(url)
-    val = d.get(base.lower(), {}).get(quote.lower())
-    if val: return float(val)
-    return None
-
-def _fawaz_date(base, quote):
-    """Fallback with date-specific endpoint"""
-    from datetime import date
-    today = date.today().strftime("%Y-%m-%d")
-    url = f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@{today}/v1/currencies/{base.lower()}.json"
-    d = _get(url)
-    val = d.get(base.lower(), {}).get(quote.lower())
-    if val: return float(val)
-    return None
-
-def _abstractapi(base, quote):
-    """Try abstractapi free tier (no key needed for basic)"""
-    # This one sometimes works without key
-    url = f"https://api.abstractapi.com/v1/exchange-rates/live/?base={base}&target={quote}"
-    d = _get(url)
-    rates = d.get("exchange_rates", {})
-    if quote in rates: return float(rates[quote])
+def _coinbase(base, quote):
+    """
+    Coinbase spot price — real-time, great for USD pairs.
+    Works for EURUSD (EUR-USD), GBPUSD (GBP-USD) etc.
+    """
+    # Try base-USD directly
+    if quote == "USD":
+        try:
+            d = _get(f"https://api.coinbase.com/v2/prices/{base}-USD/spot")
+            p = float(d["data"]["amount"])
+            if p > 0: return p
+        except Exception:
+            pass
+    # Try inverse: USD-base then invert
+    if base == "USD":
+        try:
+            d = _get(f"https://api.coinbase.com/v2/prices/{quote}-USD/spot")
+            p = float(d["data"]["amount"])
+            if p > 0: return float(1 / p)
+        except Exception:
+            pass
     return None
 
 def get_price(symbol, asset_type):
