@@ -1,0 +1,526 @@
+import os, json, time, threading, requests, pytz
+from flask import Flask, request, jsonify, send_from_directory
+from datetime import datetime
+
+app = Flask(__name__, static_folder='static')
+
+DATA_FILE = "alerts.json"
+TEHRAN    = pytz.timezone("Asia/Tehran")
+
+def now_teh():
+    return datetime.now(TEHRAN).strftime("%Y-%m-%d %H:%M:%S")
+
+def now_pretty():
+    return datetime.now(TEHRAN).strftime("%Y/%m/%d %H:%M")
+
+# ── Storage ───────────────────────────────────────────────────────
+def load_data():
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {
+        "alerts": [], "candle_alerts": [],
+        "archive": [],
+        "telegram": {"bot_token": "", "chat_ids": []},
+        "users": [], "errors": [], "last_update": None
+    }
+
+def save_data(data):
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+def log_error(msg):
+    try:
+        data = load_data()
+        errs = data.get("errors", [])
+        errs.append({"time": now_teh(), "msg": str(msg)})
+        data["errors"] = errs[-20:]
+        save_data(data)
+    except Exception:
+        pass
+    print(f"[ERR] {msg}")
+
+# ── Price Fetching — multi-source with full precision ─────────────
+H = {"User-Agent": "Mozilla/5.0 (compatible; PriceBot/1.0)"}
+
+def _get(url, timeout=8):
+    r = requests.get(url, timeout=timeout, headers=H)
+    r.raise_for_status()
+    return r.json()
+
+def get_crypto_price(symbol):
+    """Try 6 sources in order, return first successful price"""
+    base = symbol.upper()
+    for s in ["USDT","USDC","USD","BUSD"]:
+        base = base.replace(s,"")
+    base = base.replace("/","").strip()
+
+    sources = [
+        ("Binance-USDT",   lambda: float(_get(f"https://api.binance.com/api/v3/ticker/price?symbol={base}USDT")["price"])),
+        ("Binance-USDC",   lambda: float(_get(f"https://api.binance.com/api/v3/ticker/price?symbol={base}USDC")["price"])),
+        ("Bybit",          lambda: float(_get(f"https://api.bybit.com/v5/market/tickers?category=spot&symbol={base}USDT")["result"]["list"][0]["lastPrice"])),
+        ("OKX",            lambda: float(_get(f"https://www.okx.com/api/v5/market/ticker?instId={base}-USDT")["data"][0]["last"])),
+        ("KuCoin",         lambda: float(_get(f"https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={base}-USDT")["data"]["price"])),
+        ("CoinGecko",      lambda: _cg_price(base)),
+        ("CryptoCompare",  lambda: float(_get(f"https://min-api.cryptocompare.com/data/price?fsym={base}&tsyms=USD")["USD"])),
+    ]
+    for name, fn in sources:
+        try:
+            p = fn()
+            if p and p > 0:
+                print(f"[price] {base} = {p} via {name}")
+                return float(p)
+        except Exception as e:
+            print(f"[{name}] {base} failed: {e}")
+    log_error(f"All crypto sources failed for {symbol}")
+    return None
+
+CG_MAP = {
+    "BTC":"bitcoin","ETH":"ethereum","BNB":"binancecoin","SOL":"solana",
+    "XRP":"ripple","ADA":"cardano","DOGE":"dogecoin","TRX":"tron",
+    "TON":"toncoin","AVAX":"avalanche-2","LINK":"chainlink","DOT":"polkadot",
+    "MATIC":"matic-network","UNI":"uniswap","ATOM":"cosmos","LTC":"litecoin",
+    "SHIB":"shiba-inu","OP":"optimism","ARB":"arbitrum","NEAR":"near",
+    "FTM":"fantom","SAND":"the-sandbox","MANA":"decentraland",
+}
+
+def _cg_price(base):
+    gid = CG_MAP.get(base)
+    if not gid: return None
+    d = _get(f"https://api.coingecko.com/api/v3/simple/price?ids={gid}&vs_currencies=usd")
+    return float(d[gid]["usd"])
+
+def get_forex_price(symbol):
+    """
+    Get forex price with FULL precision (5 decimal places for EUR/USD etc).
+    symbol: EURUSD, XAUUSD, GBPUSD, USDJPY ...
+    """
+    sym   = symbol.upper().replace("/","").replace(" ","").strip()
+    if len(sym) < 6: return None
+    base  = sym[:3]
+    quote = sym[3:6]
+
+    # ── Gold / Silver special ──────────────────────────────────────
+    if base in ("XAU", "XAG"):
+        metal_map = {"XAU": "gold", "XAG": "silver"}
+        metal = metal_map.get(base, "gold")
+        sources = [
+            ("metals.live",  lambda: float(_get(f"https://api.metals.live/v1/spot/{metal}")[0]["price"])),
+            ("gold-api",     lambda: float(_get("https://api.gold-api.com/price/XAU")["price"])),
+            ("er-api-xau",   lambda: _er_xau()),
+            ("CG-XAUT",      lambda: float(_get("https://api.coingecko.com/api/v3/simple/price?ids=tether-gold&vs_currencies=usd")["tether-gold"]["usd"])),
+            ("CG-PAXG",      lambda: float(_get("https://api.coingecko.com/api/v3/simple/price?ids=pax-gold&vs_currencies=usd")["pax-gold"]["usd"])),
+        ]
+        for name, fn in sources:
+            try:
+                p = fn()
+                if p and p > 0:
+                    print(f"[price] {sym} = {p} via {name}")
+                    return float(p)
+            except Exception as e:
+                print(f"[{name}] {sym} failed: {e}")
+        log_error(f"All gold sources failed for {symbol}")
+        return None
+
+    # ── Regular Forex — need 5 decimal precision ──────────────────
+    # Priority: sources that give most decimal places
+    sources = [
+        # fawazahmed0 currency API — very precise free JSON
+        ("fawazahmed0-latest", lambda: _fawaz(base, quote)),
+        ("fawazahmed0-date",   lambda: _fawaz_date(base, quote)),
+        # frankfurter — 5dp
+        ("frankfurter",        lambda: float(_get(f"https://api.frankfurter.app/latest?from={base}&to={quote}")["rates"][quote])),
+        # open.er-api — 6dp
+        ("open-er-api",        lambda: float(_get(f"https://open.er-api.com/v6/latest/{base}")["rates"][quote])),
+        # exchangerate-api
+        ("exchangerate-api",   lambda: float(_get(f"https://api.exchangerate-api.com/v4/latest/{base}")["rates"][quote])),
+        # currencyapi.net (no key needed for some endpoints)
+        ("abstractapi",        lambda: _abstractapi(base, quote)),
+    ]
+    for name, fn in sources:
+        try:
+            p = fn()
+            if p and p > 0:
+                print(f"[price] {sym} = {p:.6f} via {name}")
+                return float(p)
+        except Exception as e:
+            print(f"[{name}] {sym} failed: {e}")
+    log_error(f"All forex sources failed for {symbol}")
+    return None
+
+def _er_xau():
+    """Get gold price via USD/XAU inverse rate"""
+    d = _get("https://api.exchangerate-api.com/v4/latest/USD")
+    xau = d["rates"].get("XAU")
+    if xau: return float(1/xau)
+    return None
+
+def _fawaz(base, quote):
+    """fawazahmed0 currency API — free, precise, no key"""
+    url = f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{base.lower()}.json"
+    d = _get(url)
+    val = d.get(base.lower(), {}).get(quote.lower())
+    if val: return float(val)
+    return None
+
+def _fawaz_date(base, quote):
+    """Fallback with date-specific endpoint"""
+    from datetime import date
+    today = date.today().strftime("%Y-%m-%d")
+    url = f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@{today}/v1/currencies/{base.lower()}.json"
+    d = _get(url)
+    val = d.get(base.lower(), {}).get(quote.lower())
+    if val: return float(val)
+    return None
+
+def _abstractapi(base, quote):
+    """Try abstractapi free tier (no key needed for basic)"""
+    # This one sometimes works without key
+    url = f"https://api.abstractapi.com/v1/exchange-rates/live/?base={base}&target={quote}"
+    d = _get(url)
+    rates = d.get("exchange_rates", {})
+    if quote in rates: return float(rates[quote])
+    return None
+
+def get_price(symbol, asset_type):
+    if asset_type == "crypto": return get_crypto_price(symbol)
+    return get_forex_price(symbol)
+
+def calc_dist(symbol, atype, cur, tgt):
+    if not cur or not tgt: return ""
+    diff = abs(tgt - cur)
+    if atype == "crypto":
+        return f"{diff/cur*100:.2f}%"
+    is_jpy = "JPY" in symbol.upper()
+    return f"{round(diff*(100 if is_jpy else 10000)):,} pip"
+
+# ── Telegram ──────────────────────────────────────────────────────
+def send_tg(token, chat_id, text):
+    try:
+        r = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": str(chat_id), "text": text, "parse_mode": "HTML"},
+            timeout=10, headers=H)
+        return r.status_code == 200
+    except Exception:
+        return False
+
+def broadcast(token, chat_ids, text):
+    return [send_tg(token, c, text) for c in chat_ids]
+
+def _get_token_and_cids():
+    data  = load_data()
+    tg    = data.get("telegram", {})
+    token = tg.get("bot_token", "")
+    cids  = list(tg.get("chat_ids", []))
+    leg   = tg.get("chat_id", "")
+    if leg and leg not in [str(x) for x in cids]:
+        cids.append(leg)
+    return token, cids, data
+
+# ── Telegram polling ──────────────────────────────────────────────
+def poll_telegram():
+    last_id = 0
+    while True:
+        try:
+            token, _, data = _get_token_and_cids()
+            if not token:
+                time.sleep(30)
+                continue
+            r = requests.get(
+                f"https://api.telegram.org/bot{token}/getUpdates",
+                params={"offset": last_id+1, "timeout": 20, "limit": 100},
+                timeout=30, headers=H)
+            if r.status_code != 200:
+                time.sleep(10)
+                continue
+            for upd in r.json().get("result", []):
+                last_id = upd["update_id"]
+                msg   = upd.get("message", {})
+                txt   = msg.get("text", "")
+                ch    = msg.get("chat", {})
+                cid   = str(ch.get("id", ""))
+                uname = ch.get("username", "") or ch.get("first_name", "")
+                if txt.startswith("/start") and cid:
+                    data  = load_data()
+                    users = data.get("users", [])
+                    if cid not in [str(u["chat_id"]) for u in users]:
+                        users.append({"chat_id": cid, "username": uname, "joined_at": now_teh()})
+                        data["users"] = users
+                        ids = data.get("telegram", {}).get("chat_ids", [])
+                        if cid not in [str(x) for x in ids]:
+                            ids.append(cid)
+                        data["telegram"]["chat_ids"] = ids
+                        save_data(data)
+                        send_tg(token, cid,
+                            f"👋 سلام <b>{uname}</b>!\n✅ در سیستم آلارم ثبت شدید. 🔔")
+        except Exception as e:
+            print(f"[poll] {e}")
+        time.sleep(5)
+
+# ── Price alert checker — every 1 minute ─────────────────────────
+notified = set()
+
+def check_alerts():
+    while True:
+        try:
+            token, cids, data = _get_token_and_cids()
+            fired = []
+            for a in data.get("alerts", []):
+                if not a.get("active"):
+                    continue
+                sym, atype = a["symbol"], a.get("type", "crypto")
+                tgt  = float(a["target_price"])
+                cond = a.get("condition", "above")
+                cur  = get_price(sym, atype)
+                if cur is None:
+                    continue
+                a["last_price"]   = cur
+                a["last_checked"] = now_teh()
+                data["last_update"] = now_teh()
+                triggered = (cond == "above" and cur >= tgt) or (cond == "below" and cur <= tgt)
+                if triggered and a["id"] not in notified:
+                    notified.add(a["id"])
+                    a["active"] = False
+                    a["fired_at"]    = now_teh()
+                    a["fired_price"] = cur
+                    fired.append(a["id"])
+                    if token and cids:
+                        dist = calc_dist(sym, atype, cur, tgt)
+                        cmt  = f"\n💬 <i>{a['comment']}</i>" if a.get("comment") else ""
+                        msg  = (
+                            f"🚨 <b>آلارم قیمت!</b>\n\n"
+                            f"💰 <b>{sym}</b> "
+                            f"{'📈 از هدف رد شد' if cond=='above' else '📉 به هدف رسید'}\n\n"
+                            f"🎯 هدف: <b>${tgt:,.5f}</b>\n"
+                            f"📊 قیمت: <b>${cur:,.5f}</b>\n"
+                            f"📏 فاصله: <b>{dist}</b>"
+                            f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
+                        )
+                        broadcast(token, cids, msg)
+            if fired:
+                arch = data.get("archive", [])
+                for fid in fired:
+                    obj = next((x for x in data["alerts"] if x["id"] == fid), None)
+                    if obj: arch.append(obj)
+                data["archive"] = arch
+                data["alerts"]  = [x for x in data["alerts"] if x["id"] not in fired]
+            save_data(data)
+        except Exception as e:
+            log_error(f"check_alerts: {e}")
+        time.sleep(60)   # every 1 minute
+
+# ── Candle close checker ──────────────────────────────────────────
+def check_candles():
+    while True:
+        try:
+            token, cids, data = _get_token_and_cids()
+            now = datetime.now(TEHRAN)
+            TF_LABEL = {5:"۵ دقیقه", 15:"۱۵ دقیقه", 30:"۳۰ دقیقه", 60:"۱ ساعت", 240:"۴ ساعت"}
+
+            for a in data.get("candle_alerts", []):
+                if not a.get("active"):
+                    continue
+                tf     = int(a.get("timeframe", 60))
+                last_f = a.get("last_fired")
+                fire   = True
+                if last_f:
+                    try:
+                        lt   = TEHRAN.localize(datetime.strptime(last_f, "%Y-%m-%d %H:%M:%S"))
+                        fire = (now - lt).total_seconds() / 60 >= tf
+                    except Exception:
+                        fire = True
+                if not fire:
+                    continue
+                sym, atype = a["symbol"], a.get("type", "crypto")
+                cur = get_price(sym, atype)
+                if cur is None:
+                    continue
+                a["last_fired"] = now_teh()
+                a["last_price"] = cur
+                if token and cids:
+                    tf_l = TF_LABEL.get(tf, f"{tf} دقیقه")
+                    cmt  = f"\n💬 <i>{a['comment']}</i>" if a.get("comment") else ""
+                    msg  = (
+                        f"🕯 <b>کلوز کندل {tf_l}</b>\n\n"
+                        f"💰 <b>{sym}</b>\n"
+                        f"📊 قیمت کلوز: <b>${cur:,.5f}</b>"
+                        f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
+                    )
+                    broadcast(token, cids, msg)
+            save_data(data)
+        except Exception as e:
+            log_error(f"check_candles: {e}")
+        time.sleep(60)   # every 1 minute
+
+# ── Routes ────────────────────────────────────────────────────────
+@app.route("/")
+def index():
+    return send_from_directory("static", "index.html")
+
+@app.route("/api/config", methods=["GET","POST"])
+def config():
+    data = load_data()
+    if request.method == "POST":
+        body = request.json or {}
+        tg   = data.get("telegram", {})
+        if body.get("bot_token"):
+            tg["bot_token"] = body["bot_token"]
+        if body.get("chat_id"):
+            cid = str(body["chat_id"])
+            ids = [str(x) for x in tg.get("chat_ids", [])]
+            if cid not in ids: ids.append(cid)
+            tg["chat_ids"] = ids
+            tg["chat_id"]  = cid
+        data["telegram"] = tg
+        save_data(data)
+        return jsonify({"ok": True})
+    tg = data.get("telegram", {})
+    return jsonify({"bot_token": tg.get("bot_token",""), "chat_id": tg.get("chat_id",""),
+                    "chat_ids": tg.get("chat_ids",[]), "user_count": len(data.get("users",[]))})
+
+@app.route("/api/alerts", methods=["GET"])
+def get_alerts():
+    return jsonify(load_data().get("alerts", []))
+
+@app.route("/api/alerts", methods=["POST"])
+def add_alert():
+    data = load_data()
+    body = request.json or {}
+    a = {
+        "id": str(int(time.time() * 1000)),
+        "symbol":       body.get("symbol","").upper().strip(),
+        "type":         body.get("type","crypto"),
+        "target_price": float(body.get("target_price", 0)),
+        "condition":    body.get("condition","above"),
+        "comment":      body.get("comment","").strip(),
+        "active":       True,
+        "last_price":   None,
+        "last_checked": None,
+        "created_at":   now_teh()
+    }
+    data["alerts"].append(a)
+    save_data(data)
+    return jsonify({"ok": True, "alert": a})
+
+@app.route("/api/alerts/<aid>", methods=["DELETE"])
+def del_alert(aid):
+    data = load_data()
+    data["alerts"] = [a for a in data["alerts"] if a["id"] != aid]
+    save_data(data)
+    notified.discard(aid)
+    return jsonify({"ok": True})
+
+@app.route("/api/candle-alerts", methods=["GET"])
+def get_candles():
+    return jsonify(load_data().get("candle_alerts", []))
+
+@app.route("/api/candle-alerts", methods=["POST"])
+def add_candle():
+    data = load_data()
+    body = request.json or {}
+    a = {
+        "id":         str(int(time.time() * 1000)),
+        "symbol":     body.get("symbol","").upper().strip(),
+        "type":       body.get("type","crypto"),
+        "timeframe":  int(body.get("timeframe", 60)),
+        "comment":    body.get("comment","").strip(),
+        "active":     True,
+        "last_price": None,
+        "last_fired": None,
+        "created_at": now_teh()
+    }
+    if not a["symbol"]:
+        return jsonify({"ok": False, "error": "نماد الزامی است"}), 400
+    data.setdefault("candle_alerts", []).append(a)
+    save_data(data)
+    return jsonify({"ok": True, "alert": a})
+
+@app.route("/api/candle-alerts/<aid>", methods=["DELETE"])
+def del_candle(aid):
+    data = load_data()
+    data["candle_alerts"] = [a for a in data.get("candle_alerts",[]) if a["id"] != aid]
+    save_data(data)
+    return jsonify({"ok": True})
+
+@app.route("/api/candle-alerts/<aid>/toggle", methods=["POST"])
+def toggle_candle(aid):
+    data = load_data()
+    for a in data.get("candle_alerts", []):
+        if a["id"] == aid:
+            a["active"] = not a.get("active", True)
+            break
+    save_data(data)
+    return jsonify({"ok": True})
+
+@app.route("/api/archive", methods=["GET"])
+def get_archive():
+    return jsonify(load_data().get("archive", []))
+
+@app.route("/api/archive", methods=["DELETE"])
+def clear_archive():
+    data = load_data()
+    data["archive"] = []
+    save_data(data)
+    return jsonify({"ok": True})
+
+@app.route("/api/archive/<aid>", methods=["DELETE"])
+def del_archive(aid):
+    data = load_data()
+    data["archive"] = [a for a in data.get("archive",[]) if a["id"] != aid]
+    save_data(data)
+    return jsonify({"ok": True})
+
+@app.route("/api/users", methods=["GET"])
+def get_users():
+    return jsonify(load_data().get("users", []))
+
+@app.route("/api/users/<cid>", methods=["DELETE"])
+def del_user(cid):
+    data = load_data()
+    data["users"] = [u for u in data.get("users",[]) if str(u["chat_id"]) != str(cid)]
+    data["telegram"]["chat_ids"] = [x for x in data["telegram"].get("chat_ids",[]) if str(x) != str(cid)]
+    save_data(data)
+    return jsonify({"ok": True})
+
+@app.route("/api/price/<atype>/<symbol>")
+def live_price(atype, symbol):
+    p = get_price(symbol.upper(), atype)
+    if p is None:
+        return jsonify({"error": "قیمت پیدا نشد"}), 404
+    return jsonify({"symbol": symbol.upper(), "price": p})
+
+@app.route("/api/test-telegram", methods=["POST"])
+def test_tg():
+    token, cids, _ = _get_token_and_cids()
+    if not token or not cids:
+        return jsonify({"ok": False, "error": "توکن یا chat_id ست نشده"})
+    res = broadcast(token, cids, f"✅ <b>تست موفق</b>\n🔔 اتصال برقرار است.\n⏰ {now_pretty()} (تهران)")
+    return jsonify({"ok": any(res), "sent": sum(res), "total": len(cids)})
+
+@app.route("/api/status")
+def status():
+    data = load_data()
+    return jsonify({
+        "status":      "ok",
+        "last_update": data.get("last_update"),
+        "errors":      data.get("errors", [])[-5:],
+        "time_tehran": now_teh(),
+        "alert_count": len(data.get("alerts",[])),
+        "candle_count":len(data.get("candle_alerts",[])),
+    })
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok", "time": now_teh()})
+
+threading.Thread(target=check_alerts,  daemon=True).start()
+threading.Thread(target=check_candles, daemon=True).start()
+threading.Thread(target=poll_telegram, daemon=True).start()
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
