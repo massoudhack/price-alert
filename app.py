@@ -138,31 +138,20 @@ def get_forex_price(symbol):
         log_error(f"All gold/silver sources failed for {symbol}")
         return None
 
-    # ── Regular Forex — REAL-TIME sources only ────────────────────
-    # Frankfurter/exchangerate-api/open.er-api are daily/hourly — NOT used
-    # as primary sources because they give rounded prices like 1.17 not 1.1730
+    # ── Regular Forex — با اعشار کامل ────────────────────────────
     sources = [
-        # 1. Yahoo Finance — real-time tick data, 4-5dp, best source
-        ("yahoo",
-         lambda: _yahoo(base, quote)),
-        # 2. Coinbase — real-time, good for USD pairs (EURUSD, GBPUSD...)
-        ("coinbase",
-         lambda: _coinbase(base, quote)),
-        # 3. Wise (TransferWise) — mid-market real-time rate, 5-6dp
-        ("wise",
-         lambda: _wise(base, quote)),
-        # 4. open.er-api — hourly, 6dp (better than daily)
-        ("open-er-api",
-         lambda: float(_get(f"https://open.er-api.com/v6/latest/{base}")["rates"][quote])),
-        # 5. fxratesapi — near real-time
-        ("fxratesapi",
-         lambda: float(_get(f"https://api.fxratesapi.com/latest?base={base}&currencies={quote}")["rates"][quote])),
-        # 6. Frankfurter — daily ECB rate, last resort
-        ("frankfurter",
-         lambda: float(_get(f"https://api.frankfurter.app/latest?from={base}&to={quote}")["rates"][quote])),
-        # 7. exchangerate-api — daily, absolute last resort
-        ("exchangerate-api",
-         lambda: float(_get(f"https://api.exchangerate-api.com/v4/latest/{base}")["rates"][quote])),
+        # 1. Yahoo Finance — real-time tick، بهترین منبع، 4-5 اعشار
+        ("yahoo",           lambda: _yahoo(base, quote)),
+        # 2. fawaz — API مستقیم (نه CDN)، 6 اعشار، آپدیت چند دقیقه‌ای
+        ("fawaz-api",       lambda: _fawaz_direct(base, quote)),
+        # 3. open.er-api — هر ساعت آپدیت، 6 اعشار
+        ("open-er-api",     lambda: float(_get(f"https://open.er-api.com/v6/latest/{base}")["rates"][quote])),
+        # 4. fxratesapi
+        ("fxratesapi",      lambda: float(_get(f"https://api.fxratesapi.com/latest?base={base}&currencies={quote}")["rates"][quote])),
+        # 5. Frankfurter — روزانه ECB، آخرین fallback
+        ("frankfurter",     lambda: float(_get(f"https://api.frankfurter.app/latest?from={base}&to={quote}")["rates"][quote])),
+        # 6. exchangerate-api
+        ("exchangerate-api",lambda: float(_get(f"https://api.exchangerate-api.com/v4/latest/{base}")["rates"][quote])),
     ]
     for name, fn in sources:
         try:
@@ -176,61 +165,49 @@ def get_forex_price(symbol):
     return None
 
 def _yahoo(base, quote):
-    """
-    Yahoo Finance — real-time forex tick, 4-5 decimal places.
-    Pair format: EURUSD=X, GBPUSD=X, USDJPY=X, XAUUSD=X
-    """
+    """Yahoo Finance — real-time tick، 4-5 رقم اعشار، بدون API key"""
     ticker = f"{base}{quote}=X"
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1m&range=1d"
-    H2 = {**H, "Accept": "application/json"}
-    r = requests.get(url, headers=H2, timeout=8)
-    r.raise_for_status()
-    d = r.json()
-    # Try regularMarketPrice first (most accurate current price)
-    meta = d["chart"]["result"][0]["meta"]
-    p = meta.get("regularMarketPrice") or meta.get("previousClose")
-    if p and p > 0:
-        return float(p)
+    # query2 معمولاً محدودیت کمتری داره
+    for host in ["query2", "query1"]:
+        try:
+            url = f"https://{host}.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1m&range=1d"
+            r = requests.get(url, headers={**H, "Accept": "application/json"}, timeout=8)
+            if r.status_code != 200:
+                continue
+            meta = r.json()["chart"]["result"][0]["meta"]
+            p = meta.get("regularMarketPrice") or meta.get("previousClose")
+            if p and p > 0:
+                return float(p)
+        except Exception:
+            continue
     return None
 
-def _coinbase(base, quote):
-    """Coinbase spot — real-time, works well for USD pairs"""
-    # Direct: EUR-USD
-    if quote == "USD":
-        d = _get(f"https://api.coinbase.com/v2/prices/{base}-USD/spot")
-        p = float(d["data"]["amount"])
-        if p > 0: return p
-    # Inverse: if base is USD, get quote-USD and invert
-    if base == "USD":
-        d = _get(f"https://api.coinbase.com/v2/prices/{quote}-USD/spot")
-        p = float(d["data"]["amount"])
-        if p > 0: return float(1 / p)
-    # Cross: base→USD and quote→USD, then divide
-    try:
-        p_base = float(_get(f"https://api.coinbase.com/v2/prices/{base}-USD/spot")["data"]["amount"])
-        p_quote = float(_get(f"https://api.coinbase.com/v2/prices/{quote}-USD/spot")["data"]["amount"])
-        if p_base > 0 and p_quote > 0:
-            return p_base / p_quote
-    except Exception:
-        pass
-    return None
-
-def _wise(base, quote):
+def _fawaz_direct(base, quote):
     """
-    Wise (TransferWise) mid-market rate — real-time, very accurate, 5-6dp.
-    No API key needed.
+    fawazahmed0 — API مستقیم (نه CDN cache)، داده‌های دقیق با 6 اعشار.
+    endpoint مستقیم API به‌روزتر از CDN است.
     """
-    url = f"https://wise.com/rates/live?source={base}&target={quote}"
-    r = requests.get(url, headers=H, timeout=8)
-    r.raise_for_status()
-    d = r.json()
-    # Response: {"value": 1.17302, "source": "EUR", "target": "USD", ...}
-    p = d.get("value") or d.get("rate")
-    if p and p > 0: return float(p)
+    # endpoint اصلی API — نه jsdelivr CDN
+    for url in [
+        f"https://latest.currency-api.pages.dev/v1/currencies/{base.lower()}.json",
+        f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{base.lower()}.min.json",
+        f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{base.lower()}.json",
+    ]:
+        try:
+            r = requests.get(url, headers=H, timeout=8)
+            if r.status_code != 200:
+                continue
+            d = r.json()
+            # ساختار: {"date":"...","eur":{"usd":1.17302,...}}
+            val = d.get(base.lower(), {}).get(quote.lower())
+            if val and float(val) > 0:
+                return float(val)
+        except Exception:
+            continue
     return None
 
 def _er_xau():
-    """Gold via USD/XAU inverse — exchangerate updates every few minutes"""
+    """Gold via USD/XAU inverse"""
     d = _get("https://api.exchangerate-api.com/v4/latest/USD")
     xau = d["rates"].get("XAU")
     if xau and xau > 0: return float(1 / xau)
