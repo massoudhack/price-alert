@@ -125,64 +125,58 @@ def get_forex_price(symbol):
         log_error(f"All gold sources failed for {symbol}")
         return None
 
-    # ── Regular Forex — need 5 decimal precision ──────────────────
-    # Priority: sources that give most decimal places
+    # ── Regular Forex — real-time با 4-6 رقم اعشار ────────────────
     sources = [
-        # fawazahmed0 currency API — very precise free JSON
-        ("fawazahmed0-latest", lambda: _fawaz(base, quote)),
-        ("fawazahmed0-date",   lambda: _fawaz_date(base, quote)),
-        # frankfurter — 5dp
-        ("frankfurter",        lambda: float(_get(f"https://api.frankfurter.app/latest?from={base}&to={quote}")["rates"][quote])),
-        # open.er-api — 6dp
-        ("open-er-api",        lambda: float(_get(f"https://open.er-api.com/v6/latest/{base}")["rates"][quote])),
-        # exchangerate-api
-        ("exchangerate-api",   lambda: float(_get(f"https://api.exchangerate-api.com/v4/latest/{base}")["rates"][quote])),
-        # currencyapi.net (no key needed for some endpoints)
-        ("abstractapi",        lambda: _abstractapi(base, quote)),
+        # 1. fawaz direct API (نه CDN) — آپدیت چند دقیقه‌ای، 6dp
+        ("fawaz-direct",   lambda: _fawaz_direct(base, quote)),
+        # 2. open.er-api — رایگان بدون key، هر 60 ثانیه آپدیت، 6dp
+        ("open-er-api",    lambda: float(_get(f"https://open.er-api.com/v6/latest/{base}")["rates"][quote])),
+        # 3. fxratesapi — رایگان، 6dp
+        ("fxratesapi",     lambda: float(_get(f"https://api.fxratesapi.com/latest?base={base}&currencies={quote}")["rates"][quote])),
+        # 4. frankfurter — 5dp، fallback
+        ("frankfurter",    lambda: float(_get(f"https://api.frankfurter.app/latest?from={base}&to={quote}")["rates"][quote])),
+        # 5. exchangerate-api — آخرین fallback
+        ("er-api-v4",      lambda: float(_get(f"https://api.exchangerate-api.com/v4/latest/{base}")["rates"][quote])),
     ]
     for name, fn in sources:
         try:
             p = fn()
-            if p and p > 0:
-                print(f"[price] {sym} = {p:.6f} via {name}")
+            if p and float(p) > 0:
+                print(f"[price] {sym} = {float(p):.6f} via {name}")
                 return float(p)
         except Exception as e:
             print(f"[{name}] {sym} failed: {e}")
     log_error(f"All forex sources failed for {symbol}")
     return None
 
+def _fawaz_direct(base, quote):
+    """
+    fawazahmed0 — endpoint مستقیم (نه jsdelivr CDN که کش روزانه دارد).
+    latest.currency-api.pages.dev هر چند دقیقه آپدیت می‌شود.
+    ساختار JSON: {"date":"...","eur":{"usd":1.173024,...}}
+    """
+    b = base.lower()
+    q = quote.lower()
+    for url in [
+        f"https://latest.currency-api.pages.dev/v1/currencies/{b}.json",
+        f"https://latest.currency-api.pages.dev/v1/currencies/{b}.min.json",
+        f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{b}.json",
+    ]:
+        try:
+            d = _get(url)
+            val = d.get(b, {}).get(q)
+            if val and float(val) > 0:
+                return float(val)
+        except Exception:
+            continue
+    return None
+
 def _er_xau():
-    """Get gold price via USD/XAU inverse rate"""
+    """طلا از طریق نرخ معکوس XAU/USD"""
     d = _get("https://api.exchangerate-api.com/v4/latest/USD")
     xau = d["rates"].get("XAU")
-    if xau: return float(1/xau)
-    return None
-
-def _fawaz(base, quote):
-    """fawazahmed0 currency API — free, precise, no key"""
-    url = f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{base.lower()}.json"
-    d = _get(url)
-    val = d.get(base.lower(), {}).get(quote.lower())
-    if val: return float(val)
-    return None
-
-def _fawaz_date(base, quote):
-    """Fallback with date-specific endpoint"""
-    from datetime import date
-    today = date.today().strftime("%Y-%m-%d")
-    url = f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@{today}/v1/currencies/{base.lower()}.json"
-    d = _get(url)
-    val = d.get(base.lower(), {}).get(quote.lower())
-    if val: return float(val)
-    return None
-
-def _abstractapi(base, quote):
-    """Try abstractapi free tier (no key needed for basic)"""
-    # This one sometimes works without key
-    url = f"https://api.abstractapi.com/v1/exchange-rates/live/?base={base}&target={quote}"
-    d = _get(url)
-    rates = d.get("exchange_rates", {})
-    if quote in rates: return float(rates[quote])
+    if xau and float(xau) > 0:
+        return float(1 / xau)
     return None
 
 def get_price(symbol, asset_type):
@@ -345,16 +339,16 @@ def check_candles():
                     tf_l = TF_LABEL.get(tf, f"{tf} دقیقه")
                     cmt  = f"\n💬 <i>{a['comment']}</i>" if a.get("comment") else ""
                     msg  = (
-                        f"🕯 <b>کلوز کندل {tf_l}</b>\n\n"
+                        f"⏰ <b>آلارم زمانی — {tf_l}</b>\n\n"
                         f"💰 <b>{sym}</b>\n"
-                        f"📊 قیمت کلوز: <b>${cur:,.5f}</b>"
+                        f"📊 قیمت: <b>${cur:,.5f}</b>"
                         f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
                     )
                     broadcast(token, cids, msg)
             save_data(data)
         except Exception as e:
             log_error(f"check_candles: {e}")
-        time.sleep(60)   # every 1 minute
+        time.sleep(60)
 
 # ── Routes ────────────────────────────────────────────────────────
 @app.route("/")
