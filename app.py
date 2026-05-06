@@ -4,57 +4,8 @@ from datetime import datetime
 
 app = Flask(__name__, static_folder='static')
 
-GIST_ID    = os.environ.get("GIST_ID", "")
-GIST_TOKEN = os.environ.get("GIST_TOKEN", "")
-GIST_FILE  = "alerts.json"
-TEHRAN     = pytz.timezone("Asia/Tehran")
-_cache     = None
-
-EMPTY_DATA = lambda: {
-    "alerts": [], "archive": [],
-    "telegram": {"bot_token": "", "chat_ids": []},
-    "users": [], "errors": [], "last_update": None
-}
-
-# ── Storage ───────────────────────────────────────────────────────
-def load_data():
-    global _cache
-    if _cache is not None:
-        return _cache
-    if GIST_ID and GIST_TOKEN:
-        try:
-            r = requests.get(
-                f"https://api.github.com/gists/{GIST_ID}",
-                headers={"Authorization": f"token {GIST_TOKEN}"},
-                timeout=10)
-            if r.status_code == 200:
-                content = r.json()["files"][GIST_FILE]["content"]
-                _cache = json.loads(content)
-                return _cache
-        except Exception as e:
-            print(f"[gist load] {e}")
-    _cache = EMPTY_DATA()
-    return _cache
-
-def save_data(data):
-    global _cache
-    _cache = data
-    if GIST_ID and GIST_TOKEN:
-        try:
-            requests.patch(
-                f"https://api.github.com/gists/{GIST_ID}",
-                headers={"Authorization": f"token {GIST_TOKEN}"},
-                json={"files": {GIST_FILE: {"content": json.dumps(data, indent=2, ensure_ascii=False)}}},
-                timeout=10)
-        except Exception as e:
-            print(f"[gist save] {e}")
-    else:
-        # fallback local
-        try:
-            with open("alerts.json", "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            print(f"[local save] {e}")
+DATA_FILE = "/data/alerts.json" if os.path.isdir("/data") else "alerts.json"
+TEHRAN    = pytz.timezone("Asia/Tehran")
 
 def now_teh():
     return datetime.now(TEHRAN).strftime("%Y-%m-%d %H:%M:%S")
@@ -240,8 +191,6 @@ notified = set()
 def check_alerts():
     while True:
         try:
-            global _cache
-            _cache = None  # هر بار از Gist بخون
             token, cids, data = _get_token_and_cids()
             fired = []
             for a in data.get("alerts", []):
