@@ -506,8 +506,10 @@ async function addAlert() {
 function getIntervalLabel(interval) {
     if (!interval) return null;
     if (interval <= 120)  return { label: '۲ دقیقه',  cls: 'hot' };
-    if (interval <= 600)  return { label: '۱۰ دقیقه', cls: 'warm' };
-    return { label: '۲۰ دقیقه', cls: 'cold' };
+    if (interval <= 300)  return { label: '۵ دقیقه',  cls: 'hot' };
+    if (interval <= 900)  return { label: '۱۵ دقیقه', cls: 'warm' };
+    if (interval <= 1800) return { label: '۳۰ دقیقه', cls: 'warm' };
+    return { label: '۱ ساعت', cls: 'cold' };
 }
 
 function minutesAgo(ts) {
