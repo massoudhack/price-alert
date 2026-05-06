@@ -237,7 +237,7 @@ def check_alerts():
             log_error(f"check_alerts: {e}")
         time.sleep(120)  # every 2 minutes
 
-# ── Routes ────────────────────────────────────────────────────────
+# ── Routeرs ────────────────────────────────────────────────────────
 @app.route("/")
 def index():
     return send_from_directory("static", "index.html")
