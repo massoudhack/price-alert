@@ -151,7 +151,7 @@ select option{background:var(--bg3)}
 .acard-dir{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-family:var(--mono);font-weight:700;padding:3px 8px;border-radius:5px}
 .acard-dir.up{background:var(--gdim);color:var(--green)}
 .acard-dir.dn{background:var(--rdim);color:var(--red)}
-.acard-cmt{font-size:10px;color:var(--text3);font-style:italic;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acard-cmt{font-size:13px;color:var(--text);font-style:normal;font-weight:500;margin-top:6px;padding:7px 10px;background:var(--bg3);border-radius:8px;border-right:3px solid var(--blue);line-height:1.5;word-break:break-word;white-space:normal}
 .acard-time{font-size:10px;color:var(--text3);font-family:var(--mono)}
 
 /* Watch dot */
@@ -504,11 +504,11 @@ function renderAlerts(alerts) {
     const cardCls   = isAbove ? 'above' : 'below';
     const ts        = (a.last_checked || a.created_at || '').slice(0, 16);
     const cmtHtml   = a.comment
-      ? `<div class="acard-cmt">💬 ${a.comment}</div>` : '';
+      ? `<div class="acard-cmt">📝 ${a.comment}</div>` : '';
 
     const liveHtml = cur != null
-      ? `<div class="pbox-val live" id="price-${a.id}">$${fmt(cur, a.symbol)}</div>`
-      : `<div class="pbox-val loading" id="price-${a.id}">دریافت...</div>`;
+      ? `<div class="pbox-val live">$${fmt(cur, a.symbol)}</div>`
+      : `<div class="pbox-val loading" id="live-${a.id}">دریافت...</div>`;
 
     const distHtml = cur != null
       ? `<div class="acard-dist">
@@ -524,7 +524,7 @@ function renderAlerts(alerts) {
         <div class="acard-badge">
           <div class="abadge ${isCrypto?'c':'f'}">${short}</div>
           <div>
-            <div class="acard-name">${a.symbol} <span class="wdot ${dotCls}" id="dot-${a.id}"></span></div>
+            <div class="acard-name">${a.symbol} <span class="wdot ${dotCls}"></span></div>
             <div class="acard-type">${a.type.toUpperCase()}</div>
           </div>
         </div>
@@ -547,7 +547,7 @@ function renderAlerts(alerts) {
       <div class="acard-foot">
         <span class="acard-dir ${dirCls}">${dirLabel}</span>
         ${cmtHtml}
-        <span class="acard-time" id="chk-${a.id}">${ts}</span>
+        <span class="acard-time">${ts}</span>
       </div>
     </div>`;
   }).join('');
@@ -583,34 +583,6 @@ async function loadAlerts() {
     document.getElementById('upd-dot').className = 'upd-dot err';
     document.getElementById('upd-txt').textContent = 'خطا در ارتباط با سرور';
   }
-}
-
-// آپدیت سریع فقط قیمت‌ها — بدون reload کامل صفحه
-async function refreshPricesOnly() {
-  try {
-    const r = await fetch(`${API}/api/prices-only`);
-    if (!r.ok) return;
-    const d = await r.json();
-
-    // آپدیت last_update نوار پایین
-    if (d.last_update) {
-      document.getElementById('upd-dot').className = 'upd-dot';
-      document.getElementById('upd-txt').textContent = 'آخرین بروزرسانی: ' + d.last_update;
-    }
-
-    // فقط قیمت و وضعیت هر ردیف رو آپدیت کن بدون re-render کامل
-    for (const a of d.alerts) {
-      const priceEl = document.getElementById(`price-${a.id}`);
-      const dotEl   = document.getElementById(`dot-${a.id}`);
-      const chkEl   = document.getElementById(`chk-${a.id}`);
-      if (priceEl && a.last_price != null)
-        priceEl.textContent = '$' + fmtPrice(a.last_price);
-      if (dotEl)
-        dotEl.className = 'sdot ' + (!a.active ? 'hit' : 'watch');
-      if (chkEl && a.last_checked)
-        chkEl.textContent = a.last_checked.slice(11,16);
-    }
-  } catch { /* silent */ }
 }
 
 async function deleteAlert(id) {
@@ -708,9 +680,8 @@ async function initConfig() {
 
 // ── Init ──────────────────────────────────────────────────────────
 initConfig();
-loadAlerts();                                    // بار اول — کامل
-setInterval(loadAlerts, 5 * 60 * 1000);         // هر ۵ دقیقه — reload کامل
-setInterval(refreshPricesOnly, 15 * 1000);      // هر ۱۵ ثانیه — فقط قیمت‌ها
+loadAlerts();
+setInterval(loadAlerts, 60000);
 </script>
 </body>
 </html>
