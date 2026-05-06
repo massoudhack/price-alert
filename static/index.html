@@ -190,6 +190,24 @@ select option{background:var(--bg3)}
 /* ── Toast ── */
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:10px 22px;border-radius:10px;font-size:13px;background:var(--bg4);border:1px solid var(--border3);color:var(--text);box-shadow:0 8px 32px rgba(0,0,0,.4);opacity:0;transition:opacity .25s;pointer-events:none;z-index:9999;font-family:var(--sans);white-space:nowrap}
 #toast.show{opacity:1}
+
+/* ── Interval badges ── */
+.iv-badge{display:inline-flex;align-items:center;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);font-weight:700;margin-right:4px;vertical-align:middle}
+.iv-badge.hot{background:rgba(0,217,139,.15);color:var(--green);border:1px solid rgba(0,217,139,.3)}
+.iv-badge.warm{background:rgba(240,165,0,.12);color:var(--gold);border:1px solid rgba(240,165,0,.25)}
+.iv-badge.cold{background:rgba(122,135,153,.1);color:var(--text2);border:1px solid var(--border)}
+
+/* کارت با border رنگی بر اساس interval */
+.acard.iv-hot  {border-color:rgba(0,217,139,.3)}
+.acard.iv-warm {border-color:rgba(240,165,0,.2)}
+.acard.iv-cold {border-color:var(--border)}
+
+/* آخرین بروزرسانی */
+.ago-lbl{font-size:9px;font-family:var(--mono);font-weight:600;padding:1px 5px;border-radius:3px;margin-right:3px;display:inline-block}
+.ago-lbl.hot {background:rgba(0,217,139,.1);color:var(--green)}
+.ago-lbl.warm{background:rgba(240,165,0,.1);color:var(--gold)}
+.ago-lbl.cold{background:rgba(122,135,153,.08);color:var(--text3)}
+
 </style>
 </head>
 <body>
@@ -485,13 +503,36 @@ async function addAlert() {
 }
 
 // ── Render alert cards ────────────────────────────────────────────
+function getIntervalLabel(interval) {
+    if (!interval) return null;
+    if (interval <= 120) return { label: '۲ دقیقه', cls: 'hot' };
+    if (interval <= 300) return { label: '۵ دقیقه', cls: 'warm' };
+    return { label: '۱۰ دقیقه', cls: 'cold' };
+}
+
+function minutesAgo(ts) {
+    if (!ts) return null;
+    const diff = (Date.now() - new Date(ts.replace(' ', 'T') + '+03:30')) / 60000;
+    if (diff < 1)   return 'همین الان';
+    if (diff < 60)  return Math.round(diff) + ' دقیقه پیش';
+    return Math.round(diff/60) + ' ساعت پیش';
+}
+
 function renderAlerts(alerts) {
   const grid = document.getElementById('cards-grid');
   if (!alerts.length) {
     grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-ico">◎</div><p>آلارمی ثبت نشده</p></div>';
     return;
   }
-  grid.innerHTML = alerts.map(a => {
+
+  // مرتب‌سازی: نزدیک‌ترها بالا (interval کمتر = اول)
+  const sorted = [...alerts].sort((a, b) => {
+    const ia = a.check_interval || 600;
+    const ib = b.check_interval || 600;
+    return ia - ib;
+  });
+
+  grid.innerHTML = sorted.map(a => {
     const isCrypto  = a.type === 'crypto';
     const short     = (a.symbol || '').slice(0, 4);
     const cur       = a.last_price;
@@ -499,33 +540,37 @@ function renderAlerts(alerts) {
     const isAbove   = a.condition === 'above';
     const di        = calcDist(cur, tgt, a.symbol);
     const dotCls    = cur != null ? 'watch' : 'pend';
-    const dirLabel  = isAbove ? '↑ بالاتر' : '↓ پایین‌تر';
-    const dirCls    = isAbove ? 'up' : 'dn';
     const cardCls   = isAbove ? 'above' : 'below';
-    const ts        = (a.last_checked || a.created_at || '').slice(0, 16);
-    const cmtHtml   = a.comment
-      ? `<div class="acard-cmt">📝 ${a.comment}</div>` : '';
+    const iv        = getIntervalLabel(a.check_interval);
+    const ago       = minutesAgo(a.last_checked);
+    const cmtHtml   = a.comment ? `<div class="acard-cmt">💬 ${a.comment}</div>` : '';
+
+    const ivBadge = iv
+      ? `<span class="iv-badge ${iv.cls}">${iv.label}</span>` : '';
 
     const liveHtml = cur != null
       ? `<div class="pbox-val live">$${fmt(cur, a.symbol)}</div>`
       : `<div class="pbox-val loading" id="live-${a.id}">دریافت...</div>`;
 
-    const distHtml = cur != null
-      ? `<div class="acard-dist">
-          <div class="dist-row">
-            <span class="dist-lbl">فاصله تا هدف</span>
-            <span class="dist-chip ${di.cls}">${di.text}</span>
-          </div>
-          <div class="dist-bar-bg"><div class="dist-bar ${di.cls}" style="width:${di.barPct}%"></div></div>
-        </div>` : '';
+    const agoHtml = ago
+      ? `<span class="ago-lbl ${iv ? iv.cls : ''}">${ago}</span>` : '';
 
-    return `<div class="acard ${cardCls}">
+    const distHtml = cur != null ? `
+      <div class="acard-dist">
+        <div class="dist-row">
+          <span class="dist-lbl">فاصله تا هدف</span>
+          <span class="dist-chip ${di.cls}">${di.text}</span>
+        </div>
+        <div class="dist-bar-bg"><div class="dist-bar ${di.cls}" style="width:${di.barPct}%"></div></div>
+      </div>` : '';
+
+    return `<div class="acard ${cardCls}${iv ? ' iv-'+iv.cls : ''}">
       <div class="acard-top">
         <div class="acard-badge">
           <div class="abadge ${isCrypto?'c':'f'}">${short}</div>
           <div>
             <div class="acard-name">${a.symbol} <span class="wdot ${dotCls}"></span></div>
-            <div class="acard-type">${a.type.toUpperCase()}</div>
+            <div class="acard-type">${a.type.toUpperCase()} ${ivBadge}</div>
           </div>
         </div>
         <button class="acard-del" onclick="deleteAlert('${a.id}')">✕</button>
@@ -533,7 +578,7 @@ function renderAlerts(alerts) {
 
       <div class="acard-prices">
         <div class="pbox">
-          <div class="pbox-lbl">قیمت لحظه‌ای</div>
+          <div class="pbox-lbl">قیمت لحظه‌ای ${agoHtml}</div>
           ${liveHtml}
         </div>
         <div class="pbox">
@@ -545,44 +590,11 @@ function renderAlerts(alerts) {
       ${distHtml}
 
       <div class="acard-foot">
-        <span class="acard-dir ${dirCls}">${dirLabel}</span>
+        <span class="acard-dir ${isAbove?'up':'dn'}">${isAbove?'↑ بالاتر':'↓ پایین‌تر'}</span>
         ${cmtHtml}
-        <span class="acard-time">${ts}</span>
       </div>
     </div>`;
   }).join('');
-}
-
-// ── Load alerts ───────────────────────────────────────────────────
-async function loadAlerts() {
-  try {
-    const r = await fetch(`${API}/api/alerts`);
-    const alerts = await r.json();
-    renderAlerts(alerts);
-    document.getElementById('sc-alerts').textContent     = alerts.length;
-    document.getElementById('sc-alerts-sub').textContent = alerts.length
-      ? alerts.filter(a=>a.active).length + ' فعال' : '—';
-    const checked = alerts.filter(a=>a.last_checked).map(a=>a.last_checked).sort();
-    if (checked.length)
-      document.getElementById('upd-lbl').textContent = checked[checked.length-1].slice(11,16);
-
-    const st = await fetch(`${API}/api/status`);
-    const sd = await st.json();
-    if (sd.last_update) {
-      document.getElementById('upd-dot').className = 'upd-dot';
-      document.getElementById('upd-txt').textContent = 'آخرین بروزرسانی: ' + sd.last_update;
-    }
-    if (sd.errors && sd.errors.length) {
-      document.getElementById('err-log').classList.add('show');
-      document.getElementById('err-items').innerHTML = sd.errors
-        .map(e => `<div class="err-item">${e.time} — ${e.msg}</div>`).join('');
-    } else {
-      document.getElementById('err-log').classList.remove('show');
-    }
-  } catch {
-    document.getElementById('upd-dot').className = 'upd-dot err';
-    document.getElementById('upd-txt').textContent = 'خطا در ارتباط با سرور';
-  }
 }
 
 async function deleteAlert(id) {
