@@ -16,10 +16,22 @@ def now_teh():
 def now_pretty():
     return datetime.now(TEHRAN).strftime("%Y/%m/%d %H:%M")
 
-# ── Storage ───د────────────────────────────────────────────────────
 def _empty():
-    return {"alerts":[],"archive":[],"telegram":{"bot_token":"","chat_ids":[]},"users":[],"errors":[],"last_update":None}
+    return {
+        "alerts": [], "archive": [],
+        "telegram": {"bot_token": "", "chat_ids": []},
+        "users": [], "errors": [], "last_update": None
+    }
 
+def _fix(data):
+    """مطمئن میشه همه کلیدها وجود دارن"""
+    e = _empty()
+    for k, v in e.items():
+        if k not in data:
+            data[k] = v
+    return data
+
+# ── Storage ───────────────────────────────────────────────────────
 def load_data():
     global _cache
     if _cache is not None:
@@ -31,15 +43,16 @@ def load_data():
                 headers={"Authorization": f"token {GIST_TOKEN}"},
                 timeout=10)
             if r.status_code == 200:
-                _cache = json.loads(r.json()["files"][GIST_FILE]["content"])
+                content = r.json()["files"][GIST_FILE]["content"]
+                _cache = _fix(json.loads(content))
                 return _cache
         except Exception as e:
             print(f"[gist load] {e}")
     # fallback local
     if os.path.exists("alerts.json"):
         try:
-            with open("alerts.json","r",encoding="utf-8") as f:
-                _cache = json.load(f)
+            with open("alerts.json", "r", encoding="utf-8") as f:
+                _cache = _fix(json.load(f))
                 return _cache
         except Exception:
             pass
@@ -54,15 +67,14 @@ def save_data(data):
             requests.patch(
                 f"https://api.github.com/gists/{GIST_ID}",
                 headers={"Authorization": f"token {GIST_TOKEN}"},
-                json={"files":{GIST_FILE:{"content":json.dumps(data,indent=2,ensure_ascii=False)}}},
+                json={"files": {GIST_FILE: {"content": json.dumps(data, indent=2, ensure_ascii=False)}}},
                 timeout=10)
             return
         except Exception as e:
             print(f"[gist save] {e}")
-    # fallback local
     try:
-        with open("alerts.json","w",encoding="utf-8") as f:
-            json.dump(data,f,indent=2,ensure_ascii=False)
+        with open("alerts.json", "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
     except Exception as e:
         print(f"[local save] {e}")
 
@@ -227,7 +239,7 @@ def check_alerts():
     while True:
         try:
             global _cache
-            _cache = None  # هر ۲ دقیقه از Gist بخون
+            _cache = None  # هر دور از Gist بخون
             token, cids, data = _get_token_and_cids()
             fired = []
             for a in data.get("alerts", []):
