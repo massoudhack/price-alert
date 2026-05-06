@@ -94,52 +94,22 @@ def _cg_price(base):
     return float(d[gid]["usd"])
 
 def get_forex_price(symbol):
-    sym = symbol.upper().replace("/","").replace(" ","").strip()
-    if len(sym) < 6:
-        return None
+    # فقط از biquote.io دریافت می‌کنه — MT5 با دقت کامل
+    sym = symbol.upper().replace("/", "").replace(" ", "").strip()
     try:
-        d = _get(f"https://biquote.io/api/{sym}")
-        p = d.get("bid")
-        if p and float(p) > 0:
-            print(f"[biquote] {sym} = {float(p)}")
-            return float(p)
+        r = requests.get(f"https://biquote.io/api/{sym}", timeout=8, headers=H)
+        r.raise_for_status()
+        d = r.json()
+        bid = d.get("bid")
+        if bid is not None and float(bid) > 0:
+            print(f"[biquote] {sym} = {float(bid)}")
+            return float(bid)
+        log_error(f"biquote returned zero/null for {sym}: {d}")
+        return None
     except Exception as e:
         log_error(f"biquote.io failed for {sym}: {e}")
-    return None
+        return None
 
-def _er_xau():
-    """Get gold price via USD/XAU inverse rate"""
-    d = _get("https://api.exchangerate-api.com/v4/latest/USD")
-    xau = d["rates"].get("XAU")
-    if xau: return float(1/xau)
-    return None
-
-def _fawaz(base, quote):
-    """fawazahmed0 currency API — free, precise, no key"""
-    url = f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{base.lower()}.json"
-    d = _get(url)
-    val = d.get(base.lower(), {}).get(quote.lower())
-    if val: return float(val)
-    return None
-
-def _fawaz_date(base, quote):
-    """Fallback with date-specific endpoint"""
-    from datetime import date
-    today = date.today().strftime("%Y-%m-%d")
-    url = f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@{today}/v1/currencies/{base.lower()}.json"
-    d = _get(url)
-    val = d.get(base.lower(), {}).get(quote.lower())
-    if val: return float(val)
-    return None
-
-def _abstractapi(base, quote):
-    """Try abstractapi free tier (no key needed for basic)"""
-    # This one sometimes works without key
-    url = f"https://api.abstractapi.com/v1/exchange-rates/live/?base={base}&target={quote}"
-    d = _get(url)
-    rates = d.get("exchange_rates", {})
-    if quote in rates: return float(rates[quote])
-    return None
 
 def get_price(symbol, asset_type):
     if asset_type == "crypto": return get_crypto_price(symbol)
@@ -267,7 +237,7 @@ def check_alerts():
             save_data(data)
         except Exception as e:
             log_error(f"check_alerts: {e}")
-        time.sleep(120)  # every 2 minute
+        time.sleep(120)  # every 2 minutes
 
 # ── Candle close checker ──────────────────────────────────────────
 def check_candles():
@@ -310,7 +280,7 @@ def check_candles():
             save_data(data)
         except Exception as e:
             log_error(f"check_candles: {e}")
-        time.sleep(120)  # every 2 minute
+        time.sleep(120)  # every 2 minutes
 
 # ── Routes ────────────────────────────────────────────────────────
 @app.route("/")
