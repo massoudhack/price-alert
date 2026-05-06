@@ -153,10 +153,6 @@ select option{background:var(--bg3)}
 .acard-dir.dn{background:var(--rdim);color:var(--red)}
 .acard-cmt{font-size:13px;color:var(--text);font-style:normal;font-weight:500;margin-top:6px;padding:7px 10px;background:var(--bg3);border-radius:8px;border-right:3px solid var(--blue);line-height:1.5;word-break:break-word;white-space:normal}
 .acard-time{font-size:10px;color:var(--text3);font-family:var(--mono)}
-.ago-lbl{font-size:10px;font-family:var(--mono);padding:1px 6px;border-radius:4px;font-weight:600}
-.ago-lbl.hot{background:rgba(0,217,139,.15);color:var(--green)}
-.ago-lbl.warm{background:rgba(240,165,0,.15);color:var(--gold)}
-.ago-lbl.cold{background:rgba(100,120,140,.12);color:var(--text3)}
 
 /* Watch dot */
 .wdot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-left:6px}
@@ -509,9 +505,9 @@ async function addAlert() {
 // ── Render alert cards ────────────────────────────────────────────
 function getIntervalLabel(interval) {
     if (!interval) return null;
-    if (interval <= 120) return { label: '۲ دقیقه', cls: 'hot' };
-    if (interval <= 300) return { label: '۵ دقیقه', cls: 'warm' };
-    return { label: '۱۰ دقیقه', cls: 'cold' };
+    if (interval <= 120)  return { label: '۲ دقیقه',  cls: 'hot' };
+    if (interval <= 600)  return { label: '۱۰ دقیقه', cls: 'warm' };
+    return { label: '۲۰ دقیقه', cls: 'cold' };
 }
 
 function minutesAgo(ts) {
@@ -678,20 +674,7 @@ async function delUser(cid) {
   loadUsers();
 }
 
-// ── Load alerts ───────────────────────────────────────────────────
-async function loadAlerts() {
-  try {
-    const r = await fetch(`${API}/api/alerts`);
-    const alerts = await r.json();
-    const active = alerts.filter(a => a.active);
-    document.getElementById('sc-alerts').textContent = active.length;
-    renderAlerts(active);
-  } catch(e) {
-    console.error('loadAlerts error:', e);
-  }
-}
-
-
+// ── Init config ───────────────────────────────────────────────────
 async function initConfig() {
   try {
     const r = await fetch(`${API}/api/config`);
