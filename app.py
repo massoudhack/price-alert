@@ -140,7 +140,8 @@ def _cg_price(base):
     return float(d[gid]["usd"])
 
 def get_forex_price(symbol):
-    sym = symbol.upper().replace("/", "").replace(" ", "").strip()
+    """یه نماد — از cache دسته‌ای بخون، اگه نبود تک بگیر"""
+    sym = symbol.upper().replace("/","").replace(" ","").strip()
     try:
         r = requests.get(f"https://biquote.io/api/{sym}", timeout=8, headers=H)
         r.raise_for_status()
@@ -154,6 +155,35 @@ def get_forex_price(symbol):
     except Exception as e:
         log_error(f"biquote failed for {sym}: {e}")
         return None
+
+def get_forex_prices_batch(symbols):
+    """
+    یه درخواست برای چند نماد فارکس — بجای N درخواست جداگانه.
+    biquote.io/api/EURUSD,GBPUSD,XAUUSD → یه JSON با همه قیمت‌ها
+    برمیگردونه: {"EURUSD": 1.17503, "GBPUSD": 1.35941, ...}
+    """
+    if not symbols:
+        return {}
+    syms = ",".join(s.upper().replace("/","").replace(" ","") for s in symbols)
+    try:
+        r = requests.get(f"https://biquote.io/api/{syms}", timeout=10, headers=H)
+        r.raise_for_status()
+        d = r.json()
+        result = {}
+        for sym, data in d.items():
+            bid = data.get("bid")
+            if bid is not None and float(bid) > 0:
+                result[sym.upper()] = float(bid)
+                print(f"[biquote-batch] {sym} = {float(bid)}")
+        return result
+    except Exception as e:
+        log_error(f"biquote batch failed ({syms}): {e}")
+        # fallback: تک تک بگیر
+        result = {}
+        for sym in symbols:
+            p = get_forex_price(sym)
+            if p: result[sym.upper()] = p
+        return result
 
 
 def get_price(symbol, asset_type):
@@ -236,32 +266,26 @@ def poll_telegram():
 notified = set()
 
 def get_interval(sym, atype, cur, tgt):
-    """
-    کریپتو: همیشه ۲ دقیقه
-    طلا:    > 200 pip → 5 دقیقه  |  <= 200 pip → 2 دقیقه
-    فارکس:  > 200 pip → 60 دقیقه
-            100-200   → 30 دقیقه
-            50-100    → 15 دقیقه
-            30-50     →  5 دقیقه
-            < 30      →  2 دقیقه
-    """
     if atype == 'crypto':
         return 120
     if not cur or not tgt:
-        return 1800
+        return 3600
     diff   = abs(cur - tgt)
     sym_up = sym.upper()
     is_jpy = 'JPY' in sym_up
     pips   = round(diff * (100 if is_jpy else 10000))
 
+    # طلا — استثنا
     if 'XAU' in sym_up or 'XAG' in sym_up:
-        return 300 if pips > 200 else 120
+        if pips > 200: return 300   # ۵ دقیقه
+        if pips > 100: return 180   # ۳ دقیقه
+        return 60                   # ۱ دقیقه
 
-    if pips > 200: return 3600
-    if pips > 100: return 1800
-    if pips > 50:  return 900
-    if pips > 30:  return 300
-    return 120
+    # فارکس عادی
+    if pips > 150: return 7200   # ۲ ساعت
+    if pips > 50:  return 3600   # ۱ ساعت
+    if pips > 30:  return 900    # ۱۵ دقیقه
+    return 120                   # ۲ دقیقه
 
 def check_alerts():
     while True:
@@ -273,37 +297,67 @@ def check_alerts():
 
             active = [a for a in data.get("alerts", []) if a.get("active")]
 
-            # فیلتر: کدوم آلارم‌ها باید این دور چک بشن
-            to_check = []
+            # ── مرحله ۱: کدوم نمادها این دور due هستن ──
+            due_symbols = set()
             for a in active:
-                sym, atype = a["symbol"], a.get("type", "crypto")
+                sym   = a["symbol"]
+                atype = a.get("type", "crypto")
                 interval = get_interval(sym, atype, a.get("last_price"), float(a["target_price"]))
                 last_ts  = a.get("last_checked")
+                is_due   = True
                 if last_ts:
                     try:
                         lt      = TEHRAN.localize(datetime.strptime(last_ts, "%Y-%m-%d %H:%M:%S"))
                         elapsed = (now_dt - lt).total_seconds()
                         if elapsed < interval:
-                            continue
+                            is_due = False
                     except Exception:
                         pass
-                to_check.append(a)
+                if is_due:
+                    due_symbols.add((sym, atype))
 
-            # یک بار per نماد قیمت بگیر
+            if not due_symbols:
+                save_data(data)
+                time.sleep(120)
+                continue
+
+            # ── مرحله ۲: قیمت‌ها رو دسته‌ای بگیر ──
+            # فارکس‌ها رو یه‌جا، کریپتو‌ها جداگانه
+            forex_due  = [sym for (sym, atype) in due_symbols if atype == 'forex']
+            crypto_due = [(sym, atype) for (sym, atype) in due_symbols if atype == 'crypto']
+
             price_cache = {}
-            for a in to_check:
-                key = (a["symbol"], a.get("type", "crypto"))
-                if key not in price_cache:
-                    price_cache[key] = get_price(a["symbol"], a.get("type", "crypto"))
 
+            # فارکس — یه درخواست برای همه
+            if forex_due:
+                batch = get_forex_prices_batch(forex_due)
+                for sym in forex_due:
+                    price_cache[(sym, 'forex')] = batch.get(sym.upper())
+                print(f"[batch] forex={forex_due} → {len(batch)} prices")
+
+            # کریپتو — هر کدوم جداگانه (Binance و...)
+            for (sym, atype) in crypto_due:
+                price_cache[(sym, atype)] = get_crypto_price(sym)
+                print(f"[fetch] crypto {sym} = {price_cache[(sym, atype)]}")
+
+            # ── مرحله ۳: همه آلارم‌های اون نماد آپدیت بشن (نه فقط due‌ها) ──
+            # اگه برای EURUSD قیمت گرفتیم، همه آلارم‌های EURUSD رو آپدیت کن
             fired = []
-            for a in to_check:
-                sym, atype = a["symbol"], a.get("type", "crypto")
-                tgt  = float(a["target_price"])
-                cond = a.get("condition", "above")
-                cur  = price_cache.get((sym, atype))
+            for a in active:
+                sym   = a["symbol"]
+                atype = a.get("type", "crypto")
+                key   = (sym, atype)
+
+                if key not in price_cache:
+                    continue  # این نماد این دور fetch نشد
+
+                cur = price_cache[key]
                 if cur is None:
                     continue
+
+                tgt  = float(a["target_price"])
+                cond = a.get("condition", "above")
+
                 a["last_price"]     = cur
                 a["last_checked"]   = now_teh()
                 a["check_interval"] = get_interval(sym, atype, cur, tgt)
@@ -339,7 +393,7 @@ def check_alerts():
                 data["alerts"]  = [x for x in data["alerts"] if x["id"] not in fired]
 
             save_data(data)
-            print(f"[check] active={len(active)} checked={len(to_check)} requests={len(price_cache)}")
+            print(f"[check] active={len(active)} fetched={len(price_cache)} fired={len(fired)}")
 
         except Exception as e:
             log_error(f"check_alerts: {e}")
