@@ -4,7 +4,7 @@ from datetime import datetime
 
 app = Flask(__name__, static_folder='static')
 
-DATA_FILE = "alerts.json"
+DATA_FILE = os.path.join(os.environ.get("VOLUME_PATH", "/data"), "alerts.json")
 TEHRAN    = pytz.timezone("Asia/Tehran")
 
 def now_teh():
@@ -262,6 +262,23 @@ def config():
     tg = data.get("telegram", {})
     return jsonify({"bot_token": tg.get("bot_token",""), "chat_id": tg.get("chat_id",""),
                     "chat_ids": tg.get("chat_ids",[]), "user_count": len(data.get("users",[]))})
+
+@app.route("/api/prices-only")
+def prices_only():
+    """فقط قیمت و وضعیت آلارم‌ها — برای آپدیت سریع UI بدون reload کامل"""
+    data = load_data()
+    return jsonify({
+        "last_update": data.get("last_update"),
+        "alerts": [
+            {
+                "id":           a["id"],
+                "last_price":   a.get("last_price"),
+                "last_checked": a.get("last_checked"),
+                "active":       a.get("active"),
+            }
+            for a in data.get("alerts", [])
+        ]
+    })
 
 @app.route("/api/alerts", methods=["GET"])
 def get_alerts():
