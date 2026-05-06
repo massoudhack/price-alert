@@ -16,7 +16,7 @@ def now_teh():
 def now_pretty():
     return datetime.now(TEHRAN).strftime("%Y/%m/%d %H:%M")
 
-# ── Storage ───────────────────────────────────────────────────────
+# ── Storage ───د────────────────────────────────────────────────────
 def _empty():
     return {"alerts":[],"archive":[],"telegram":{"bot_token":"","chat_ids":[]},"users":[],"errors":[],"last_update":None}
 
