@@ -235,32 +235,73 @@ def poll_telegram():
 # ── Price alert checker — every 1 minute ─────────────────────────
 notified = set()
 
+def get_interval(sym, atype, cur, tgt):
+    """
+    بر اساس فاصله پیپ، interval چک رو برمیگردونه (ثانیه):
+    طلا:  > 200 pip → 300s  |  <= 200 pip → 120s
+    فارکس: > 100 pip → 600s  |  30-100 pip → 300s  |  < 30 pip → 120s
+    کریپتو: همیشه 120s
+    """
+    if atype == 'crypto':
+        return 120
+    if not cur or not tgt:
+        return 300
+    diff   = abs(cur - tgt)
+    sym_up = sym.upper()
+    is_jpy = 'JPY' in sym_up
+    pips   = round(diff * (100 if is_jpy else 10000))
+    if 'XAU' in sym_up or 'XAG' in sym_up:
+        return 300 if pips > 200 else 120
+    if pips > 100: return 600
+    if pips > 30:  return 300
+    return 120
+
 def check_alerts():
     while True:
         try:
             global _cache
             _cache = None
             token, cids, data = _get_token_and_cids()
-            alerts = [a for a in data.get("alerts", []) if a.get("active")]
+            now_dt = datetime.now(TEHRAN)
 
-            # ── یک بار per نماد قیمت بگیر ──────────────────────────
+            active = [a for a in data.get("alerts", []) if a.get("active")]
+
+            # فیلتر: کدوم آلارم‌ها باید این دور چک بشن
+            to_check = []
+            for a in active:
+                sym, atype = a["symbol"], a.get("type", "crypto")
+                interval = get_interval(sym, atype, a.get("last_price"), float(a["target_price"]))
+                last_ts  = a.get("last_checked")
+                if last_ts:
+                    try:
+                        lt      = TEHRAN.localize(datetime.strptime(last_ts, "%Y-%m-%d %H:%M:%S"))
+                        elapsed = (now_dt - lt).total_seconds()
+                        if elapsed < interval:
+                            continue
+                    except Exception:
+                        pass
+                to_check.append(a)
+
+            # یک بار per نماد قیمت بگیر
             price_cache = {}
-            for a in alerts:
+            for a in to_check:
                 key = (a["symbol"], a.get("type", "crypto"))
                 if key not in price_cache:
                     price_cache[key] = get_price(a["symbol"], a.get("type", "crypto"))
 
             fired = []
-            for a in alerts:
+            for a in to_check:
                 sym, atype = a["symbol"], a.get("type", "crypto")
                 tgt  = float(a["target_price"])
                 cond = a.get("condition", "above")
                 cur  = price_cache.get((sym, atype))
                 if cur is None:
                     continue
-                a["last_price"]    = cur
-                a["last_checked"]  = now_teh()
+                a["last_price"]     = cur
+                a["last_checked"]   = now_teh()
+                a["check_interval"] = get_interval(sym, atype, cur, tgt)
                 data["last_update"] = now_teh()
+
                 triggered = (cond == "above" and cur >= tgt) or (cond == "below" and cur <= tgt)
                 if triggered and a["id"] not in notified:
                     notified.add(a["id"])
@@ -280,8 +321,7 @@ def check_alerts():
                             f"📏 فاصله: <b>{dist}</b>"
                             f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
                         )
-                        for cid in cids:
-                            send_tg(token, cid, msg)
+                        broadcast(token, cids, msg)
 
             if fired:
                 arch = data.get("archive", [])
@@ -290,12 +330,13 @@ def check_alerts():
                     if obj: arch.append(obj)
                 data["archive"] = arch
                 data["alerts"]  = [x for x in data["alerts"] if x["id"] not in fired]
+
             save_data(data)
-            uniq = len(price_cache)
-            total = len(alerts)
-            print(f"[check] {total} آلارم، {uniq} درخواست به biquote")
+            print(f"[check] active={len(active)} checked={len(to_check)} requests={len(price_cache)}")
+
         except Exception as e:
             log_error(f"check_alerts: {e}")
+
         time.sleep(120)
 
 
