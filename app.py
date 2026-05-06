@@ -94,65 +94,17 @@ def _cg_price(base):
     return float(d[gid]["usd"])
 
 def get_forex_price(symbol):
-    """
-    Get forex price with FULL precision.
-    Primary source: biquote.io (MetaTrader 5 data, 5dp)
-    Fallback: fawazahmed0, frankfurter, open.er-api, exchangerate-api
-    """
-    sym   = symbol.upper().replace("/","").replace(" ","").strip()
-    if len(sym) < 6: return None
-    base  = sym[:3]
-    quote = sym[3:6]
-
-    # ── biquote.io — primary for ALL forex pairs (MT5 data, very precise) ──
+    sym = symbol.upper().replace("/","").replace(" ","").strip()
+    if len(sym) < 6:
+        return None
     try:
         d = _get(f"https://biquote.io/api/{sym}")
-        # use bid price (more standard for forex)
-        p = d.get("bid") or d.get("ask") or d.get("mid")
+        p = d.get("bid")
         if p and float(p) > 0:
-            print(f"[price] {sym} = {float(p):.6f} via biquote.io")
+            print(f"[biquote] {sym} = {float(p)}")
             return float(p)
     except Exception as e:
-        print(f"[biquote.io] {sym} failed: {e}")
-
-    # ── Gold / Silver fallback ──────────────────────────────────────
-    if base in ("XAU", "XAG"):
-        metal_map = {"XAU": "gold", "XAG": "silver"}
-        metal = metal_map.get(base, "gold")
-        sources = [
-            ("metals.live",  lambda: float(_get(f"https://api.metals.live/v1/spot/{metal}")[0]["price"])),
-            ("gold-api",     lambda: float(_get("https://api.gold-api.com/price/XAU")["price"])),
-            ("er-api-xau",   lambda: _er_xau()),
-            ("CG-XAUT",      lambda: float(_get("https://api.coingecko.com/api/v3/simple/price?ids=tether-gold&vs_currencies=usd")["tether-gold"]["usd"])),
-        ]
-        for name, fn in sources:
-            try:
-                p = fn()
-                if p and p > 0:
-                    print(f"[price] {sym} = {p} via {name}")
-                    return float(p)
-            except Exception as e:
-                print(f"[{name}] {sym} failed: {e}")
-        log_error(f"All gold sources failed for {symbol}")
-        return None
-
-    # ── Regular Forex fallback ─────────────────────────────────────
-    sources = [
-        ("fawazahmed0",      lambda: _fawaz(base, quote)),
-        ("fawazahmed0-date", lambda: _fawaz_date(base, quote)),
-        ("frankfurter",      lambda: float(_get(f"https://api.frankfurter.app/latest?from={base}&to={quote}")["rates"][quote])),
-        ("open-er-api",      lambda: float(_get(f"https://open.er-api.com/v6/latest/{base}")["rates"][quote])),
-        ("exchangerate-api", lambda: float(_get(f"https://api.exchangerate-api.com/v4/latest/{base}")["rates"][quote])),
-    ]
-    for name, fn in sources:
-        try:
-            p = fn()
-            if p and p > 0:
-                print(f"[price] {sym} = {p:.6f} via {name}")
-                return float(p)
-        except Exception as e:
-            print(f"[{name}] {sym} failed: {e}")
-    log_error(f"All forex sources failed for {symbol}")
+        log_error(f"biquote.io failed for {sym}: {e}")
     return None
 
 def _er_xau():
