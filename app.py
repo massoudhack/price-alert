@@ -235,77 +235,75 @@ def poll_telegram():
 # ── Price alert checker — every 1 minute ─────────────────────────
 notified = set()
 
-def get_interval(sym, atype, cur, tgt):
+def get_interval(sym, atype, last_price, tgt):
     """
-    بر اساس فاصله پیپ، interval چک رو برمیگردونه (ثانیه):
-    طلا:  > 200 pip → 300s  |  <= 200 pip → 120s
+    طلا:   > 200 pip → 300s  |  <= 200 pip → 120s
     فارکس: > 100 pip → 600s  |  30-100 pip → 300s  |  < 30 pip → 120s
     کریپتو: همیشه 120s
     """
     if atype == 'crypto':
         return 120
-    if not cur or not tgt:
+    if not last_price or not tgt:
         return 300
-    diff   = abs(cur - tgt)
     sym_up = sym.upper()
     is_jpy = 'JPY' in sym_up
-    pips   = round(diff * (100 if is_jpy else 10000))
+    pips   = round(abs(last_price - tgt) * (100 if is_jpy else 10000))
     if 'XAU' in sym_up or 'XAG' in sym_up:
         return 300 if pips > 200 else 120
     if pips > 100: return 600
     if pips > 30:  return 300
     return 120
 
+
 def check_alerts():
     while True:
         try:
             global _cache
-            _cache = None
+            _cache = None  # هر دور از Gist بخون
             token, cids, data = _get_token_and_cids()
             now_dt = datetime.now(TEHRAN)
+            fired = []
 
+            # یک بار per نماد قیمت بگیر (dedup)
             active = [a for a in data.get("alerts", []) if a.get("active")]
-
-            # فیلتر: کدوم آلارم‌ها باید این دور چک بشن
-            to_check = []
+            price_cache = {}
             for a in active:
-                sym, atype = a["symbol"], a.get("type", "crypto")
-                interval = get_interval(sym, atype, a.get("last_price"), float(a["target_price"]))
                 last_ts  = a.get("last_checked")
+                interval = get_interval(a["symbol"], a.get("type","crypto"),
+                                        a.get("last_price"), float(a["target_price"]))
+                # چک کن interval گذشته یا نه
+                skip = False
                 if last_ts:
                     try:
                         lt      = TEHRAN.localize(datetime.strptime(last_ts, "%Y-%m-%d %H:%M:%S"))
                         elapsed = (now_dt - lt).total_seconds()
                         if elapsed < interval:
-                            continue
+                            skip = True
                     except Exception:
                         pass
-                to_check.append(a)
+                if not skip:
+                    key = (a["symbol"], a.get("type","crypto"))
+                    if key not in price_cache:
+                        price_cache[key] = get_price(a["symbol"], a.get("type","crypto"))
 
-            # یک بار per نماد قیمت بگیر
-            price_cache = {}
-            for a in to_check:
-                key = (a["symbol"], a.get("type", "crypto"))
-                if key not in price_cache:
-                    price_cache[key] = get_price(a["symbol"], a.get("type", "crypto"))
-
-            fired = []
-            for a in to_check:
+            for a in active:
                 sym, atype = a["symbol"], a.get("type", "crypto")
+                # اگه این نماد این دور چک نشده skip کن
+                if (sym, atype) not in price_cache:
+                    continue
                 tgt  = float(a["target_price"])
                 cond = a.get("condition", "above")
-                cur  = price_cache.get((sym, atype))
+                cur  = price_cache[(sym, atype)]
                 if cur is None:
                     continue
                 a["last_price"]     = cur
                 a["last_checked"]   = now_teh()
                 a["check_interval"] = get_interval(sym, atype, cur, tgt)
                 data["last_update"] = now_teh()
-
                 triggered = (cond == "above" and cur >= tgt) or (cond == "below" and cur <= tgt)
                 if triggered and a["id"] not in notified:
                     notified.add(a["id"])
-                    a["active"]      = False
+                    a["active"] = False
                     a["fired_at"]    = now_teh()
                     a["fired_price"] = cur
                     fired.append(a["id"])
@@ -322,7 +320,6 @@ def check_alerts():
                             f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
                         )
                         broadcast(token, cids, msg)
-
             if fired:
                 arch = data.get("archive", [])
                 for fid in fired:
@@ -330,15 +327,10 @@ def check_alerts():
                     if obj: arch.append(obj)
                 data["archive"] = arch
                 data["alerts"]  = [x for x in data["alerts"] if x["id"] not in fired]
-
             save_data(data)
-            print(f"[check] active={len(active)} checked={len(to_check)} requests={len(price_cache)}")
-
         except Exception as e:
             log_error(f"check_alerts: {e}")
-
-        time.sleep(120)
-
+        time.sleep(120)  # every 2 minutes
 
 # ── Routes ────────────────────────────────────────────────────────
 @app.route("/")
