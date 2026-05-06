@@ -674,6 +674,19 @@ async function delUser(cid) {
   loadUsers();
 }
 
+// ── Load alerts ───────────────────────────────────────────────────
+async function loadAlerts() {
+  try {
+    const r = await fetch(`${API}/api/alerts`);
+    const alerts = await r.json();
+    const active = alerts.filter(a => a.active);
+    document.getElementById('sc-alerts').textContent = active.length;
+    renderAlerts(active);
+  } catch(e) {
+    console.error('loadAlerts:', e);
+  }
+}
+
 // ── Init config ───────────────────────────────────────────────────
 async function initConfig() {
   try {
