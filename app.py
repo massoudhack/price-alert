@@ -13,7 +13,7 @@ def now_teh():
 def now_pretty():
     return datetime.now(TEHRAN).strftime("%Y/%m/%d %H:%M")
 
-# ── Storage ───────────────────────────────────────────────────────
+# ── Storage ─────د──────────────────────────────────────────────────
 def load_data():
     if os.path.exists(DATA_FILE):
         try:
