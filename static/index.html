@@ -35,7 +35,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
 body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(var(--grid-line) 1px,transparent 1px),linear-gradient(90deg,var(--grid-line) 1px,transparent 1px);background-size:50px 50px;pointer-events:none;z-index:0}
 .wrap{position:relative;z-index:1;max-width:960px;margin:0 auto;padding:2rem 1.25rem 5rem}
 
-/* ── Header ─.─ */
+/* ── Header ── */
 .hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:2rem;padding-bottom:1.5rem;border-bottom:1px solid var(--border)}
 .brand{display:flex;align-items:center;gap:13px}
 .brand-logo{width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,rgba(0,217,139,.15),rgba(77,168,255,.15));border:1px solid rgba(0,217,139,.2);display:flex;align-items:center;justify-content:center}
@@ -153,6 +153,10 @@ select option{background:var(--bg3)}
 .acard-dir.dn{background:var(--rdim);color:var(--red)}
 .acard-cmt{font-size:13px;color:var(--text);font-style:normal;font-weight:500;margin-top:6px;padding:7px 10px;background:var(--bg3);border-radius:8px;border-right:3px solid var(--blue);line-height:1.5;word-break:break-word;white-space:normal}
 .acard-time{font-size:10px;color:var(--text3);font-family:var(--mono)}
+.ago-lbl{font-size:10px;font-family:var(--mono);padding:1px 6px;border-radius:4px;font-weight:600}
+.ago-lbl.hot{background:rgba(0,217,139,.15);color:var(--green)}
+.ago-lbl.warm{background:rgba(240,165,0,.15);color:var(--gold)}
+.ago-lbl.cold{background:rgba(100,120,140,.12);color:var(--text3)}
 
 /* Watch dot */
 .wdot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-left:6px}
@@ -674,7 +678,20 @@ async function delUser(cid) {
   loadUsers();
 }
 
-// ── Init config ───────────────────────────────────────────────────
+// ── Load alerts ───────────────────────────────────────────────────
+async function loadAlerts() {
+  try {
+    const r = await fetch(`${API}/api/alerts`);
+    const alerts = await r.json();
+    const active = alerts.filter(a => a.active);
+    document.getElementById('sc-alerts').textContent = active.length;
+    renderAlerts(active);
+  } catch(e) {
+    console.error('loadAlerts error:', e);
+  }
+}
+
+
 async function initConfig() {
   try {
     const r = await fetch(`${API}/api/config`);
