@@ -4,8 +4,11 @@ from datetime import datetime
 
 app = Flask(__name__, static_folder='static')
 
-DATA_FILE = os.path.join(os.environ.get("VOLUME_PATH", "/data"), "alerts.json")
-TEHRAN    = pytz.timezone("Asia/Tehran")
+TEHRAN     = pytz.timezone("Asia/Tehran")
+GIST_ID    = os.environ.get("GIST_ID", "")
+GIST_TOKEN = os.environ.get("GIST_TOKEN", "")
+GIST_FILE  = "alerts.json"
+_cache     = None   # cache در RAM تا درخواست‌های کمتری به Gist بزنیم
 
 def now_teh():
     return datetime.now(TEHRAN).strftime("%Y-%m-%d %H:%M:%S")
@@ -15,23 +18,59 @@ def now_pretty():
 
 # ── Storage ───────────────────────────────────────────────────────
 def load_data():
-    if os.path.exists(DATA_FILE):
-        try:
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {
-        "alerts": [], "archive": [],
-        "telegram": {"bot_token": "", "chat_ids": []},
-        "users": [], "errors": [], "last_update": None
-    }
+    global _cache
+    # اگه cache داریم همونو برگردون
+    if _cache is not None:
+        return _cache
+    # اگه Gist تنظیم نشده، از فایل local بخون
+    if not GIST_ID or not GIST_TOKEN:
+        if os.path.exists("alerts.json"):
+            try:
+                with open("alerts.json", "r", encoding="utf-8") as f:
+                    _cache = json.load(f)
+                    return _cache
+            except Exception:
+                pass
+        _cache = {"alerts":[],"archive":[],"telegram":{"bot_token":"","chat_ids":[]},"users":[],"errors":[],"last_update":None}
+        return _cache
+    # از Gist بخون
+    try:
+        r = requests.get(
+            f"https://api.github.com/gists/{GIST_ID}",
+            headers={"Authorization": f"token {GIST_TOKEN}", "Accept": "application/vnd.github.v3+json"},
+            timeout=10)
+        if r.status_code == 200:
+            content = r.json()["files"][GIST_FILE]["content"]
+            _cache = json.loads(content)
+            return _cache
+    except Exception as e:
+        print(f"[gist] load failed: {e}")
+    _cache = {"alerts":[],"archive":[],"telegram":{"bot_token":"","chat_ids":[]},"users":[],"errors":[],"last_update":None}
+    return _cache
 
 def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    global _cache
+    _cache = data
+    # اگه Gist تنظیم نشده، local ذخیره کن
+    if not GIST_ID or not GIST_TOKEN:
+        try:
+            with open("alerts.json", "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(f"[local] save failed: {e}")
+        return
+    # روی Gist ذخیره کن
+    try:
+        requests.patch(
+            f"https://api.github.com/gists/{GIST_ID}",
+            headers={"Authorization": f"token {GIST_TOKEN}", "Accept": "application/vnd.github.v3+json"},
+            json={"files": {GIST_FILE: {"content": json.dumps(data, indent=2, ensure_ascii=False)}}},
+            timeout=10)
+    except Exception as e:
+        print(f"[gist] save failed: {e}")
 
 def log_error(msg):
+    global _cache
     try:
         data = load_data()
         errs = data.get("errors", [])
@@ -41,6 +80,11 @@ def log_error(msg):
     except Exception:
         pass
     print(f"[ERR] {msg}")
+
+def invalidate_cache():
+    """بعد از هر عملیات مهم cache رو پاک کن تا دفعه بعد از Gist بخونه"""
+    global _cache
+    _cache = None
 
 # ── Price Fetching — multi-source with full precision ─────────────
 H = {"User-Agent": "Mozilla/5.0 (compatible; PriceBot/1.0)"}
@@ -191,6 +235,7 @@ notified = set()
 def check_alerts():
     while True:
         try:
+            invalidate_cache()   # هر بار از Gist بخون نه cache
             token, cids, data = _get_token_and_cids()
             fired = []
             for a in data.get("alerts", []):
@@ -235,7 +280,7 @@ def check_alerts():
             save_data(data)
         except Exception as e:
             log_error(f"check_alerts: {e}")
-        time.sleep(120)  # every 2 minutes
+        time.sleep(120)
 
 # ── Routes ────────────────────────────────────────────────────────
 @app.route("/")
@@ -262,23 +307,6 @@ def config():
     tg = data.get("telegram", {})
     return jsonify({"bot_token": tg.get("bot_token",""), "chat_id": tg.get("chat_id",""),
                     "chat_ids": tg.get("chat_ids",[]), "user_count": len(data.get("users",[]))})
-
-@app.route("/api/prices-only")
-def prices_only():
-    """فقط قیمت و وضعیت آلارم‌ها — برای آپدیت سریع UI بدون reload کامل"""
-    data = load_data()
-    return jsonify({
-        "last_update": data.get("last_update"),
-        "alerts": [
-            {
-                "id":           a["id"],
-                "last_price":   a.get("last_price"),
-                "last_checked": a.get("last_checked"),
-                "active":       a.get("active"),
-            }
-            for a in data.get("alerts", [])
-        ]
-    })
 
 @app.route("/api/alerts", methods=["GET"])
 def get_alerts():
