@@ -4,11 +4,57 @@ from datetime import datetime
 
 app = Flask(__name__, static_folder='static')
 
-TEHRAN     = pytz.timezone("Asia/Tehran")
 GIST_ID    = os.environ.get("GIST_ID", "")
 GIST_TOKEN = os.environ.get("GIST_TOKEN", "")
 GIST_FILE  = "alerts.json"
-_cache     = None   # cache در RAM تا درخواست‌های کمتری به Gist بزنیم
+TEHRAN     = pytz.timezone("Asia/Tehran")
+_cache     = None
+
+EMPTY_DATA = lambda: {
+    "alerts": [], "archive": [],
+    "telegram": {"bot_token": "", "chat_ids": []},
+    "users": [], "errors": [], "last_update": None
+}
+
+# ── Storage ───────────────────────────────────────────────────────
+def load_data():
+    global _cache
+    if _cache is not None:
+        return _cache
+    if GIST_ID and GIST_TOKEN:
+        try:
+            r = requests.get(
+                f"https://api.github.com/gists/{GIST_ID}",
+                headers={"Authorization": f"token {GIST_TOKEN}"},
+                timeout=10)
+            if r.status_code == 200:
+                content = r.json()["files"][GIST_FILE]["content"]
+                _cache = json.loads(content)
+                return _cache
+        except Exception as e:
+            print(f"[gist load] {e}")
+    _cache = EMPTY_DATA()
+    return _cache
+
+def save_data(data):
+    global _cache
+    _cache = data
+    if GIST_ID and GIST_TOKEN:
+        try:
+            requests.patch(
+                f"https://api.github.com/gists/{GIST_ID}",
+                headers={"Authorization": f"token {GIST_TOKEN}"},
+                json={"files": {GIST_FILE: {"content": json.dumps(data, indent=2, ensure_ascii=False)}}},
+                timeout=10)
+        except Exception as e:
+            print(f"[gist save] {e}")
+    else:
+        # fallback local
+        try:
+            with open("alerts.json", "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(f"[local save] {e}")
 
 def now_teh():
     return datetime.now(TEHRAN).strftime("%Y-%m-%d %H:%M:%S")
@@ -18,59 +64,23 @@ def now_pretty():
 
 # ── Storage ───────────────────────────────────────────────────────
 def load_data():
-    global _cache
-    # اگه cache داریم همونو برگردون
-    if _cache is not None:
-        return _cache
-    # اگه Gist تنظیم نشده، از فایل local بخون
-    if not GIST_ID or not GIST_TOKEN:
-        if os.path.exists("alerts.json"):
-            try:
-                with open("alerts.json", "r", encoding="utf-8") as f:
-                    _cache = json.load(f)
-                    return _cache
-            except Exception:
-                pass
-        _cache = {"alerts":[],"archive":[],"telegram":{"bot_token":"","chat_ids":[]},"users":[],"errors":[],"last_update":None}
-        return _cache
-    # از Gist بخون
-    try:
-        r = requests.get(
-            f"https://api.github.com/gists/{GIST_ID}",
-            headers={"Authorization": f"token {GIST_TOKEN}", "Accept": "application/vnd.github.v3+json"},
-            timeout=10)
-        if r.status_code == 200:
-            content = r.json()["files"][GIST_FILE]["content"]
-            _cache = json.loads(content)
-            return _cache
-    except Exception as e:
-        print(f"[gist] load failed: {e}")
-    _cache = {"alerts":[],"archive":[],"telegram":{"bot_token":"","chat_ids":[]},"users":[],"errors":[],"last_update":None}
-    return _cache
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {
+        "alerts": [], "archive": [],
+        "telegram": {"bot_token": "", "chat_ids": []},
+        "users": [], "errors": [], "last_update": None
+    }
 
 def save_data(data):
-    global _cache
-    _cache = data
-    # اگه Gist تنظیم نشده، local ذخیره کن
-    if not GIST_ID or not GIST_TOKEN:
-        try:
-            with open("alerts.json", "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            print(f"[local] save failed: {e}")
-        return
-    # روی Gist ذخیره کن
-    try:
-        requests.patch(
-            f"https://api.github.com/gists/{GIST_ID}",
-            headers={"Authorization": f"token {GIST_TOKEN}", "Accept": "application/vnd.github.v3+json"},
-            json={"files": {GIST_FILE: {"content": json.dumps(data, indent=2, ensure_ascii=False)}}},
-            timeout=10)
-    except Exception as e:
-        print(f"[gist] save failed: {e}")
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
 def log_error(msg):
-    global _cache
     try:
         data = load_data()
         errs = data.get("errors", [])
@@ -80,11 +90,6 @@ def log_error(msg):
     except Exception:
         pass
     print(f"[ERR] {msg}")
-
-def invalidate_cache():
-    """بعد از هر عملیات مهم cache رو پاک کن تا دفعه بعد از Gist بخونه"""
-    global _cache
-    _cache = None
 
 # ── Price Fetching — multi-source with full precision ─────────────
 H = {"User-Agent": "Mozilla/5.0 (compatible; PriceBot/1.0)"}
@@ -235,7 +240,8 @@ notified = set()
 def check_alerts():
     while True:
         try:
-            invalidate_cache()   # هر بار از Gist بخون نه cache
+            global _cache
+            _cache = None  # هر بار از Gist بخون
             token, cids, data = _get_token_and_cids()
             fired = []
             for a in data.get("alerts", []):
@@ -280,7 +286,7 @@ def check_alerts():
             save_data(data)
         except Exception as e:
             log_error(f"check_alerts: {e}")
-        time.sleep(120)
+        time.sleep(120)  # every 2 minutes
 
 # ── Routes ────────────────────────────────────────────────────────
 @app.route("/")
