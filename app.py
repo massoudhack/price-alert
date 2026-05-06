@@ -22,8 +22,7 @@ def load_data():
         except Exception:
             pass
     return {
-        "alerts": [], "candle_alerts": [],
-        "archive": [],
+        "alerts": [], "archive": [],
         "telegram": {"bot_token": "", "chat_ids": []},
         "users": [], "errors": [], "last_update": None
     }
@@ -94,7 +93,6 @@ def _cg_price(base):
     return float(d[gid]["usd"])
 
 def get_forex_price(symbol):
-    # فقط از biquote.io دریافت می‌کنه — MT5 با دقت کامل
     sym = symbol.upper().replace("/", "").replace(" ", "").strip()
     try:
         r = requests.get(f"https://biquote.io/api/{sym}", timeout=8, headers=H)
@@ -104,10 +102,10 @@ def get_forex_price(symbol):
         if bid is not None and float(bid) > 0:
             print(f"[biquote] {sym} = {float(bid)}")
             return float(bid)
-        log_error(f"biquote returned zero/null for {sym}: {d}")
+        log_error(f"biquote zero for {sym}")
         return None
     except Exception as e:
-        log_error(f"biquote.io failed for {sym}: {e}")
+        log_error(f"biquote failed for {sym}: {e}")
         return None
 
 
@@ -239,49 +237,6 @@ def check_alerts():
             log_error(f"check_alerts: {e}")
         time.sleep(120)  # every 2 minutes
 
-# ── Candle close checker ──────────────────────────────────────────
-def check_candles():
-    while True:
-        try:
-            token, cids, data = _get_token_and_cids()
-            now = datetime.now(TEHRAN)
-            TF_LABEL = {5:"۵ دقیقه", 15:"۱۵ دقیقه", 30:"۳۰ دقیقه", 60:"۱ ساعت", 240:"۴ ساعت"}
-
-            for a in data.get("candle_alerts", []):
-                if not a.get("active"):
-                    continue
-                tf     = int(a.get("timeframe", 60))
-                last_f = a.get("last_fired")
-                fire   = True
-                if last_f:
-                    try:
-                        lt   = TEHRAN.localize(datetime.strptime(last_f, "%Y-%m-%d %H:%M:%S"))
-                        fire = (now - lt).total_seconds() / 60 >= tf
-                    except Exception:
-                        fire = True
-                if not fire:
-                    continue
-                sym, atype = a["symbol"], a.get("type", "crypto")
-                cur = get_price(sym, atype)
-                if cur is None:
-                    continue
-                a["last_fired"] = now_teh()
-                a["last_price"] = cur
-                if token and cids:
-                    tf_l = TF_LABEL.get(tf, f"{tf} دقیقه")
-                    cmt  = f"\n💬 <i>{a['comment']}</i>" if a.get("comment") else ""
-                    msg  = (
-                        f"🕯 <b>کلوز کندل {tf_l}</b>\n\n"
-                        f"💰 <b>{sym}</b>\n"
-                        f"📊 قیمت کلوز: <b>${cur:,.5f}</b>"
-                        f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
-                    )
-                    broadcast(token, cids, msg)
-            save_data(data)
-        except Exception as e:
-            log_error(f"check_candles: {e}")
-        time.sleep(120)  # every 2 minutes
-
 # ── Routes ────────────────────────────────────────────────────────
 @app.route("/")
 def index():
@@ -340,48 +295,6 @@ def del_alert(aid):
     notified.discard(aid)
     return jsonify({"ok": True})
 
-@app.route("/api/candle-alerts", methods=["GET"])
-def get_candles():
-    return jsonify(load_data().get("candle_alerts", []))
-
-@app.route("/api/candle-alerts", methods=["POST"])
-def add_candle():
-    data = load_data()
-    body = request.json or {}
-    a = {
-        "id":         str(int(time.time() * 1000)),
-        "symbol":     body.get("symbol","").upper().strip(),
-        "type":       body.get("type","crypto"),
-        "timeframe":  int(body.get("timeframe", 60)),
-        "comment":    body.get("comment","").strip(),
-        "active":     True,
-        "last_price": None,
-        "last_fired": None,
-        "created_at": now_teh()
-    }
-    if not a["symbol"]:
-        return jsonify({"ok": False, "error": "نماد الزامی است"}), 400
-    data.setdefault("candle_alerts", []).append(a)
-    save_data(data)
-    return jsonify({"ok": True, "alert": a})
-
-@app.route("/api/candle-alerts/<aid>", methods=["DELETE"])
-def del_candle(aid):
-    data = load_data()
-    data["candle_alerts"] = [a for a in data.get("candle_alerts",[]) if a["id"] != aid]
-    save_data(data)
-    return jsonify({"ok": True})
-
-@app.route("/api/candle-alerts/<aid>/toggle", methods=["POST"])
-def toggle_candle(aid):
-    data = load_data()
-    for a in data.get("candle_alerts", []):
-        if a["id"] == aid:
-            a["active"] = not a.get("active", True)
-            break
-    save_data(data)
-    return jsonify({"ok": True})
-
 @app.route("/api/archive", methods=["GET"])
 def get_archive():
     return jsonify(load_data().get("archive", []))
@@ -436,7 +349,6 @@ def status():
         "errors":      data.get("errors", [])[-5:],
         "time_tehran": now_teh(),
         "alert_count": len(data.get("alerts",[])),
-        "candle_count":len(data.get("candle_alerts",[])),
     })
 
 @app.route("/health")
@@ -444,7 +356,6 @@ def health():
     return jsonify({"status": "ok", "time": now_teh()})
 
 threading.Thread(target=check_alerts,  daemon=True).start()
-threading.Thread(target=check_candles, daemon=True).start()
 threading.Thread(target=poll_telegram, daemon=True).start()
 
 if __name__ == "__main__":
