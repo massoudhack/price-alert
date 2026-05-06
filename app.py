@@ -4,8 +4,11 @@ from datetime import datetime
 
 app = Flask(__name__, static_folder='static')
 
-DATA_FILE = "/data/alerts.json" if os.path.isdir("/data") else "alerts.json"
-TEHRAN    = pytz.timezone("Asia/Tehran")
+TEHRAN     = pytz.timezone("Asia/Tehran")
+GIST_ID    = os.environ.get("GIST_ID", "")
+GIST_TOKEN = os.environ.get("GIST_TOKEN", "")
+GIST_FILE  = "alerts.json"
+_cache     = None
 
 def now_teh():
     return datetime.now(TEHRAN).strftime("%Y-%m-%d %H:%M:%S")
@@ -13,23 +16,55 @@ def now_teh():
 def now_pretty():
     return datetime.now(TEHRAN).strftime("%Y/%m/%d %H:%M")
 
-# ── Storage ─────د──────────────────────────────────────────────────
+# ── Storage ───────────────────────────────────────────────────────
+def _empty():
+    return {"alerts":[],"archive":[],"telegram":{"bot_token":"","chat_ids":[]},"users":[],"errors":[],"last_update":None}
+
 def load_data():
-    if os.path.exists(DATA_FILE):
+    global _cache
+    if _cache is not None:
+        return _cache
+    if GIST_ID and GIST_TOKEN:
         try:
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+            r = requests.get(
+                f"https://api.github.com/gists/{GIST_ID}",
+                headers={"Authorization": f"token {GIST_TOKEN}"},
+                timeout=10)
+            if r.status_code == 200:
+                _cache = json.loads(r.json()["files"][GIST_FILE]["content"])
+                return _cache
+        except Exception as e:
+            print(f"[gist load] {e}")
+    # fallback local
+    if os.path.exists("alerts.json"):
+        try:
+            with open("alerts.json","r",encoding="utf-8") as f:
+                _cache = json.load(f)
+                return _cache
         except Exception:
             pass
-    return {
-        "alerts": [], "archive": [],
-        "telegram": {"bot_token": "", "chat_ids": []},
-        "users": [], "errors": [], "last_update": None
-    }
+    _cache = _empty()
+    return _cache
 
 def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    global _cache
+    _cache = data
+    if GIST_ID and GIST_TOKEN:
+        try:
+            requests.patch(
+                f"https://api.github.com/gists/{GIST_ID}",
+                headers={"Authorization": f"token {GIST_TOKEN}"},
+                json={"files":{GIST_FILE:{"content":json.dumps(data,indent=2,ensure_ascii=False)}}},
+                timeout=10)
+            return
+        except Exception as e:
+            print(f"[gist save] {e}")
+    # fallback local
+    try:
+        with open("alerts.json","w",encoding="utf-8") as f:
+            json.dump(data,f,indent=2,ensure_ascii=False)
+    except Exception as e:
+        print(f"[local save] {e}")
 
 def log_error(msg):
     try:
@@ -191,6 +226,8 @@ notified = set()
 def check_alerts():
     while True:
         try:
+            global _cache
+            _cache = None  # هر ۲ دقیقه از Gist بخون
             token, cids, data = _get_token_and_cids()
             fired = []
             for a in data.get("alerts", []):
