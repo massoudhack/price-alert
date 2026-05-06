@@ -31,7 +31,7 @@ def _fix(data):
             data[k] = v
     return data
 
-# ── Storage ──────────و─────────────────────────────────────────────
+# ── Storage ───────────────────────────────────────────────────────
 def load_data():
     global _cache
     if _cache is not None:
@@ -239,25 +239,32 @@ def check_alerts():
     while True:
         try:
             global _cache
-            _cache = None  # هر دور از Gist بخون
+            _cache = None
             token, cids, data = _get_token_and_cids()
+            alerts = [a for a in data.get("alerts", []) if a.get("active")]
+
+            # ── یک بار per نماد قیمت بگیر ──────────────────────────
+            price_cache = {}
+            for a in alerts:
+                key = (a["symbol"], a.get("type", "crypto"))
+                if key not in price_cache:
+                    price_cache[key] = get_price(a["symbol"], a.get("type", "crypto"))
+
             fired = []
-            for a in data.get("alerts", []):
-                if not a.get("active"):
-                    continue
+            for a in alerts:
                 sym, atype = a["symbol"], a.get("type", "crypto")
                 tgt  = float(a["target_price"])
                 cond = a.get("condition", "above")
-                cur  = get_price(sym, atype)
+                cur  = price_cache.get((sym, atype))
                 if cur is None:
                     continue
-                a["last_price"]   = cur
-                a["last_checked"] = now_teh()
+                a["last_price"]    = cur
+                a["last_checked"]  = now_teh()
                 data["last_update"] = now_teh()
                 triggered = (cond == "above" and cur >= tgt) or (cond == "below" and cur <= tgt)
                 if triggered and a["id"] not in notified:
                     notified.add(a["id"])
-                    a["active"] = False
+                    a["active"]      = False
                     a["fired_at"]    = now_teh()
                     a["fired_price"] = cur
                     fired.append(a["id"])
@@ -273,7 +280,9 @@ def check_alerts():
                             f"📏 فاصله: <b>{dist}</b>"
                             f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
                         )
-                        broadcast(token, cids, msg)
+                        for cid in cids:
+                            send_tg(token, cid, msg)
+
             if fired:
                 arch = data.get("archive", [])
                 for fid in fired:
@@ -282,9 +291,13 @@ def check_alerts():
                 data["archive"] = arch
                 data["alerts"]  = [x for x in data["alerts"] if x["id"] not in fired]
             save_data(data)
+            uniq = len(price_cache)
+            total = len(alerts)
+            print(f"[check] {total} آلارم، {uniq} درخواست به biquote")
         except Exception as e:
             log_error(f"check_alerts: {e}")
-        time.sleep(120)  # every 2 minutes
+        time.sleep(120)
+
 
 # ── Routes ────────────────────────────────────────────────────────
 @app.route("/")
