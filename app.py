@@ -20,7 +20,8 @@ def _empty():
     return {
         "alerts": [], "archive": [],
         "telegram": {"bot_token": "", "chat_ids": []},
-        "users": [], "errors": [], "last_update": None
+        "users": [], "errors": [], "last_update": None,
+        "journal": {"trades": [], "analyses": []}
     }
 
 def _fix(data):
@@ -537,9 +538,112 @@ def status():
         "alert_count": len(data.get("alerts",[])),
     })
 
-@app.route("/health")
-def health():
-    return jsonify({"status": "ok", "time": now_teh()})
+@app.route("/journal")
+def journal_page():
+    return send_from_directory("static", "journal.html")
+
+# ── Journal API ───────────────────────────────────────────────────
+@app.route("/api/journal", methods=["GET"])
+def get_journal():
+    data = load_data()
+    return jsonify(data.get("journal", {"trades": [], "analyses": []}))
+
+@app.route("/api/journal/trades", methods=["POST"])
+def add_trade():
+    data  = load_data()
+    body  = request.json or {}
+    j     = data.setdefault("journal", {"trades": [], "analyses": []})
+    trade = {
+        "id":        str(int(time.time() * 1000)),
+        "symbol":    body.get("symbol","").upper().strip(),
+        "direction": body.get("direction","buy"),
+        "entry":     body.get("entry"),
+        "sl":        body.get("sl"),
+        "tp":        body.get("tp"),
+        "lot":       body.get("lot", 0.01),
+        "note":      body.get("note","").strip(),
+        "openAt":    now_teh(),
+        "closeAt":   None,
+        "exitPrice": None,
+        "exitNote":  None,
+        "pips":      None,
+        "status":    "open"
+    }
+    j["trades"].append(trade)
+    save_data(data)
+    return jsonify({"ok": True, "trade": trade})
+
+@app.route("/api/journal/trades/<tid>", methods=["PATCH"])
+def update_trade(tid):
+    data  = load_data()
+    j     = data.setdefault("journal", {"trades": [], "analyses": []})
+    body  = request.json or {}
+    trade = next((t for t in j["trades"] if t["id"] == tid), None)
+    if not trade:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    for k, v in body.items():
+        trade[k] = v
+    save_data(data)
+    return jsonify({"ok": True})
+
+@app.route("/api/journal/trades/<tid>", methods=["DELETE"])
+def delete_trade(tid):
+    data = load_data()
+    j    = data.setdefault("journal", {"trades": [], "analyses": []})
+    j["trades"] = [t for t in j["trades"] if t["id"] != tid]
+    save_data(data)
+    return jsonify({"ok": True})
+
+@app.route("/api/journal/analyses", methods=["POST"])
+def save_analysis():
+    data = load_data()
+    j    = data.setdefault("journal", {"trades": [], "analyses": []})
+    body = request.json or {}
+    j["analyses"].append({
+        "date":     now_teh(),
+        "text":     body.get("text",""),
+        "tradeCnt": body.get("tradeCnt", 0)
+    })
+    j["analyses"] = j["analyses"][-30:]
+    save_data(data)
+    return jsonify({"ok": True})
+
+@app.route("/api/journal/clear-closed", methods=["POST"])
+def clear_closed_trades():
+    data = load_data()
+    j    = data.setdefault("journal", {"trades": [], "analyses": []})
+    j["trades"] = [t for t in j["trades"] if t.get("status") == "open"]
+    save_data(data)
+    return jsonify({"ok": True})
+
+@app.route("/api/journal/analyze", methods=["POST"])
+def journal_analyze():
+    """AI analysis — از سرور call می‌زنه نه مرورگر (رفع CORS)"""
+    body   = request.json or {}
+    prompt = body.get("prompt","")
+    if not prompt:
+        return jsonify({"error": "prompt خالی است"}), 400
+    try:
+        r = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "Content-Type":      "application/json",
+                "anthropic-version": "2023-06-01",
+            },
+            json={
+                "model":      "claude-sonnet-4-20250514",
+                "max_tokens": 3000,
+                "messages":   [{"role":"user","content": prompt}]
+            },
+            timeout=60
+        )
+        d = r.json()
+        if r.status_code != 200:
+            return jsonify({"error": d.get("error",{}).get("message","خطای API")}), 500
+        text = d["content"][0]["text"]
+        return jsonify({"ok": True, "text": text})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 threading.Thread(target=check_alerts,  daemon=True).start()
 threading.Thread(target=poll_telegram, daemon=True).start()
