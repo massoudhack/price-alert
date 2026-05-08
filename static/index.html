@@ -211,6 +211,20 @@ select option{background:var(--bg3)}
 .ago-lbl.warm{background:rgba(240,165,0,.1);color:var(--gold)}
 .ago-lbl.cold{background:rgba(122,135,153,.08);color:var(--text3)}
 
+
+
+/* ── Interval badges ── */
+.iv-badge { display:inline-flex;align-items:center;padding:2px 7px;border-radius:3px;font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.07em;vertical-align:middle;margin-right:3px; }
+.iv-badge.fire { background:rgba(200,65,10,.15);color:var(--accent);border:1.5px solid var(--accent);animation:pulse-badge 1.3s ease-in-out infinite; }
+.iv-badge.hot  { background:rgba(27,107,60,.12);color:var(--accent2);border:1px solid rgba(27,107,60,.3); }
+.iv-badge.warm { background:rgba(139,105,20,.1);color:var(--gold);border:1px dashed rgba(139,105,20,.4); }
+.iv-badge.cold { background:var(--paper3);color:var(--muted);border:1px solid var(--rule); }
+@keyframes pulse-badge { 0%,100%{opacity:1} 50%{opacity:.5} }
+.acard.iv-fire { border-right:3px solid var(--accent)!important; }
+.acard.iv-hot  { border-right:2px solid var(--accent2); }
+.acard.iv-warm { border-right:2px solid var(--gold); }
+.acard.iv-cold { border-right:1px solid var(--rule2); }
+
 </style>
 </head>
 <body>
@@ -227,6 +241,7 @@ select option{background:var(--bg3)}
     </div>
     <div class="hdr-right">
       <div class="live-pill"><span class="ldot"></span><span id="clk">--:--</span></div>
+      <a href="/journal" class="theme-btn" title="ژورنال معاملاتی" style="text-decoration:none;font-size:15px;display:flex;align-items:center;justify-content:center;">📒</a>
       <button class="theme-btn" id="theme-toggle" onclick="toggleTheme()">🌙</button>
     </div>
   </div>
@@ -507,17 +522,24 @@ async function addAlert() {
 
 // ── Render alert cards ────────────────────────────────────────────
 function getIntervalLabel(interval, sym) {
-  const isGold = sym && (sym.includes('XAU') || sym.includes('XAG'));
+  const s      = (sym||'').toUpperCase();
+  const isGold = s.includes('XAU') || s.includes('XAG');
+
   if (isGold) {
-    if (!interval || interval <= 60)  return { label: '۱ دقیقه', cls: 'hot' };
-    if (interval <= 180)              return { label: '۳ دقیقه', cls: 'hot' };
-    return                                   { label: '۵ دقیقه', cls: 'warm' };
+    if (!interval || interval <= 30)  return { label:'۳۰ ثانیه', cls:'fire' };
+    if (interval <= 60)               return { label:'۱ دقیقه',  cls:'hot'  };
+    if (interval <= 120)              return { label:'۲ دقیقه',  cls:'hot'  };
+    if (interval <= 180)              return { label:'۳ دقیقه',  cls:'hot'  };
+    return                                   { label:'—',         cls:'warm' };
   }
-  if (!interval || interval <= 120)  return { label: '۲ دقیقه',  cls: 'hot' };
-  if (interval <= 900)               return { label: '۱۵ دقیقه', cls: 'warm' };
-  if (interval <= 3600)              return { label: '۱ ساعت',   cls: 'cold' };
-  return                                    { label: '۲ ساعت',   cls: 'cold' };
+  if (!interval || interval <= 60)   return { label:'۱ دقیقه',   cls:'fire' };
+  if (interval <= 120)               return { label:'۲ دقیقه',   cls:'hot'  };
+  if (interval <= 900)               return { label:'۱۵ دقیقه',  cls:'warm' };
+  if (interval <= 1800)              return { label:'۳۰ دقیقه',  cls:'warm' };
+  if (interval <= 3600)              return { label:'۱ ساعت',    cls:'cold' };
+  return                                    { label:'۲ ساعت',    cls:'cold' };
 }
+
 
 function getGroup(interval, sym) {
   const isGold = sym && (sym.includes('XAU') || sym.includes('XAG'));
@@ -842,6 +864,7 @@ async function initConfig() {
     document.getElementById('sc-users').textContent = d.user_count || 0;
   } catch {}
 }
+
 
 // ── Init ──────────────────────────────────────────────────────────
 initConfig();
