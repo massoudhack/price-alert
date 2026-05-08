@@ -211,7 +211,6 @@ select option{background:var(--bg3)}
 .ago-lbl.warm{background:rgba(240,165,0,.1);color:var(--gold)}
 .ago-lbl.cold{background:rgba(122,135,153,.08);color:var(--text3)}
 
-
 </style>
 </head>
 <body>
@@ -507,24 +506,17 @@ async function addAlert() {
 }
 
 // ── Render alert cards ────────────────────────────────────────────
-function getIntervalLabel(interval, sym, isAtr) {
-  // isAtr = true یعنی interval از ATR واقعی محاسبه شده
-  const smart = isAtr ? ' ⚡' : '';
+function getIntervalLabel(interval, sym) {
   const isGold = sym && (sym.includes('XAU') || sym.includes('XAG'));
   if (isGold) {
-    if (!interval || interval <= 60)  return { label: '۱ دقیقه' + smart, cls: 'hot',  smart: !!isAtr };
-    if (interval <= 180)              return { label: '۳ دقیقه' + smart, cls: 'hot',  smart: !!isAtr };
-    if (interval <= 300)              return { label: '۵ دقیقه' + smart, cls: 'warm', smart: !!isAtr };
-    if (interval <= 900)              return { label: '۱۵ دقیقه'+ smart, cls: 'warm', smart: !!isAtr };
-    if (interval <= 3600)             return { label: '۱ ساعت'  + smart, cls: 'cold', smart: !!isAtr };
-    return                                   { label: '۲ ساعت'  + smart, cls: 'cold', smart: !!isAtr };
+    if (!interval || interval <= 60)  return { label: '۱ دقیقه', cls: 'hot' };
+    if (interval <= 180)              return { label: '۳ دقیقه', cls: 'hot' };
+    return                                   { label: '۵ دقیقه', cls: 'warm' };
   }
-  if (!interval || interval <= 60)   return { label: '۱ دقیقه' + smart,  cls: 'hot',  smart: !!isAtr };
-  if (interval <= 120)               return { label: '۲ دقیقه' + smart,  cls: 'hot',  smart: !!isAtr };
-  if (interval <= 300)               return { label: '۵ دقیقه' + smart,  cls: 'warm', smart: !!isAtr };
-  if (interval <= 900)               return { label: '۱۵ دقیقه'+ smart,  cls: 'warm', smart: !!isAtr };
-  if (interval <= 3600)              return { label: '۱ ساعت'  + smart,  cls: 'cold', smart: !!isAtr };
-  return                                    { label: '۲ ساعت'  + smart,  cls: 'cold', smart: !!isAtr };
+  if (!interval || interval <= 120)  return { label: '۲ دقیقه',  cls: 'hot' };
+  if (interval <= 900)               return { label: '۱۵ دقیقه', cls: 'warm' };
+  if (interval <= 3600)              return { label: '۱ ساعت',   cls: 'cold' };
+  return                                    { label: '۲ ساعت',   cls: 'cold' };
 }
 
 function getGroup(interval, sym) {
@@ -545,7 +537,7 @@ function buildCard(a) {
   const tgt      = a.target_price;
   const isAbove  = a.condition === 'above';
   const di       = calcDist(cur, tgt, a.symbol);
-  const iv       = getIntervalLabel(a.check_interval, a.symbol, a.atr_based);
+  const iv       = getIntervalLabel(a.check_interval, a.symbol);
   const ago      = minutesAgo(a.last_checked);
   const cmtHtml  = a.comment ? `<div class="acard-cmt">📝 ${a.comment}</div>` : '';
   const ivBadge  = `<span class="iv-badge ${iv.cls}">${iv.label}</span>`;
@@ -850,7 +842,6 @@ async function initConfig() {
     document.getElementById('sc-users').textContent = d.user_count || 0;
   } catch {}
 }
-
 
 // ── Init ──────────────────────────────────────────────────────────
 initConfig();
