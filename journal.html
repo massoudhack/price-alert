@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ژورنال معاملاتی</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Vazirmatn:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#07090c;--bg2:#0c0f14;--bg3:#111720;--bg4:#171e2a;--bg5:#1c2433;
+  --border:rgba(255,255,255,0.06);--border2:rgba(255,255,255,0.11);
+  --text:#dce4f0;--text2:#6b7a8d;--text3:#35404f;
+  --green:#00d98b;--green2:#00f5a0;--gdim:rgba(0,217,139,0.09);
+  --red:#ff4560;--rdim:rgba(255,69,96,0.09);
+  --gold:#f0a500;--gdold:rgba(240,165,0,0.09);
+  --blue:#4da8ff;--bluedim:rgba(77,168,255,0.09);
+  --purple:#a070ff;--purdim:rgba(160,112,255,0.09);
+  --mono:'IBM Plex Mono',monospace;--sans:'Vazirmatn',sans-serif;
+}
+body.light {
+  --bg:#f0f3f8;--bg2:#fff;--bg3:#e8ecf3;--bg4:#dde2ec;--bg5:#d0d6e4;
+  --border:rgba(0,0,0,0.07);--border2:rgba(0,0,0,0.12);
+  --text:#1a2233;--text2:#4a5568;--text3:#9aa3b4;
+  --green:#00b87a;--gdim:rgba(0,184,122,0.10);
+  --red:#e53050;--rdim:rgba(229,48,80,0.09);
+  --gold:#c87a00;--gdold:rgba(200,122,0,0.10);
+  --blue:#2276d4;--bluedim:rgba(34,118,212,0.09);
+  --purple:#7040cc;--purdim:rgba(112,64,204,0.09);
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;transition:background .3s,color .3s;}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(255,255,255,0.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.015) 1px,transparent 1px);background-size:48px 48px;pointer-events:none;z-index:0;}
+
+.wrap{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:1.75rem 1.25rem 5rem;}
+
+/* Header */
+.hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:2rem;padding-bottom:1.25rem;border-bottom:1px solid var(--border);}
+.brand{display:flex;align-items:center;gap:11px;}
+.brand-icon{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,rgba(160,112,255,0.2),rgba(77,168,255,0.15));border:1px solid rgba(160,112,255,0.25);display:flex;align-items:center;justify-content:center;font-size:18px;}
+.brand-name{font-family:var(--mono);font-size:17px;font-weight:700;color:var(--text);}
+.brand-name em{color:var(--purple);font-style:normal;}
+.brand-sub{font-size:10px;color:var(--text3);font-family:var(--mono);margin-top:2px;}
+.hdr-actions{display:flex;gap:7px;}
+.ibtn{width:34px;height:34px;border-radius:8px;background:var(--bg3);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text3);transition:.15s;font-size:14px;}
+.ibtn:hover{color:var(--text);border-color:var(--border2);}
+
+/* Stats */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:1.5rem;}
+@media(max-width:600px){.stats{grid-template-columns:1fr 1fr;}}
+.sc{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:1rem 1.1rem;transition:.2s;}
+.sc:hover{border-color:var(--border2);}
+.sc-lbl{font-size:10px;font-family:var(--mono);color:var(--text3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px;}
+.sc-val{font-size:24px;font-weight:700;font-family:var(--mono);line-height:1;}
+.sc-sub{font-size:11px;color:var(--text2);margin-top:4px;font-family:var(--mono);}
+
+/* Tabs */
+.tabs{display:flex;gap:4px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:4px;margin-bottom:1.25rem;width:fit-content;}
+.tab{padding:7px 16px;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;color:var(--text2);border:none;background:transparent;font-family:var(--sans);transition:.15s;}
+.tab.on{background:var(--bg4);color:var(--text);border:1px solid var(--border2);}
+.tab:hover:not(.on){color:var(--text);}
+.pnl{display:none;}.pnl.on{display:block;}
+
+/* Card */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;margin-bottom:1rem;overflow:hidden;transition:.2s;}
+.card:hover{border-color:var(--border2);}
+.card-hd{display:flex;align-items:center;justify-content:space-between;padding:.85rem 1.2rem;border-bottom:1px solid var(--border);}
+.card-ttl{font-size:11px;font-family:var(--mono);color:var(--text2);letter-spacing:.07em;text-transform:uppercase;display:flex;align-items:center;gap:7px;}
+.card-ttl-dot{width:3px;height:11px;border-radius:2px;}
+.card-bd{padding:1.2rem;}
+
+/* Form */
+.fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:9px;align-items:end;}
+.fld label{display:block;font-size:10px;color:var(--text3);font-family:var(--mono);letter-spacing:.07em;margin-bottom:4px;}
+.fld input,.fld select,.fld textarea{width:100%;background:var(--bg4);border:1px solid var(--border2);border-radius:10px;padding:9px 11px;color:var(--text);font-size:13px;font-family:var(--mono);outline:none;transition:.15s;appearance:none;}
+.fld input:focus,.fld select:focus,.fld textarea:focus{border-color:var(--purple);box-shadow:0 0 0 3px rgba(160,112,255,0.07);}
+.fld input::placeholder{color:var(--text3);}
+.fld select option{background:var(--bg4);}
+.fld textarea{resize:vertical;min-height:60px;line-height:1.5;}
+.btn{padding:9px 15px;border-radius:10px;font-size:13px;font-weight:500;cursor:pointer;font-family:var(--sans);border:1px solid var(--border2);background:var(--bg3);color:var(--text2);transition:.15s;white-space:nowrap;}
+.btn:hover{color:var(--text);background:var(--bg4);}
+.btn-purple{background:var(--purple);color:#fff;border-color:var(--purple);font-weight:700;}
+.btn-purple:hover{opacity:.9;box-shadow:0 0 18px rgba(160,112,255,0.3);}
+.btn-green{background:var(--green);color:#07090c;border-color:var(--green);font-weight:700;}
+.btn-green:hover{background:var(--green2);}
+.btn-red{color:var(--red);border-color:rgba(255,69,96,.2);background:transparent;padding:5px 9px;font-size:11px;}
+.btn-red:hover{background:var(--rdim);}
+.btn-sm{padding:5px 9px;font-size:11px;border-radius:7px;}
+.row-end{display:flex;gap:8px;justify-content:flex-end;margin-top:1rem;}
+
+/* Trade table */
+.ttbl{width:100%;border-collapse:collapse;}
+.ttbl th{font-size:10px;font-family:var(--mono);color:var(--text3);letter-spacing:.08em;text-align:right;padding:0 8px 8px;border-bottom:1px solid var(--border);font-weight:500;}
+.ttbl td{padding:11px 8px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:12px;vertical-align:middle;}
+.ttbl tr:last-child td{border-bottom:none;}
+.ttbl tr:hover td{background:rgba(255,255,255,.012);}
+.sym-badge{display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;background:var(--purdim);color:var(--purple);border:1px solid rgba(160,112,255,.15);}
+.dir-up{color:var(--green);font-weight:700;}
+.dir-dn{color:var(--red);font-weight:700;}
+.pnl-pos{color:var(--green);font-weight:700;}
+.pnl-neg{color:var(--red);font-weight:700;}
+.status-open{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--gold);font-family:var(--mono);}
+.status-open::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--gold);box-shadow:0 0 4px var(--gold);animation:blink 2s infinite;}
+.status-closed{font-size:10px;color:var(--text3);font-family:var(--mono);}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* AI Analysis */
+.ai-card{background:linear-gradient(135deg,var(--bg2),var(--bg3));border:1px solid rgba(160,112,255,.2);border-radius:14px;padding:1.4rem;margin-bottom:1rem;position:relative;overflow:hidden;}
+.ai-card::before{content:'';position:absolute;top:0;right:0;width:200px;height:200px;background:radial-gradient(circle,rgba(160,112,255,0.06),transparent);pointer-events:none;}
+.ai-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;}
+.ai-ttl{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--purple);}
+.ai-date{font-size:10px;font-family:var(--mono);color:var(--text3);}
+.ai-body{font-size:13px;line-height:1.9;color:var(--text2);white-space:pre-wrap;}
+.ai-body strong,.ai-body b{color:var(--text);font-weight:600;}
+.ai-loading{display:flex;align-items:center;gap:8px;color:var(--text3);font-size:12px;font-family:var(--mono);}
+.ai-dot{width:6px;height:6px;border-radius:50%;background:var(--purple);animation:aiPulse 1.2s ease-in-out infinite;}
+.ai-dot:nth-child(2){animation-delay:.2s;}
+.ai-dot:nth-child(3){animation-delay:.4s;}
+@keyframes aiPulse{0%,100%{opacity:.2;transform:scale(.8)}50%{opacity:1;transform:scale(1.1)}}
+.ai-empty{text-align:center;padding:2rem;color:var(--text3);}
+.ai-empty-ico{font-size:28px;margin-bottom:8px;opacity:.3;}
+.ai-empty p{font-size:12px;font-family:var(--mono);}
+
+/* Empty */
+.empty{text-align:center;padding:2.5rem 1rem;color:var(--text3);}
+.empty-ico{font-size:22px;margin-bottom:6px;opacity:.3;}
+.empty p{font-size:12px;font-family:var(--mono);}
+
+/* Toast */
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(70px);background:var(--bg4);border:1px solid var(--border2);color:var(--text);padding:10px 18px;border-radius:10px;font-size:13px;font-family:var(--mono);z-index:999;opacity:0;transition:all .28s cubic-bezier(.34,1.56,.64,1);white-space:nowrap;}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0);}
+#toast.ok{border-color:rgba(0,217,139,.4);color:var(--green);}
+#toast.er{border-color:rgba(255,69,96,.4);color:var(--red);}
+
+.section-sep{display:flex;align-items:center;gap:8px;margin:1.5rem 0 1rem;}
+.section-sep::before,.section-sep::after{content:'';flex:1;height:1px;background:var(--border);}
+.section-sep span{font-size:10px;font-family:var(--mono);color:var(--text3);white-space:nowrap;padding:0 6px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Header -->
+  <header class="hdr">
+    <div class="brand">
+      <div class="brand-icon">📒</div>
+      <div>
+        <div class="brand-name">Trade<em>Journal</em></div>
+        <div class="brand-sub">ژورنال معاملاتی هوشمند</div>
+      </div>
+    </div>
+    <div class="hdr-actions">
+      <button class="ibtn" onclick="toggleTheme()" id="theme-btn">🌙</button>
+    </div>
+  </header>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="sc">
+      <div class="sc-lbl">کل معاملات</div>
+      <div class="sc-val" id="sc-total" style="color:var(--blue)">0</div>
+      <div class="sc-sub" id="sc-open">0 باز</div>
+    </div>
+    <div class="sc">
+      <div class="sc-lbl">نرخ موفقیت</div>
+      <div class="sc-val" id="sc-winrate" style="color:var(--green)">—</div>
+      <div class="sc-sub">win rate</div>
+    </div>
+    <div class="sc">
+      <div class="sc-lbl">کل پیپ</div>
+      <div class="sc-val" id="sc-pips" style="color:var(--gold)">0</div>
+      <div class="sc-sub" id="sc-pips-sub">پیپ</div>
+    </div>
+    <div class="sc">
+      <div class="sc-lbl">میانگین R:R</div>
+      <div class="sc-val" id="sc-rr" style="color:var(--purple)">—</div>
+      <div class="sc-sub">reward/risk</div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab on" onclick="switchTab('trades')">📋 معاملات</button>
+    <button class="tab" onclick="switchTab('analysis')">🤖 تحلیل AI</button>
+  </div>
+
+  <!-- Tab: Trades -->
+  <div class="pnl on" id="pnl-trades">
+
+    <!-- Add trade form -->
+    <div class="card">
+      <div class="card-hd">
+        <div class="card-ttl"><span class="card-ttl-dot" style="background:var(--purple)"></span>ثبت معامله جدید</div>
+      </div>
+      <div class="card-bd">
+        <div class="fgrid">
+          <div class="fld">
+            <label>نماد</label>
+            <input type="text" id="t-sym" placeholder="EURUSD" dir="ltr" style="text-transform:uppercase">
+          </div>
+          <div class="fld">
+            <label>جهت</label>
+            <select id="t-dir">
+              <option value="buy">📈 Buy</option>
+              <option value="sell">📉 Sell</option>
+            </select>
+          </div>
+          <div class="fld">
+            <label>قیمت ورود</label>
+            <input type="number" id="t-entry" placeholder="1.17200" step="any" dir="ltr">
+          </div>
+          <div class="fld">
+            <label>حد ضرر (SL)</label>
+            <input type="number" id="t-sl" placeholder="1.17000" step="any" dir="ltr">
+          </div>
+          <div class="fld">
+            <label>حد سود (TP)</label>
+            <input type="number" id="t-tp" placeholder="1.17600" step="any" dir="ltr">
+          </div>
+          <div class="fld">
+            <label>لات</label>
+            <input type="number" id="t-lot" placeholder="0.01" step="any" dir="ltr" value="0.01">
+          </div>
+        </div>
+        <div class="fgrid" style="margin-top:9px;">
+          <div class="fld" style="grid-column:1/-1">
+            <label>یادداشت (دلیل ورود، ستاپ، احساس بازار)</label>
+            <textarea id="t-note" placeholder="مثلا: تست مقاومت ۱.۱۷۵ با تایید H1، RSI اشباع فروش..."></textarea>
+          </div>
+        </div>
+        <div class="row-end">
+          <button class="btn btn-purple" onclick="addTrade()">+ ثبت معامله</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Trades list -->
+    <div class="card">
+      <div class="card-hd">
+        <div class="card-ttl"><span class="card-ttl-dot" style="background:var(--gold)"></span>لیست معاملات</div>
+        <button class="btn btn-sm" onclick="clearClosed()" style="color:var(--text3);font-size:11px;">پاک کردن بسته‌ها</button>
+      </div>
+      <div class="card-bd" style="padding:.5rem 0 0;overflow-x:auto;">
+        <table class="ttbl">
+          <thead>
+            <tr>
+              <th>نماد</th>
+              <th>جهت</th>
+              <th>ورود</th>
+              <th>SL</th>
+              <th>TP</th>
+              <th>خروج</th>
+              <th>پیپ</th>
+              <th>R:R</th>
+              <th>وضعیت</th>
+              <th>یادداشت</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="trades-body">
+            <tr><td colspan="11" style="text-align:center;padding:2rem;color:var(--text3);font-family:var(--mono);font-size:12px;">هنوز معامله‌ای ثبت نشده</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Close trade modal -->
+    <div id="close-bar" style="display:none;">
+      <div class="card" style="border-color:rgba(0,217,139,.2);">
+        <div class="card-hd">
+          <div class="card-ttl"><span class="card-ttl-dot" style="background:var(--green)"></span>بستن معامله — <span id="close-sym" style="color:var(--green)"></span></div>
+        </div>
+        <div class="card-bd">
+          <div class="fgrid">
+            <div class="fld">
+              <label>قیمت خروج</label>
+              <input type="number" id="close-price" step="any" dir="ltr">
+            </div>
+            <div class="fld">
+              <label>یادداشت خروج</label>
+              <input type="text" id="close-note" placeholder="دلیل بستن...">
+            </div>
+            <div class="fld" style="display:flex;gap:8px;align-items:flex-end;">
+              <button class="btn btn-green" onclick="confirmClose()">✓ تأیید بستن</button>
+              <button class="btn" onclick="cancelClose()">انصراف</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /pnl-trades -->
+
+  <!-- Tab: AI Analysis -->
+  <div class="pnl" id="pnl-analysis">
+
+    <div class="card">
+      <div class="card-hd">
+        <div class="card-ttl"><span class="card-ttl-dot" style="background:var(--purple)"></span>تحلیل هوشمند معاملات</div>
+        <button class="btn btn-purple btn-sm" onclick="runAnalysis()" id="analyze-btn">🤖 تحلیل کن</button>
+      </div>
+      <div class="card-bd">
+        <div style="font-size:12px;color:var(--text3);font-family:var(--mono);line-height:1.8;margin-bottom:1rem;">
+          AI تمام معاملاتت رو بررسی می‌کنه — الگوهای ضرر، زود بستن، بهترین ستاپ‌ها و پیشنهاد بهبود میده.<br>
+          هر بار که تحلیل می‌گیری، به تاریخچه تحلیل‌های قبلی هم نگاه می‌کنه تا پیشرفت رو بسنجه.
+        </div>
+        <div id="analysis-result">
+          <div class="ai-empty">
+            <div class="ai-empty-ico">🤖</div>
+            <p>روی «تحلیل کن» کلیک کن تا AI معاملاتت رو بررسی کنه</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- History of AI analyses -->
+    <div id="analysis-history"></div>
+
+  </div><!-- /pnl-analysis -->
+
+</div><!-- /wrap -->
+
+<div id="toast"></div>
+
+<script>
+// ── Storage ───────────────────────────────────────────────────────
+const STORAGE_KEY = 'tradejournal_v1';
+
+function loadJournal() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return { trades: [], analyses: [] };
+}
+
+function saveJournal(data) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+// ── Theme ─────────────────────────────────────────────────────────
+function initTheme() {
+  const t = localStorage.getItem('journal_theme') || 'dark';
+  if (t === 'light') { document.body.classList.add('light'); document.getElementById('theme-btn').textContent = '☀️'; }
+}
+function toggleTheme() {
+  const l = document.body.classList.toggle('light');
+  localStorage.setItem('journal_theme', l ? 'light' : 'dark');
+  document.getElementById('theme-btn').textContent = l ? '☀️' : '🌙';
+}
+initTheme();
+
+// ── Format ────────────────────────────────────────────────────────
+function fmt(n, dp=5) { return n == null ? '—' : parseFloat(n).toFixed(dp); }
+function fmtPips(p) { return p == null ? '—' : (p > 0 ? '+' : '') + Math.round(p); }
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('fa-IR') + ' ' + d.toLocaleTimeString('fa-IR', {hour:'2-digit',minute:'2-digit'});
+}
+
+function calcPips(trade, exitPrice) {
+  const entry = parseFloat(trade.entry);
+  const exit  = exitPrice != null ? parseFloat(exitPrice) : null;
+  if (!exit) return null;
+  const sym   = (trade.symbol || '').toUpperCase();
+  const isJPY = sym.includes('JPY');
+  const mult  = isJPY ? 100 : 10000;
+  const diff  = trade.direction === 'buy' ? exit - entry : entry - exit;
+  return diff * mult;
+}
+
+function calcRR(trade) {
+  const entry = parseFloat(trade.entry);
+  const sl    = parseFloat(trade.sl);
+  const tp    = parseFloat(trade.tp);
+  if (!sl || !tp) return null;
+  const risk   = Math.abs(entry - sl);
+  const reward = Math.abs(entry - tp);
+  if (!risk) return null;
+  return reward / risk;
+}
+
+// ── Toast ─────────────────────────────────────────────────────────
+function toast(msg, cls='') {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = 'on ' + cls;
+  clearTimeout(el._t); el._t = setTimeout(() => el.className='', 3000);
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────
+function switchTab(n) {
+  ['trades','analysis'].forEach((t,i) => {
+    document.querySelectorAll('.tab')[i].classList.toggle('on', t===n);
+    document.getElementById('pnl-'+t).classList.toggle('on', t===n);
+  });
+  if (n === 'analysis') renderAnalysisHistory();
+}
+
+// ── Add Trade ─────────────────────────────────────────────────────
+function addTrade() {
+  const sym   = document.getElementById('t-sym').value.trim().toUpperCase();
+  const dir   = document.getElementById('t-dir').value;
+  const entry = parseFloat(document.getElementById('t-entry').value);
+  const sl    = parseFloat(document.getElementById('t-sl').value);
+  const tp    = parseFloat(document.getElementById('t-tp').value);
+  const lot   = parseFloat(document.getElementById('t-lot').value) || 0.01;
+  const note  = document.getElementById('t-note').value.trim();
+
+  if (!sym || !entry) { toast('نماد و قیمت ورود الزامی است', 'er'); return; }
+
+  const data  = loadJournal();
+  const trade = {
+    id:        Date.now().toString(),
+    symbol:    sym,
+    direction: dir,
+    entry, sl, tp, lot,
+    note,
+    openAt:    new Date().toISOString(),
+    closeAt:   null,
+    exitPrice: null,
+    exitNote:  null,
+    pips:      null,
+    status:    'open'
+  };
+  data.trades.push(trade);
+  saveJournal(data);
+
+  // clear form
+  ['t-sym','t-entry','t-sl','t-tp','t-note'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('t-lot').value = '0.01';
+
+  toast(`✅ معامله ${sym} ثبت شد`, 'ok');
+  renderTrades();
+  updateStats();
+}
+
+// ── Close Trade ───────────────────────────────────────────────────
+let closingId = null;
+
+function openClose(id) {
+  closingId = id;
+  const data  = loadJournal();
+  const trade = data.trades.find(t => t.id === id);
+  if (!trade) return;
+  document.getElementById('close-sym').textContent   = trade.symbol;
+  document.getElementById('close-price').value       = '';
+  document.getElementById('close-note').value        = '';
+  document.getElementById('close-bar').style.display = 'block';
+  document.getElementById('close-price').focus();
+}
+
+function cancelClose() {
+  closingId = null;
+  document.getElementById('close-bar').style.display = 'none';
+}
+
+function confirmClose() {
+  if (!closingId) return;
+  const exitPrice = parseFloat(document.getElementById('close-price').value);
+  const exitNote  = document.getElementById('close-note').value.trim();
+  if (!exitPrice) { toast('قیمت خروج را وارد کنید', 'er'); return; }
+
+  const data  = loadJournal();
+  const trade = data.trades.find(t => t.id === closingId);
+  if (!trade) return;
+
+  trade.exitPrice = exitPrice;
+  trade.exitNote  = exitNote;
+  trade.closeAt   = new Date().toISOString();
+  trade.pips      = calcPips(trade, exitPrice);
+  trade.status    = 'closed';
+
+  saveJournal(data);
+  cancelClose();
+  toast(`✅ معامله ${trade.symbol} بسته شد — ${fmtPips(trade.pips)} پیپ`, trade.pips >= 0 ? 'ok' : 'er');
+  renderTrades();
+  updateStats();
+}
+
+function deleteTrade(id) {
+  if (!confirm('این معامله حذف شود؟')) return;
+  const data = loadJournal();
+  data.trades = data.trades.filter(t => t.id !== id);
+  saveJournal(data);
+  renderTrades();
+  updateStats();
+  toast('حذف شد');
+}
+
+function clearClosed() {
+  if (!confirm('معاملات بسته پاک شوند؟')) return;
+  const data = loadJournal();
+  data.trades = data.trades.filter(t => t.status === 'open');
+  saveJournal(data);
+  renderTrades();
+  updateStats();
+  toast('معاملات بسته پاک شدند');
+}
+
+// ── Render Trades ─────────────────────────────────────────────────
+function renderTrades() {
+  const data   = loadJournal();
+  const trades = [...data.trades].reverse();
+  const body   = document.getElementById('trades-body');
+
+  if (!trades.length) {
+    body.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:2rem;color:var(--text3);font-family:var(--mono);font-size:12px;">هنوز معامله‌ای ثبت نشده</td></tr>';
+    return;
+  }
+
+  body.innerHTML = trades.map(t => {
+    const rr      = calcRR(t);
+    const isOpen  = t.status === 'open';
+    const pipsCls = t.pips == null ? '' : t.pips >= 0 ? 'pnl-pos' : 'pnl-neg';
+
+    return `<tr>
+      <td><span class="sym-badge">${t.symbol}</span></td>
+      <td class="${t.direction==='buy'?'dir-up':'dir-dn'}">${t.direction==='buy'?'▲ Buy':'▼ Sell'}</td>
+      <td>${fmt(t.entry)}</td>
+      <td style="color:var(--red)">${t.sl ? fmt(t.sl) : '—'}</td>
+      <td style="color:var(--green)">${t.tp ? fmt(t.tp) : '—'}</td>
+      <td>${t.exitPrice ? fmt(t.exitPrice) : '—'}</td>
+      <td class="${pipsCls}">${isOpen ? '⏳' : fmtPips(t.pips)}</td>
+      <td style="color:var(--purple)">${rr ? '1:'+rr.toFixed(1) : '—'}</td>
+      <td>${isOpen
+        ? `<span class="status-open">باز</span>`
+        : `<span class="status-closed">✓ بسته</span>`
+      }</td>
+      <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text3);font-size:11px;" title="${t.note||''}">${t.note||'—'}</td>
+      <td style="display:flex;gap:4px;align-items:center;">
+        ${isOpen ? `<button class="btn btn-sm btn-green" onclick="openClose('${t.id}')" style="font-size:10px;padding:4px 8px;">بستن</button>` : ''}
+        <button class="btn btn-red btn-sm" onclick="deleteTrade('${t.id}')">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Update Stats ──────────────────────────────────────────────────
+function updateStats() {
+  const data   = loadJournal();
+  const trades = data.trades;
+  const closed = trades.filter(t => t.status === 'closed');
+  const open   = trades.filter(t => t.status === 'open');
+  const wins   = closed.filter(t => t.pips > 0);
+  const totalPips = closed.reduce((s, t) => s + (t.pips || 0), 0);
+  const rrs    = trades.map(t => calcRR(t)).filter(Boolean);
+  const avgRR  = rrs.length ? rrs.reduce((a,b)=>a+b,0)/rrs.length : null;
+
+  document.getElementById('sc-total').textContent    = trades.length;
+  document.getElementById('sc-open').textContent     = open.length + ' باز';
+  document.getElementById('sc-winrate').textContent  = closed.length ? Math.round(wins.length/closed.length*100)+'%' : '—';
+  document.getElementById('sc-pips').textContent     = fmtPips(totalPips);
+  document.getElementById('sc-pips-sub').textContent = closed.length + ' معامله بسته';
+  document.getElementById('sc-rr').textContent       = avgRR ? '1:'+avgRR.toFixed(1) : '—';
+}
+
+// ── AI Analysis ───────────────────────────────────────────────────
+async function runAnalysis() {
+  const data   = loadJournal();
+  const trades = data.trades;
+
+  if (trades.length < 2) {
+    toast('حداقل ۲ معامله برای تحلیل لازم است', 'er');
+    return;
+  }
+
+  const btn = document.getElementById('analyze-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ در حال تحلیل...';
+
+  document.getElementById('analysis-result').innerHTML = `
+    <div class="ai-loading">
+      <div class="ai-dot"></div><div class="ai-dot"></div><div class="ai-dot"></div>
+      <span>AI در حال بررسی معاملات...</span>
+    </div>`;
+
+  // آماده‌سازی خلاصه معاملات
+  const closed = trades.filter(t => t.status === 'closed');
+  const open   = trades.filter(t => t.status === 'open');
+  const wins   = closed.filter(t => t.pips > 0);
+  const losses = closed.filter(t => t.pips <= 0);
+
+  const tradesText = trades.map(t => {
+    const rr = calcRR(t);
+    return `- ${t.symbol} ${t.direction.toUpperCase()} | ورود:${t.entry} SL:${t.sl||'ندارد'} TP:${t.tp||'ندارد'} | ${t.status==='closed'?'خروج:'+t.exitPrice+' پیپ:'+(fmtPips(t.pips)):'باز'} | R:R: ${rr?'1:'+rr.toFixed(1):'ندارد'} | یادداشت: ${t.note||'ندارد'}`;
+  }).join('\n');
+
+  // تاریخچه تحلیل‌های قبلی
+  const prevAnalyses = data.analyses.slice(-3).map(a =>
+    `[${a.date}]: ${a.summary}`
+  ).join('\n');
+
+  const prompt = `تو یک تحلیلگر حرفه‌ای فارکس هستی. معاملات یک تریدر رو بررسی کن و بازخورد مشخص و عملی بده.
+
+**آمار کلی:**
+- تعداد کل: ${trades.length} | بسته: ${closed.length} | باز: ${open.length}
+- برد: ${wins.length} | باخت: ${losses.length} | نرخ موفقیت: ${closed.length ? Math.round(wins.length/closed.length*100) : 0}%
+- مجموع پیپ: ${Math.round(closed.reduce((s,t)=>s+(t.pips||0),0))}
+
+**لیست معاملات:**
+${tradesText}
+
+${prevAnalyses ? `**تحلیل‌های قبلی (برای سنجش پیشرفت):**\n${prevAnalyses}` : ''}
+
+**لطفاً تحلیل کن:**
+۱. الگوهای مثبت و منفی در معاملات
+۲. مشکلات اصلی (زود بستن، SL بد، ورود نامناسب و...)
+۳. مقایسه با تحلیل‌های قبلی — آیا پیشرفت بوده؟
+۴. ۳ پیشنهاد مشخص برای بهبود
+
+پاسخ رو به فارسی و صادقانه بده. از ایموجی برای خوانایی استفاده کن.`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    const json = await res.json();
+    const text = json.content?.[0]?.text || 'خطا در دریافت پاسخ';
+
+    // نمایش تحلیل جدید
+    const now = new Date().toLocaleDateString('fa-IR');
+    document.getElementById('analysis-result').innerHTML = `
+      <div class="ai-card">
+        <div class="ai-hdr">
+          <div class="ai-ttl">🤖 تحلیل AI</div>
+          <div class="ai-date">${now}</div>
+        </div>
+        <div class="ai-body">${text.replace(/\*\*(.*?)\*\*/g,'<b>$1</b>').replace(/\n/g,'<br>')}</div>
+      </div>`;
+
+    // ذخیره در تاریخچه
+    const summary = text.slice(0, 200) + '...';
+    data.analyses.push({ date: now, text, summary, tradeCnt: trades.length });
+    if (data.analyses.length > 30) data.analyses = data.analyses.slice(-30);
+    saveJournal(data);
+
+    toast('تحلیل ذخیره شد', 'ok');
+
+  } catch(e) {
+    document.getElementById('analysis-result').innerHTML = `
+      <div style="color:var(--red);font-size:13px;padding:1rem;font-family:var(--mono);">
+        ❌ خطا در ارتباط با AI: ${e.message}
+      </div>`;
+  }
+
+  btn.disabled = false;
+  btn.textContent = '🤖 تحلیل کن';
+}
+
+// ── Render Analysis History ───────────────────────────────────────
+function renderAnalysisHistory() {
+  const data     = loadJournal();
+  const analyses = [...(data.analyses || [])].reverse();
+  const container = document.getElementById('analysis-history');
+
+  if (!analyses.length) {
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="section-sep"><span>تاریخچه تحلیل‌ها (${analyses.length} تحلیل)</span></div>
+    ${analyses.map((a, i) => `
+      <div class="ai-card" style="margin-bottom:.75rem;opacity:${i===0?1:0.7}">
+        <div class="ai-hdr">
+          <div class="ai-ttl" style="font-size:12px;">📅 ${a.date} — ${a.tradeCnt} معامله</div>
+        </div>
+        <div class="ai-body" style="font-size:12px;">${(a.text||a.summary).replace(/\*\*(.*?)\*\*/g,'<b>$1</b>').replace(/\n/g,'<br>')}</div>
+      </div>`).join('')}`;
+}
+
+// ── Init ──────────────────────────────────────────────────────────
+renderTrades();
+updateStats();
+</script>
+</body>
+</html>
