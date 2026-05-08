@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PriceAlert</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Vazirmatn:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#07090c;--bg2:#0c0f14;--bg3:#121720;--bg4:#181e29;
+  --border:rgba(255,255,255,.055);--border2:rgba(255,255,255,.10);--border3:rgba(255,255,255,.18);
+  --text:#dce4f0;--text2:#7a8799;--text3:#3d4a5c;
+  --green:#00d98b;--green2:#00f5a0;--gdim:rgba(0,217,139,.09);
+  --red:#ff4560;--rdim:rgba(255,69,96,.09);
+  --gold:#f0a500;--gdold:rgba(240,165,0,.09);
+  --blue:#4da8ff;--bluedim:rgba(77,168,255,.09);
+  --purple:#a070ff;--purdim:rgba(160,112,255,.09);
+  --mono:'IBM Plex Mono',monospace;--sans:'Vazirmatn',sans-serif;
+  --rad:12px;--rad2:16px;
+  --grid-line:rgba(255,255,255,.016);
+}
+body.light {
+  --bg:#f0f3f8;--bg2:#ffffff;--bg3:#e8ecf3;--bg4:#dde2ec;
+  --border:rgba(0,0,0,.07);--border2:rgba(0,0,0,.12);--border3:rgba(0,0,0,.20);
+  --text:#1a2233;--text2:#4a5568;--text3:#9aa3b4;
+  --green:#00b87a;--green2:#00d98b;--gdim:rgba(0,184,122,.10);
+  --red:#e53050;--rdim:rgba(229,48,80,.09);
+  --gold:#c87a00;--gdold:rgba(200,122,0,.10);
+  --blue:#2276d4;--bluedim:rgba(34,118,212,.09);
+  --purple:#7040cc;--purdim:rgba(112,64,204,.09);
+  --grid-line:rgba(0,0,0,.03);
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;overflow-x:hidden;transition:background .28s,color .28s}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(var(--grid-line) 1px,transparent 1px),linear-gradient(90deg,var(--grid-line) 1px,transparent 1px);background-size:50px 50px;pointer-events:none;z-index:0}
+.wrap{position:relative;z-index:1;max-width:960px;margin:0 auto;padding:2rem 1.25rem 5rem}
+
+/* ── Header ── */
+.hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:2rem;padding-bottom:1.5rem;border-bottom:1px solid var(--border)}
+.brand{display:flex;align-items:center;gap:13px}
+.brand-logo{width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,rgba(0,217,139,.15),rgba(77,168,255,.15));border:1px solid rgba(0,217,139,.2);display:flex;align-items:center;justify-content:center}
+.brand-name{font-family:var(--mono);font-size:18px;font-weight:600;letter-spacing:-.03em}
+.brand-name em{color:var(--green);font-style:normal}
+.brand-sub{font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:2px}
+.hdr-right{display:flex;align-items:center;gap:8px}
+.live-pill{display:flex;align-items:center;gap:6px;padding:7px 13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;font-size:11px;font-family:var(--mono);color:var(--text2)}
+.ldot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);animation:blink 2s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+.theme-btn{width:36px;height:36px;border-radius:9px;background:var(--bg3);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;transition:.18s;line-height:1}
+.theme-btn:hover{border-color:var(--border2);transform:scale(1.08)}
+
+/* ── Stats ── */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:1.5rem}
+@media(max-width:600px){.stats{grid-template-columns:1fr 1fr}}
+.scard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rad2);padding:1rem 1.1rem .9rem}
+.scard-lbl{font-size:10px;font-family:var(--mono);color:var(--text3);letter-spacing:.09em;text-transform:uppercase;margin-bottom:8px}
+.scard-val{font-size:24px;font-weight:700;font-family:var(--mono);line-height:1;letter-spacing:-.02em}
+.scard-val.green{color:var(--green)}.scard-val.gold{color:var(--gold)}.scard-val.purple{color:var(--purple)}
+.scard-sub{font-size:11px;color:var(--text2);margin-top:5px;font-family:var(--mono)}
+
+/* ── Tabs ── */
+.tabs{display:flex;gap:4px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rad);padding:4px;margin-bottom:1.25rem;width:fit-content}
+.tab{padding:7px 20px;border-radius:9px;font-size:12px;font-weight:500;cursor:pointer;color:var(--text2);border:none;background:transparent;font-family:var(--sans);transition:.18s}
+.tab.on{background:var(--bg3);color:var(--text);border:1px solid var(--border2)}
+.tab.on.t-alerts{color:var(--green);border-color:rgba(0,217,139,.3)}
+.tab.on.t-arch{color:var(--gold);border-color:rgba(240,165,0,.3)}
+.tab.on.t-users{color:var(--purple);border-color:rgba(160,112,255,.3)}
+.pnl{display:none}.pnl.on{display:block}
+
+/* ── Section ── */
+.sec{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rad2);margin-bottom:1rem;overflow:hidden}
+.sec-hd{display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.2rem;border-bottom:1px solid var(--border)}
+.sec-ttl{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;font-family:var(--mono);letter-spacing:.06em;color:var(--text2);text-transform:uppercase}
+.sec-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.sec-dot.green{background:var(--green);box-shadow:0 0 6px var(--green)}
+.sec-dot.gold{background:var(--gold);box-shadow:0 0 6px var(--gold)}
+.sec-dot.purple{background:var(--purple)}
+.sec-dot.red{background:var(--red)}
+.sec-bd{padding:1.2rem}
+
+/* ── Form ── */
+.fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;align-items:end}
+.fld label{display:block;font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:6px;letter-spacing:.05em}
+input,select{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:9px;padding:9px 12px;color:var(--text);font-size:13px;font-family:var(--sans);outline:none;transition:.15s;-webkit-appearance:none}
+input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 2px rgba(0,217,139,.1)}
+input::placeholder{color:var(--text3)}
+select option{background:var(--bg3)}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 16px;border-radius:9px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);font-family:var(--sans);transition:.18s;white-space:nowrap}
+.btn:hover{color:var(--text);border-color:var(--border3)}
+.btn-sm{padding:5px 11px;font-size:11px;border-radius:7px}
+.btn-green{background:var(--gdim);color:var(--green);border-color:rgba(0,217,139,.25)}
+.btn-green:hover{background:rgba(0,217,139,.15);border-color:var(--green)}
+.btn-blue{background:var(--bluedim);color:var(--blue);border-color:rgba(77,168,255,.25)}
+.btn-blue:hover{background:rgba(77,168,255,.15)}
+.btn-red{background:var(--rdim);color:var(--red);border-color:rgba(255,69,96,.2)}
+.btn-red:hover{background:rgba(255,69,96,.15)}
+
+/* ── Update bar ── */
+.upd-bar{display:flex;align-items:center;gap:10px;padding:8px 1.2rem;background:var(--bg4);border-bottom:1px solid var(--border);font-size:11px;font-family:var(--mono);color:var(--text3)}
+.upd-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;background:var(--green)}
+.upd-dot.err{background:var(--red)}
+
+/* ── Alert Cards ── */
+.cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;padding:1.2rem}
+.acard{background:var(--bg3);border:1px solid var(--border);border-radius:14px;padding:16px;position:relative;overflow:hidden;transition:border-color .2s,transform .2s;animation:cardIn .25s ease}
+@keyframes cardIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.acard:hover{border-color:var(--border2);transform:translateY(-1px)}
+.acard::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--card-accent,var(--green));opacity:.6}
+.acard.above{--card-accent:var(--green)}
+.acard.below{--card-accent:var(--red)}
+
+/* Card header */
+.acard-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px}
+.acard-badge{display:flex;align-items:center;gap:9px}
+.abadge{width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;font-weight:700;flex-shrink:0}
+.abadge.c{background:var(--gdold);color:var(--gold);border:1px solid rgba(240,165,0,.2)}
+.abadge.f{background:var(--bluedim);color:var(--blue);border:1px solid rgba(77,168,255,.2)}
+.acard-name{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--text);letter-spacing:.02em}
+.acard-type{font-size:10px;color:var(--text3);font-family:var(--mono);margin-top:2px;letter-spacing:.05em}
+.acard-del{background:none;border:none;cursor:pointer;color:var(--text3);font-size:13px;padding:4px 6px;border-radius:6px;transition:.15s;line-height:1}
+.acard-del:hover{background:var(--rdim);color:var(--red)}
+
+/* Price boxes */
+.acard-prices{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.pbox{background:var(--bg4);border:1px solid var(--border);border-radius:9px;padding:10px 12px}
+.pbox-lbl{font-size:9px;font-family:var(--mono);color:var(--text3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:5px}
+.pbox-val{font-family:var(--mono);font-size:18px;font-weight:700;letter-spacing:-.02em;line-height:1}
+.pbox-val.live{color:var(--blue)}
+.pbox-val.target.above{color:var(--green)}
+.pbox-val.target.below{color:var(--red)}
+.pbox-val.loading{color:var(--text3);font-size:12px;font-weight:400;animation:fade 1.2s infinite}
+@keyframes fade{0%,100%{opacity:.3}50%{opacity:.9}}
+
+/* Distance */
+.acard-dist{margin-bottom:10px}
+.dist-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:5px}
+.dist-lbl{font-size:10px;color:var(--text3);font-family:var(--mono)}
+.dist-chip{font-family:var(--mono);font-size:11px;font-weight:700;padding:2px 8px;border-radius:5px}
+.dist-chip.far{background:var(--gdim);color:var(--green)}
+.dist-chip.close{background:var(--rdim);color:var(--red)}
+.dist-chip.na{background:var(--bg4);color:var(--text3)}
+.dist-bar-bg{height:3px;background:var(--bg4);border-radius:2px;overflow:hidden}
+.dist-bar{height:3px;border-radius:2px;transition:width .5s ease}
+.dist-bar.far{background:linear-gradient(90deg,var(--green),var(--green2))}
+.dist-bar.close{background:linear-gradient(90deg,var(--red),#ff7a90)}
+
+/* Footer */
+.acard-foot{display:flex;align-items:center;justify-content:space-between}
+.acard-dir{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-family:var(--mono);font-weight:700;padding:3px 8px;border-radius:5px}
+.acard-dir.up{background:var(--gdim);color:var(--green)}
+.acard-dir.dn{background:var(--rdim);color:var(--red)}
+.acard-cmt{font-size:13px;color:var(--text);font-style:normal;font-weight:500;margin-top:6px;padding:7px 10px;background:var(--bg3);border-radius:8px;border-right:3px solid var(--blue);line-height:1.5;word-break:break-word;white-space:normal}
+.group-sep{display:flex;align-items:center;gap:8px;grid-column:1/-1;margin:12px 0 4px}
+.group-line{flex:1;height:1px;background:var(--border)}
+.group-label{font-size:11px;font-family:var(--mono);color:var(--text3);white-space:nowrap}
+.acard-time{font-size:10px;color:var(--text3);font-family:var(--mono)}
+
+/* Watch dot */
+.wdot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-left:6px}
+.wdot.watch{background:var(--gold);box-shadow:0 0 5px rgba(240,165,0,.6);animation:blink 2s infinite}
+.wdot.pend{background:var(--text3)}
+
+/* ── Archive ── */
+.arch-row{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
+.arch-row:last-child{border-bottom:none}
+.arch-tag{font-size:10px;padding:2px 8px;border-radius:5px;background:var(--gdim);color:var(--green);font-family:var(--mono);font-weight:600;white-space:nowrap;margin-top:2px}
+.arch-name{font-size:13px;font-weight:600;color:var(--text);font-family:var(--mono)}
+.arch-detail{font-size:11px;color:var(--text2);margin-top:3px;font-family:var(--mono)}
+.arch-cmt{font-size:11px;color:var(--text3);margin-top:2px;font-style:italic}
+
+/* ── Users ── */
+.user-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)}
+.user-row:last-child{border-bottom:none}
+.user-av{width:34px;height:34px;border-radius:50%;background:var(--purdim);border:1px solid rgba(160,112,255,.2);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.user-name{font-size:13px;font-weight:500;color:var(--text)}
+.user-id{font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:1px}
+.user-date{font-size:11px;color:var(--text3);font-family:var(--mono);margin-right:auto}
+
+/* ── Error log ── */
+.err-log{background:var(--rdim);border:1px solid rgba(255,69,96,.15);border-radius:var(--rad);padding:10px 14px;margin:0 1.2rem 1rem;display:none}
+.err-log.show{display:block}
+.err-log-ttl{font-size:10px;font-family:var(--mono);color:var(--red);margin-bottom:6px;font-weight:700;letter-spacing:.06em}
+.err-item{font-size:11px;color:rgba(255,69,96,.8);font-family:var(--mono);padding:3px 0;border-bottom:1px solid rgba(255,69,96,.08)}
+.err-item:last-child{border-bottom:none}
+
+/* ── Empty ── */
+.empty{text-align:center;padding:3rem 1rem;color:var(--text3)}
+.empty-ico{font-size:28px;margin-bottom:10px;opacity:.4}
+.empty p{font-size:13px}
+
+/* ── Toast ── */
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:10px 22px;border-radius:10px;font-size:13px;background:var(--bg4);border:1px solid var(--border3);color:var(--text);box-shadow:0 8px 32px rgba(0,0,0,.4);opacity:0;transition:opacity .25s;pointer-events:none;z-index:9999;font-family:var(--sans);white-space:nowrap}
+#toast.show{opacity:1}
+
+/* ── Interval badges ── */
+.iv-badge{display:inline-flex;align-items:center;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);font-weight:700;margin-right:4px;vertical-align:middle}
+.iv-badge.hot{background:rgba(0,217,139,.15);color:var(--green);border:1px solid rgba(0,217,139,.3)}
+.iv-badge.warm{background:rgba(240,165,0,.12);color:var(--gold);border:1px solid rgba(240,165,0,.25)}
+.iv-badge.cold{background:rgba(122,135,153,.1);color:var(--text2);border:1px solid var(--border)}
+
+/* کارت با border رنگی بر اساس interval */
+.acard.iv-hot  {border-color:rgba(0,217,139,.3)}
+.acard.iv-warm {border-color:rgba(240,165,0,.2)}
+.acard.iv-cold {border-color:var(--border)}
+
+/* آخرین بروزرسانی */
+.ago-lbl{font-size:9px;font-family:var(--mono);font-weight:600;padding:1px 5px;border-radius:3px;margin-right:3px;display:inline-block}
+.ago-lbl.hot {background:rgba(0,217,139,.1);color:var(--green)}
+.ago-lbl.warm{background:rgba(240,165,0,.1);color:var(--gold)}
+.ago-lbl.cold{background:rgba(122,135,153,.08);color:var(--text3)}
+
+
+
+/* ── Interval badges ── */
+.iv-badge { display:inline-flex;align-items:center;padding:2px 7px;border-radius:3px;font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.07em;vertical-align:middle;margin-right:3px; }
+.iv-badge.fire { background:rgba(200,65,10,.15);color:var(--accent);border:1.5px solid var(--accent);animation:pulse-badge 1.3s ease-in-out infinite; }
+.iv-badge.hot  { background:rgba(27,107,60,.12);color:var(--accent2);border:1px solid rgba(27,107,60,.3); }
+.iv-badge.warm { background:rgba(139,105,20,.1);color:var(--gold);border:1px dashed rgba(139,105,20,.4); }
+.iv-badge.cold { background:var(--paper3);color:var(--muted);border:1px solid var(--rule); }
+@keyframes pulse-badge { 0%,100%{opacity:1} 50%{opacity:.5} }
+.acard.iv-fire { border-right:3px solid var(--accent)!important; }
+.acard.iv-hot  { border-right:2px solid var(--accent2); }
+.acard.iv-warm { border-right:2px solid var(--gold); }
+.acard.iv-cold { border-right:1px solid var(--rule2); }
+
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Header -->
+  <div class="hdr">
+    <div class="brand">
+      <div class="brand-logo">🔔</div>
+      <div>
+        <div class="brand-name">Price<em>Alert</em></div>
+        <div class="brand-sub">CRYPTO · FOREX · GOLD</div>
+      </div>
+    </div>
+    <div class="hdr-right">
+      <div class="live-pill"><span class="ldot"></span><span id="clk">--:--</span></div>
+      <button class="theme-btn" id="theme-toggle" onclick="toggleTheme()">🌙</button>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="scard">
+      <div class="scard-lbl">آلارم فعال</div>
+      <div class="scard-val green" id="sc-alerts">0</div>
+      <div class="scard-sub" id="sc-alerts-sub">—</div>
+    </div>
+    <div class="scard">
+      <div class="scard-lbl">بایگانی</div>
+      <div class="scard-val gold" id="sc-arch">0</div>
+      <div class="scard-sub">فعال‌شده</div>
+    </div>
+    <div class="scard">
+      <div class="scard-lbl">کاربران</div>
+      <div class="scard-val purple" id="sc-users">0</div>
+      <div class="scard-sub">ثبت‌شده</div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab on t-alerts" onclick="switchTab('alerts',this)">📈 آلارم‌ها</button>
+    <button class="tab t-arch"      onclick="switchTab('archive',this)">📦 بایگانی</button>
+    <button class="tab t-users"     onclick="switchTab('users',this)">👥 کاربران</button>
+  </div>
+
+  <!-- ── ALERTS ── -->
+  <div class="pnl on" id="pnl-alerts">
+
+    <!-- Form -->
+    <div class="sec">
+      <div class="sec-hd">
+        <div class="sec-ttl"><span class="sec-dot green"></span>آلارم جدید</div>
+      </div>
+      <div class="sec-bd">
+        <div class="fgrid">
+          <div class="fld">
+            <label>نوع بازار</label>
+            <select id="mkt" onchange="onMktChange()">
+              <option value="crypto">🪙 کریپتو</option>
+              <option value="forex">💱 فارکس / طلا</option>
+            </select>
+          </div>
+          <div class="fld">
+            <label>نماد <span id="sym-hint" style="color:var(--blue);font-size:10px">(BTC, ETH...)</span></label>
+            <input type="text" id="sym" placeholder="BTC" dir="ltr" oninput="this.value=this.value.toUpperCase()">
+          </div>
+          <div class="fld">
+            <label>قیمت هدف (USD)</label>
+            <input type="number" id="tprice" placeholder="0.00000" step="any" dir="ltr">
+          </div>
+          <div class="fld">
+            <label>جهت آلارم</label>
+            <select id="adir">
+              <option value="above">↑ بالاتر از هدف</option>
+              <option value="below">↓ پایین‌تر از هدف</option>
+            </select>
+          </div>
+          <div class="fld">
+            <label>یادداشت (اختیاری)</label>
+            <input type="text" id="acmt" placeholder="سطح کلیدی...">
+          </div>
+          <div class="fld" style="display:flex;align-items:flex-end;gap:8px">
+            <button class="btn btn-blue" style="flex:1" onclick="checkPrice()">👁 قیمت</button>
+            <button class="btn btn-green" style="flex:1" id="add-btn" onclick="addAlert()">+ افزودن</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- List -->
+    <div class="sec">
+      <div class="sec-hd">
+        <div class="sec-ttl"><span class="sec-dot green"></span>در حال رصد</div>
+        <span id="upd-lbl" style="font-size:10px;color:var(--text3);font-family:var(--mono)"></span>
+      </div>
+      <div class="upd-bar">
+        <span class="upd-dot" id="upd-dot"></span>
+        <span id="upd-txt">در انتظار اولین بررسی...</span>
+        <span style="margin-right:auto" id="upd-time"></span>
+      </div>
+      <div class="cards-grid" id="cards-grid">
+        <div class="empty" style="grid-column:1/-1"><div class="empty-ico">◎</div><p>آلارمی ثبت نشده</p></div>
+      </div>
+      <div class="err-log" id="err-log">
+        <div class="err-log-ttl">⚠ خطاهای اخیر</div>
+        <div id="err-items"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── ARCHIVE ── -->
+  <div class="pnl" id="pnl-archive">
+    <div class="sec">
+      <div class="sec-hd">
+        <div class="sec-ttl"><span class="sec-dot gold"></span>آلارم‌های فعال‌شده</div>
+        <button class="btn btn-sm btn-red" onclick="clearArchive()">🗑 پاک کردن</button>
+      </div>
+      <div class="sec-bd" id="arch-body">
+        <div class="empty"><div class="empty-ico">◎</div><p>بایگانی خالی است</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── USERS ── -->
+  <div class="pnl" id="pnl-users">
+    <div class="sec">
+      <div class="sec-hd">
+        <div class="sec-ttl"><span class="sec-dot purple"></span>کاربران ثبت‌شده</div>
+        <button class="btn btn-sm" onclick="loadUsers()">🔄</button>
+      </div>
+      <div class="sec-bd" id="users-body">
+        <div class="empty"><div class="empty-ico">👥</div><p>هنوز کاربری /start نزده</p></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+<div id="toast"></div>
+
+<script>
+const HARDCODED_TOKEN = '8792456550:AAEuvnzzCUXniBhIWz6C-qabX96EvPWqN7A';
+const API = '';
+
+// ── Theme ─────────────────────────────────────────────────────────
+function initTheme() {
+  const t = localStorage.getItem('pa_theme') || 'dark';
+  applyTheme(t);
+}
+function applyTheme(t) {
+  document.body.classList.toggle('light', t === 'light');
+  document.getElementById('theme-toggle').textContent = t === 'light' ? '☀️' : '🌙';
+}
+function toggleTheme() {
+  const isLight = document.body.classList.contains('light');
+  const next = isLight ? 'dark' : 'light';
+  localStorage.setItem('pa_theme', next);
+  applyTheme(next);
+}
+initTheme();
+
+// ── Clock ─────────────────────────────────────────────────────────
+setInterval(() => {
+  document.getElementById('clk').textContent =
+    new Date().toLocaleTimeString('fa-IR', {timeZone:'Asia/Tehran', hour:'2-digit', minute:'2-digit', second:'2-digit'});
+}, 1000);
+
+// ── Toast ─────────────────────────────────────────────────────────
+let _tt;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(_tt); _tt = setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────
+function switchTab(id, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+  document.querySelectorAll('.pnl').forEach(p => p.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById('pnl-' + id).classList.add('on');
+  if (id === 'archive') loadArchive();
+  if (id === 'users')   loadUsers();
+}
+
+// ── Market hint ───────────────────────────────────────────────────
+function onMktChange() {
+  const v = document.getElementById('mkt').value;
+  const h = document.getElementById('sym-hint');
+  const s = document.getElementById('sym');
+  if (v === 'crypto') { h.textContent = '(BTC, ETH, SOL...)'; s.placeholder = 'BTC'; }
+  else { h.textContent = '(EURUSD, XAUUSD...)'; s.placeholder = 'EURUSD'; }
+}
+
+// ── Format price ──────────────────────────────────────────────────
+function fmt(p, sym) {
+  if (p == null || isNaN(p)) return '—';
+  p = parseFloat(p);
+  const s = (sym || '').toUpperCase();
+  if (s.includes('XAU') || s.includes('XAG')) return p.toLocaleString('en', {minimumFractionDigits:2, maximumFractionDigits:2});
+  if (s.includes('JPY'))  return p.toFixed(3);
+  const isForex = s.length === 6 && !['BTC','ETH','BNB','SOL','XRP','ADA','DOGE','TRX','TON','AVAX','LTC'].some(c => s.startsWith(c));
+  if (isForex)            return p.toFixed(5);
+  if (p >= 10000)         return p.toLocaleString('en', {maximumFractionDigits:1});
+  if (p >= 100)           return p.toLocaleString('en', {maximumFractionDigits:2});
+  return p.toFixed(4);
+}
+
+// ── Distance ──────────────────────────────────────────────────────
+function calcDist(cur, tgt, sym) {
+  if (!cur || !tgt) return { text: '—', pct: 0, cls: 'na' };
+  const s    = (sym || '').toUpperCase();
+  const diff = Math.abs(cur - tgt);
+  let text, rawPct;
+  if (s.includes('XAU') || s.includes('XAG')) {
+    text = diff.toFixed(2) + ' $'; rawPct = diff / tgt * 100;
+  } else if (s.includes('JPY')) {
+    const pips = diff / 0.01; text = pips.toFixed(1) + ' pip'; rawPct = pips / 200 * 100;
+  } else if (s.length === 6 && !['BTC','ETH','BNB','SOL','XRP','ADA','DOGE','TRX','TON','AVAX','LTC'].some(c=>s.startsWith(c))) {
+    const pips = diff / 0.0001; text = pips.toFixed(1) + ' pip'; rawPct = pips / 500 * 100;
+  } else {
+    const pct = diff / tgt * 100; text = pct.toFixed(2) + '%'; rawPct = pct / 20 * 100;
+  }
+  const barPct = Math.min(100, rawPct);
+  const cls    = barPct > 35 ? 'far' : 'close';
+  return { text, barPct, cls };
+}
+
+// ── Check price ───────────────────────────────────────────────────
+async function checkPrice() {
+  const sym = document.getElementById('sym').value.trim().toUpperCase();
+  const mkt = document.getElementById('mkt').value;
+  if (!sym) { toast('نماد را وارد کنید'); return; }
+  toast('⏳ دریافت قیمت...');
+  try {
+    const r = await fetch(`${API}/api/price/${mkt}/${sym}`);
+    const d = await r.json();
+    if (d.price != null) {
+      toast(`💰 ${sym}: $${fmt(parseFloat(d.price), sym)}`);
+      document.getElementById('tprice').value = d.price;
+    } else { toast(`❌ نماد پیدا نشد: ${sym}`); }
+  } catch { toast('❌ خطا در ارتباط'); }
+}
+
+// ── Add alert ─────────────────────────────────────────────────────
+async function addAlert() {
+  const symbol      = document.getElementById('sym').value.trim().toUpperCase();
+  const type        = document.getElementById('mkt').value;
+  const target_price= parseFloat(document.getElementById('tprice').value);
+  const condition   = document.getElementById('adir').value;
+  const comment     = document.getElementById('acmt').value.trim();
+  if (!symbol) { toast('نماد الزامی است'); return; }
+  if (!target_price || target_price <= 0) { toast('قیمت هدف را وارد کنید'); return; }
+
+  const btn = document.getElementById('add-btn');
+  btn.textContent = '⏳'; btn.disabled = true;
+
+  // دریافت قیمت لحظه‌ای قبل از ثبت
+  let livePrice = null;
+  try {
+    const rp = await fetch(`${API}/api/price/${type}/${symbol}`);
+    const dp = await rp.json();
+    if (dp.price != null) livePrice = parseFloat(dp.price);
+  } catch {}
+
+  const r = await fetch(`${API}/api/alerts`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({symbol, type, target_price, condition, comment})
+  });
+  const d = await r.json();
+
+  btn.textContent = '+ افزودن'; btn.disabled = false;
+
+  if (d.ok) {
+    // آپدیت last_price در سرور
+    if (livePrice !== null && d.alert) {
+      fetch(`${API}/api/alerts`, {method:'GET'}).catch(()=>{});
+    }
+    toast(`✅ آلارم ${symbol} ثبت شد`);
+    document.getElementById('sym').value    = '';
+    document.getElementById('tprice').value = '';
+    document.getElementById('acmt').value   = '';
+    // لود فوری با قیمت واقعی
+    await loadAlerts();
+    // اگه قیمت لحظه‌ای داریم بلافاصله نشون بده
+    if (livePrice !== null) {
+      const liveEl = document.getElementById(`live-${d.alert.id}`);
+      if (liveEl) liveEl.textContent = '$' + fmt(livePrice, symbol);
+    }
+  }
+}
+
+// ── Render alert cards ────────────────────────────────────────────
+function getIntervalLabel(interval, sym) {
+  const s      = (sym||'').toUpperCase();
+  const isGold = s.includes('XAU') || s.includes('XAG');
+
+  if (isGold) {
+    if (!interval || interval <= 30)  return { label:'۳۰ ثانیه', cls:'fire' };
+    if (interval <= 60)               return { label:'۱ دقیقه',  cls:'hot'  };
+    if (interval <= 120)              return { label:'۲ دقیقه',  cls:'hot'  };
+    if (interval <= 180)              return { label:'۳ دقیقه',  cls:'hot'  };
+    return                                   { label:'—',         cls:'warm' };
+  }
+  if (!interval || interval <= 60)   return { label:'۱ دقیقه',   cls:'fire' };
+  if (interval <= 120)               return { label:'۲ دقیقه',   cls:'hot'  };
+  if (interval <= 900)               return { label:'۱۵ دقیقه',  cls:'warm' };
+  if (interval <= 1800)              return { label:'۳۰ دقیقه',  cls:'warm' };
+  if (interval <= 3600)              return { label:'۱ ساعت',    cls:'cold' };
+  return                                    { label:'۲ ساعت',    cls:'cold' };
+}
+
+
+function getGroup(interval, sym) {
+  const isGold = sym && (sym.includes('XAU') || sym.includes('XAG'));
+  if (isGold || !interval || interval <= 120)
+    return { key: 'hot',  label: '🔴 خیلی نزدیک — زیر ۳۰ پیپ' };
+  if (interval <= 900)
+    return { key: 'warm', label: '🟡 در حال نزدیک شدن — ۳۰ تا ۵۰ پیپ' };
+  if (interval <= 3600)
+    return { key: 'med',  label: '🔵 فاصله متوسط — ۵۰ تا ۱۵۰ پیپ' };
+  return   { key: 'cold', label: '⚫ فاصله زیاد — بالای ۱۵۰ پیپ' };
+}
+
+function buildCard(a) {
+  const isCrypto = a.type === 'crypto';
+  const short    = (a.symbol||'').slice(0,4);
+  const cur      = a.last_price;
+  const tgt      = a.target_price;
+  const isAbove  = a.condition === 'above';
+  const di       = calcDist(cur, tgt, a.symbol);
+  const iv       = getIntervalLabel(a.check_interval, a.symbol);
+  const ago      = minutesAgo(a.last_checked);
+  const cmtHtml  = a.comment ? `<div class="acard-cmt">📝 ${a.comment}</div>` : '';
+  const ivBadge  = `<span class="iv-badge ${iv.cls}">${iv.label}</span>`;
+  const agoHtml  = ago ? `<span class="ago-lbl ${iv.cls}">${ago}</span>` : '';
+
+  const liveHtml = cur != null
+    ? `<div class="pbox-val live" id="pv-${a.id}">$${fmt(cur,a.symbol)}</div>`
+    : `<div class="pbox-val loading" id="pv-${a.id}">دریافت...</div>`;
+
+  const distHtml = cur != null ? `
+    <div class="acard-dist" id="pd-${a.id}">
+      <div class="dist-row">
+        <span class="dist-lbl">فاصله تا هدف</span>
+        <span class="dist-chip ${di.cls}">${di.text}</span>
+      </div>
+      <div class="dist-bar-bg"><div class="dist-bar ${di.cls}" style="width:${di.barPct}%"></div></div>
+    </div>` : `<div id="pd-${a.id}"></div>`;
+
+  return `<div class="acard ${isAbove?'above':'below'} iv-${iv.cls}" id="ac-${a.id}" data-id="${a.id}">
+    <div class="acard-top">
+      <div class="acard-badge">
+        <div class="abadge ${isCrypto?'c':'f'}">${short}</div>
+        <div>
+          <div class="acard-name">${a.symbol} <span class="wdot ${cur!=null?'watch':'pend'}" id="wd-${a.id}"></span></div>
+          <div class="acard-type">${a.type.toUpperCase()} ${ivBadge}</div>
+        </div>
+      </div>
+      <button class="acard-del" onclick="deleteAlert('${a.id}')">✕</button>
+    </div>
+    <div class="acard-prices">
+      <div class="pbox">
+        <div class="pbox-lbl">قیمت لحظه‌ای ${agoHtml}</div>
+        ${liveHtml}
+      </div>
+      <div class="pbox">
+        <div class="pbox-lbl">قیمت هدف</div>
+        <div class="pbox-val target ${isAbove?'above':'below'}">$${fmt(tgt,a.symbol)}</div>
+      </div>
+    </div>
+    ${distHtml}
+    <div class="acard-foot">
+      <span class="acard-dir ${isAbove?'up':'dn'}">${isAbove?'↑ بالاتر':'↓ پایین‌تر'}</span>
+      ${cmtHtml}
+    </div>
+  </div>`;
+}
+
+function renderAlerts(alerts) {
+  const grid = document.getElementById('cards-grid');
+  if (!alerts.length) {
+    grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-ico">◎</div><p>آلارمی ثبت نشده</p></div>';
+    return;
+  }
+
+  const sorted = [...alerts].sort((a,b) => (a.check_interval||7200)-(b.check_interval||7200));
+  const existingIds = new Set([...grid.querySelectorAll('[data-id]')].map(e=>e.dataset.id));
+  const newIds      = new Set(sorted.map(a=>a.id));
+  const needsRebuild = grid.children.length === 0 ||
+    [...newIds].some(id=>!existingIds.has(id)) ||
+    [...existingIds].some(id=>!newIds.has(id));
+
+  if (needsRebuild) {
+    // گروه‌بندی و ساخت کامل
+    const groups = {}, order = [];
+    for (const a of sorted) {
+      const g = getGroup(a.check_interval, a.symbol);
+      if (!groups[g.key]) { groups[g.key]={label:g.label,items:[]}; order.push(g.key); }
+      groups[g.key].items.push(a);
+    }
+    let html = '';
+    for (const key of order) {
+      const g = groups[key];
+      html += `<div class="group-sep" style="grid-column:1/-1">
+        <span class="group-line"></span>
+        <span class="group-label">${g.label}</span>
+        <span class="group-line"></span>
+      </div>`;
+      html += g.items.map(a=>buildCard(a)).join('');
+    }
+    grid.innerHTML = html;
+    return;
+  }
+
+  // فقط قیمت و فاصله آپدیت بشه — بدون jump
+  for (const a of sorted) {
+    const cur = a.last_price;
+    const tgt = a.target_price;
+    const di  = calcDist(cur, tgt, a.symbol);
+    const iv  = getIntervalLabel(a.check_interval, a.symbol);
+    const ago = minutesAgo(a.last_checked);
+
+    const pvEl = document.getElementById(`pv-${a.id}`);
+    const pdEl = document.getElementById(`pd-${a.id}`);
+    const wdEl = document.getElementById(`wd-${a.id}`);
+
+    if (pvEl && cur != null) {
+      pvEl.className   = 'pbox-val live';
+      pvEl.textContent = '$'+fmt(cur,a.symbol);
+    }
+    if (pdEl && cur != null) {
+      pdEl.className = 'acard-dist';
+      pdEl.innerHTML = `
+        <div class="dist-row">
+          <span class="dist-lbl">فاصله تا هدف</span>
+          <span class="dist-chip ${di.cls}">${di.text}</span>
+        </div>
+        <div class="dist-bar-bg"><div class="dist-bar ${di.cls}" style="width:${di.barPct}%"></div></div>`;
+    }
+    if (wdEl) wdEl.className = `wdot ${cur!=null?'watch':'pend'}`;
+  }
+}
+
+function minutesAgo(ts) {
+    if (!ts) return null;
+    const diff = (Date.now() - new Date(ts.replace(' ', 'T') + '+03:30')) / 60000;
+    if (diff < 1)   return 'همین الان';
+    if (diff < 60)  return Math.round(diff) + ' دقیقه پیش';
+    return Math.round(diff/60) + ' ساعت پیش';
+}
+
+function renderAlerts(alerts) {
+  const grid = document.getElementById('cards-grid');
+  if (!alerts.length) {
+    grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-ico">◎</div><p>آلارمی ثبت نشده</p></div>';
+    return;
+  }
+
+  // مرتب‌سازی: نزدیک‌ترها بالا (interval کمتر = اول)
+  const sorted = [...alerts].sort((a, b) => {
+    const ia = a.check_interval || 600;
+    const ib = b.check_interval || 600;
+    return ia - ib;
+  });
+
+  grid.innerHTML = sorted.map(a => {
+    const isCrypto  = a.type === 'crypto';
+    const short     = (a.symbol || '').slice(0, 4);
+    const cur       = a.last_price;
+    const tgt       = a.target_price;
+    const isAbove   = a.condition === 'above';
+    const di        = calcDist(cur, tgt, a.symbol);
+    const dotCls    = cur != null ? 'watch' : 'pend';
+    const cardCls   = isAbove ? 'above' : 'below';
+    const iv        = getIntervalLabel(a.check_interval);
+    const ago       = minutesAgo(a.last_checked);
+    const cmtHtml   = a.comment ? `<div class="acard-cmt">💬 ${a.comment}</div>` : '';
+
+    const ivBadge = iv
+      ? `<span class="iv-badge ${iv.cls}">${iv.label}</span>` : '';
+
+    const liveHtml = cur != null
+      ? `<div class="pbox-val live">$${fmt(cur, a.symbol)}</div>`
+      : `<div class="pbox-val loading" id="live-${a.id}">دریافت...</div>`;
+
+    const agoHtml = ago
+      ? `<span class="ago-lbl ${iv ? iv.cls : ''}">${ago}</span>` : '';
+
+    const distHtml = cur != null ? `
+      <div class="acard-dist">
+        <div class="dist-row">
+          <span class="dist-lbl">فاصله تا هدف</span>
+          <span class="dist-chip ${di.cls}">${di.text}</span>
+        </div>
+        <div class="dist-bar-bg"><div class="dist-bar ${di.cls}" style="width:${di.barPct}%"></div></div>
+      </div>` : '';
+
+    return `<div class="acard ${cardCls}${iv ? ' iv-'+iv.cls : ''}">
+      <div class="acard-top">
+        <div class="acard-badge">
+          <div class="abadge ${isCrypto?'c':'f'}">${short}</div>
+          <div>
+            <div class="acard-name">${a.symbol} <span class="wdot ${dotCls}"></span></div>
+            <div class="acard-type">${a.type.toUpperCase()} ${ivBadge}</div>
+          </div>
+        </div>
+        <button class="acard-del" onclick="deleteAlert('${a.id}')">✕</button>
+      </div>
+
+      <div class="acard-prices">
+        <div class="pbox">
+          <div class="pbox-lbl">قیمت لحظه‌ای ${agoHtml}</div>
+          ${liveHtml}
+        </div>
+        <div class="pbox">
+          <div class="pbox-lbl">قیمت هدف</div>
+          <div class="pbox-val target ${cardCls}">$${fmt(tgt, a.symbol)}</div>
+        </div>
+      </div>
+
+      ${distHtml}
+
+      <div class="acard-foot">
+        <span class="acard-dir ${isAbove?'up':'dn'}">${isAbove?'↑ بالاتر':'↓ پایین‌تر'}</span>
+        ${cmtHtml}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function deleteAlert(id) {
+  if (!confirm('آلارم حذف شود؟')) return;
+  await fetch(`${API}/api/alerts/${id}`, {method:'DELETE'});
+  toast('🗑 حذف شد');
+  loadAlerts();
+}
+
+// ── Archive ───────────────────────────────────────────────────────
+async function loadArchive() {
+  try {
+    const r = await fetch(`${API}/api/archive`);
+    const items = await r.json();
+    document.getElementById('sc-arch').textContent = items.length;
+    const body = document.getElementById('arch-body');
+    if (!items.length) {
+      body.innerHTML = '<div class="empty"><div class="empty-ico">◎</div><p>بایگانی خالی است</p></div>';
+      return;
+    }
+    body.innerHTML = items.slice().reverse().map(a => {
+      const ts  = new Date(a.fired_at || a.created_at);
+      const tStr = ts.toLocaleString('fa-IR', {timeZone:'Asia/Tehran'});
+      const cmt = a.comment ? `<div class="arch-cmt">💬 ${a.comment}</div>` : '';
+      return `<div class="arch-row">
+        <span class="arch-tag">✓ فعال شد</span>
+        <div style="flex:1">
+          <div class="arch-name">${a.symbol}</div>
+          <div class="arch-detail">${a.condition==='above'?'↑':'↓'} هدف: $${fmt(a.target_price,a.symbol)} · فعال‌سازی: $${fmt(a.fired_price,a.symbol)}</div>
+          <div class="arch-detail">${tStr}</div>
+          ${cmt}
+        </div>
+        <button class="btn btn-sm btn-red" onclick="delArchItem('${a.id}')">✕</button>
+      </div>`;
+    }).join('');
+  } catch {}
+}
+
+async function clearArchive() {
+  if (!confirm('بایگانی پاک شود؟')) return;
+  await fetch(`${API}/api/archive`, {method:'DELETE'});
+  toast('پاک شد');
+  loadArchive();
+}
+async function delArchItem(id) {
+  await fetch(`${API}/api/archive/${id}`, {method:'DELETE'});
+  loadArchive();
+}
+
+// ── Users ─────────────────────────────────────────────────────────
+async function loadUsers() {
+  try {
+    const r = await fetch(`${API}/api/users`);
+    const users = await r.json();
+    document.getElementById('sc-users').textContent = users.length;
+    const body = document.getElementById('users-body');
+    if (!users.length) {
+      body.innerHTML = '<div class="empty"><div class="empty-ico">👥</div><p>هنوز کاربری /start نزده</p></div>';
+      return;
+    }
+    body.innerHTML = users.map(u => `
+      <div class="user-row">
+        <div class="user-av">👤</div>
+        <div style="flex:1">
+          <div class="user-name">${u.username || 'کاربر'}</div>
+          <div class="user-id">ID: ${u.chat_id}</div>
+        </div>
+        <span class="user-date">${(u.joined_at||'').slice(0,10)}</span>
+        <button class="btn btn-sm btn-red" onclick="delUser('${u.chat_id}')">حذف</button>
+      </div>`).join('');
+  } catch {}
+}
+async function delUser(cid) {
+  if (!confirm('حذف شود؟')) return;
+  await fetch(`${API}/api/users/${cid}`, {method:'DELETE'});
+  toast('کاربر حذف شد');
+  loadUsers();
+}
+
+// ── Load alerts ───────────────────────────────────────────────────
+async function loadAlerts() {
+  try {
+    const r = await fetch(`${API}/api/alerts`);
+    const alerts = await r.json();
+    const active = alerts.filter(a => a.active);
+    document.getElementById('sc-alerts').textContent = active.length;
+    renderAlerts(active);
+  } catch(e) {
+    console.error('loadAlerts:', e);
+  }
+}
+
+// ── Init config ───────────────────────────────────────────────────
+async function initConfig() {
+  try {
+    const r = await fetch(`${API}/api/config`);
+    const d = await r.json();
+    if (!d.bot_token || d.bot_token !== HARDCODED_TOKEN) {
+      await fetch(`${API}/api/config`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({bot_token: HARDCODED_TOKEN, chat_id: d.chat_id||''})
+      });
+    }
+    document.getElementById('sc-users').textContent = d.user_count || 0;
+  } catch {}
+}
+
+
+// ── Init ──────────────────────────────────────────────────────────
+initConfig();
+loadAlerts();
+setInterval(loadAlerts, 60000);
+</script>
+</body>
+</html>
