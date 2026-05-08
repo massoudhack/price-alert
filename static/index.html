@@ -211,6 +211,7 @@ select option{background:var(--bg3)}
 .ago-lbl.warm{background:rgba(240,165,0,.1);color:var(--gold)}
 .ago-lbl.cold{background:rgba(122,135,153,.08);color:var(--text3)}
 
+
 </style>
 </head>
 <body>
@@ -506,26 +507,35 @@ async function addAlert() {
 }
 
 // ── Render alert cards ────────────────────────────────────────────
-function getIntervalLabel(interval, sym) {
+function getIntervalLabel(interval, sym, isAtr) {
+  // isAtr = true یعنی interval از ATR واقعی محاسبه شده
+  const smart = isAtr ? ' ⚡' : '';
   const isGold = sym && (sym.includes('XAU') || sym.includes('XAG'));
   if (isGold) {
-    if (!interval || interval <= 60)  return { label: '۱ دقیقه', cls: 'hot' };
-    if (interval <= 180)              return { label: '۳ دقیقه', cls: 'hot' };
-    return                                   { label: '۵ دقیقه', cls: 'warm' };
+    if (!interval || interval <= 60)  return { label: '۱ دقیقه' + smart, cls: 'hot',  smart: !!isAtr };
+    if (interval <= 180)              return { label: '۳ دقیقه' + smart, cls: 'hot',  smart: !!isAtr };
+    if (interval <= 300)              return { label: '۵ دقیقه' + smart, cls: 'warm', smart: !!isAtr };
+    if (interval <= 900)              return { label: '۱۵ دقیقه'+ smart, cls: 'warm', smart: !!isAtr };
+    if (interval <= 3600)             return { label: '۱ ساعت'  + smart, cls: 'cold', smart: !!isAtr };
+    return                                   { label: '۲ ساعت'  + smart, cls: 'cold', smart: !!isAtr };
   }
-  if (!interval || interval <= 120)  return { label: '۲ دقیقه',  cls: 'hot' };
-  if (interval <= 900)               return { label: '۱۵ دقیقه', cls: 'warm' };
-  if (interval <= 3600)              return { label: '۱ ساعت',   cls: 'cold' };
-  return                                    { label: '۲ ساعت',   cls: 'cold' };
+  if (!interval || interval <= 60)   return { label: '۱ دقیقه' + smart,  cls: 'hot',  smart: !!isAtr };
+  if (interval <= 120)               return { label: '۲ دقیقه' + smart,  cls: 'hot',  smart: !!isAtr };
+  if (interval <= 300)               return { label: '۵ دقیقه' + smart,  cls: 'warm', smart: !!isAtr };
+  if (interval <= 900)               return { label: '۱۵ دقیقه'+ smart,  cls: 'warm', smart: !!isAtr };
+  if (interval <= 3600)              return { label: '۱ ساعت'  + smart,  cls: 'cold', smart: !!isAtr };
+  return                                    { label: '۲ ساعت'  + smart,  cls: 'cold', smart: !!isAtr };
 }
 
-function getGroup(interval, sym, pipDist) {
+function getGroup(interval, sym) {
   const isGold = sym && (sym.includes('XAU') || sym.includes('XAG'));
-  if (isGold) return { key: 'gold', label: '⭐ طلا' };
-  if (pipDist < 30)  return { key: 'hot',  label: '🔴 خیلی نزدیک — زیر ۳۰ پیپ' };
-  if (pipDist < 100) return { key: 'warm', label: '🟡 نزدیک — ۳۰ تا ۱۰۰ پیپ' };
-  if (pipDist < 300) return { key: 'med',  label: '🔵 متوسط — ۱۰۰ تا ۳۰۰ پیپ' };
-  return              { key: 'cold', label: '⚫ دور — بالای ۳۰۰ پیپ' };
+  if (isGold || !interval || interval <= 120)
+    return { key: 'hot',  label: '🔴 خیلی نزدیک — زیر ۳۰ پیپ' };
+  if (interval <= 900)
+    return { key: 'warm', label: '🟡 در حال نزدیک شدن — ۳۰ تا ۵۰ پیپ' };
+  if (interval <= 3600)
+    return { key: 'med',  label: '🔵 فاصله متوسط — ۵۰ تا ۱۵۰ پیپ' };
+  return   { key: 'cold', label: '⚫ فاصله زیاد — بالای ۱۵۰ پیپ' };
 }
 
 function buildCard(a) {
@@ -535,7 +545,7 @@ function buildCard(a) {
   const tgt      = a.target_price;
   const isAbove  = a.condition === 'above';
   const di       = calcDist(cur, tgt, a.symbol);
-  const iv       = getIntervalLabel(a.check_interval, a.symbol);
+  const iv       = getIntervalLabel(a.check_interval, a.symbol, a.atr_based);
   const ago      = minutesAgo(a.last_checked);
   const cmtHtml  = a.comment ? `<div class="acard-cmt">📝 ${a.comment}</div>` : '';
   const ivBadge  = `<span class="iv-badge ${iv.cls}">${iv.label}</span>`;
@@ -583,20 +593,6 @@ function buildCard(a) {
   </div>`;
 }
 
-function getPipDistance(a) {
-  const cur = a.last_price;
-  const tgt = a.target_price;
-  if (!cur || !tgt) return 999999;
-  const diff   = Math.abs(cur - tgt);
-  const sym    = (a.symbol || '').toUpperCase();
-  const isJPY  = sym.includes('JPY');
-  const isGold = sym.includes('XAU') || sym.includes('XAG');
-  if (isGold)       return diff * 10;
-  if (isJPY)        return diff * 100;
-  if (a.type === 'crypto') return (diff / tgt) * 10000;
-  return diff * 10000;
-}
-
 function renderAlerts(alerts) {
   const grid = document.getElementById('cards-grid');
   if (!alerts.length) {
@@ -604,8 +600,7 @@ function renderAlerts(alerts) {
     return;
   }
 
-  // مرتب‌سازی: نزدیک‌ترین پیپ اول
-  const sorted = [...alerts].sort((a,b) => getPipDistance(a) - getPipDistance(b));
+  const sorted = [...alerts].sort((a,b) => (a.check_interval||7200)-(b.check_interval||7200));
   const existingIds = new Set([...grid.querySelectorAll('[data-id]')].map(e=>e.dataset.id));
   const newIds      = new Set(sorted.map(a=>a.id));
   const needsRebuild = grid.children.length === 0 ||
@@ -613,10 +608,10 @@ function renderAlerts(alerts) {
     [...existingIds].some(id=>!newIds.has(id));
 
   if (needsRebuild) {
+    // گروه‌بندی و ساخت کامل
     const groups = {}, order = [];
     for (const a of sorted) {
-      const pip = getPipDistance(a);
-      const g   = getGroup(a.check_interval, a.symbol, pip);
+      const g = getGroup(a.check_interval, a.symbol);
       if (!groups[g.key]) { groups[g.key]={label:g.label,items:[]}; order.push(g.key); }
       groups[g.key].items.push(a);
     }
@@ -669,6 +664,85 @@ function minutesAgo(ts) {
     if (diff < 1)   return 'همین الان';
     if (diff < 60)  return Math.round(diff) + ' دقیقه پیش';
     return Math.round(diff/60) + ' ساعت پیش';
+}
+
+function renderAlerts(alerts) {
+  const grid = document.getElementById('cards-grid');
+  if (!alerts.length) {
+    grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-ico">◎</div><p>آلارمی ثبت نشده</p></div>';
+    return;
+  }
+
+  // مرتب‌سازی: نزدیک‌ترها بالا (interval کمتر = اول)
+  const sorted = [...alerts].sort((a, b) => {
+    const ia = a.check_interval || 600;
+    const ib = b.check_interval || 600;
+    return ia - ib;
+  });
+
+  grid.innerHTML = sorted.map(a => {
+    const isCrypto  = a.type === 'crypto';
+    const short     = (a.symbol || '').slice(0, 4);
+    const cur       = a.last_price;
+    const tgt       = a.target_price;
+    const isAbove   = a.condition === 'above';
+    const di        = calcDist(cur, tgt, a.symbol);
+    const dotCls    = cur != null ? 'watch' : 'pend';
+    const cardCls   = isAbove ? 'above' : 'below';
+    const iv        = getIntervalLabel(a.check_interval);
+    const ago       = minutesAgo(a.last_checked);
+    const cmtHtml   = a.comment ? `<div class="acard-cmt">💬 ${a.comment}</div>` : '';
+
+    const ivBadge = iv
+      ? `<span class="iv-badge ${iv.cls}">${iv.label}</span>` : '';
+
+    const liveHtml = cur != null
+      ? `<div class="pbox-val live">$${fmt(cur, a.symbol)}</div>`
+      : `<div class="pbox-val loading" id="live-${a.id}">دریافت...</div>`;
+
+    const agoHtml = ago
+      ? `<span class="ago-lbl ${iv ? iv.cls : ''}">${ago}</span>` : '';
+
+    const distHtml = cur != null ? `
+      <div class="acard-dist">
+        <div class="dist-row">
+          <span class="dist-lbl">فاصله تا هدف</span>
+          <span class="dist-chip ${di.cls}">${di.text}</span>
+        </div>
+        <div class="dist-bar-bg"><div class="dist-bar ${di.cls}" style="width:${di.barPct}%"></div></div>
+      </div>` : '';
+
+    return `<div class="acard ${cardCls}${iv ? ' iv-'+iv.cls : ''}">
+      <div class="acard-top">
+        <div class="acard-badge">
+          <div class="abadge ${isCrypto?'c':'f'}">${short}</div>
+          <div>
+            <div class="acard-name">${a.symbol} <span class="wdot ${dotCls}"></span></div>
+            <div class="acard-type">${a.type.toUpperCase()} ${ivBadge}</div>
+          </div>
+        </div>
+        <button class="acard-del" onclick="deleteAlert('${a.id}')">✕</button>
+      </div>
+
+      <div class="acard-prices">
+        <div class="pbox">
+          <div class="pbox-lbl">قیمت لحظه‌ای ${agoHtml}</div>
+          ${liveHtml}
+        </div>
+        <div class="pbox">
+          <div class="pbox-lbl">قیمت هدف</div>
+          <div class="pbox-val target ${cardCls}">$${fmt(tgt, a.symbol)}</div>
+        </div>
+      </div>
+
+      ${distHtml}
+
+      <div class="acard-foot">
+        <span class="acard-dir ${isAbove?'up':'dn'}">${isAbove?'↑ بالاتر':'↓ پایین‌تر'}</span>
+        ${cmtHtml}
+      </div>
+    </div>`;
+  }).join('');
 }
 
 async function deleteAlert(id) {
@@ -776,6 +850,7 @@ async function initConfig() {
     document.getElementById('sc-users').textContent = d.user_count || 0;
   } catch {}
 }
+
 
 // ── Init ──────────────────────────────────────────────────────────
 initConfig();
