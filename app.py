@@ -262,30 +262,101 @@ def poll_telegram():
             print(f"[poll] {e}")
         time.sleep(5)
 
-# ── Price alert checker — every 1 minute ─────────────────────────
+# ── ATR Cache ─────────────────────────────────────────────────────
+_atr_cache  = {}  # {"EURUSD": {"atr": 8.5, "spike": False, "ts": 1234}}
+
+# ── Price alert checker ────────────────────────────────────────────
 notified = set()
 
+def fetch_atr(sym):
+    """
+    ATR از ۱۰ کندل ۱۵ دقیقه‌ای.
+    هر ۱ ساعت آپدیت — cache در RAM.
+    spike = کندل آخر بسته > 2x ATR میانگین
+    """
+    sym_up = sym.upper()
+    cached = _atr_cache.get(sym_up)
+    if cached and time.time() - cached["ts"] < 3600:
+        return cached
+
+    try:
+        r = requests.get(
+            f"https://biquote.io/api/{sym_up}/ohlc?interval=15m&limit=10",
+            headers=H, timeout=8)
+        if r.status_code != 200:
+            return cached  # برگردون cache قدیمی
+        bars   = r.json().get("bars", [])
+        closed = [b for b in bars if not b.get("isOpen", True)]
+        if len(closed) < 3:
+            return cached
+        is_jpy = 'JPY' in sym_up
+        mult   = 100 if is_jpy else 10000
+        ranges = [(b["high"] - b["low"]) * mult for b in closed]
+        atr    = sum(ranges) / len(ranges)
+        # اسپایک: آخرین کندل بسته > 2x میانگین
+        spike  = ranges[0] > atr * 2
+        result = {"atr": atr, "spike": spike, "ts": time.time()}
+        _atr_cache[sym_up] = result
+        print(f"[ATR] {sym_up} atr={atr:.1f}pip spike={spike}")
+        return result
+    except Exception as e:
+        print(f"[ATR] {sym_up} error: {e}")
+        return cached
+
+
 def get_interval(sym, atype, cur, tgt):
+    """
+    interval هوشمند بر اساس ATR واقعی:
+    - ratio = فاصله_پیپ / ATR_15m
+    - اگه اسپایک داشت interval نصف میشه
+    - کریپتو همیشه ۲ دقیقه
+    - fallback: جدول ثابت اگه ATR نداشتیم
+    """
     if atype == 'crypto':
         return 120
     if not cur or not tgt:
         return 3600
+
     diff   = abs(cur - tgt)
     sym_up = sym.upper()
     is_jpy = 'JPY' in sym_up
     pips   = round(diff * (100 if is_jpy else 10000))
 
-    # طلا — استثنا
-    if 'XAU' in sym_up or 'XAG' in sym_up:
-        if pips > 200: return 300   # ۵ دقیقه
-        if pips > 100: return 180   # ۳ دقیقه
-        return 60                   # ۱ دقیقه
+    # ATR بگیر
+    atr_data = fetch_atr(sym_up)
 
-    # فارکس عادی
-    if pips > 150: return 7200   # ۲ ساعت
-    if pips > 50:  return 3600   # ۱ ساعت
-    if pips > 30:  return 900    # ۱۵ دقیقه
-    return 120                   # ۲ دقیقه
+    if atr_data and atr_data.get("atr"):
+        atr   = atr_data["atr"]
+        spike = atr_data.get("spike", False)
+        # ratio: چند برابر ATR فاصله داریم
+        ratio = pips / atr if atr > 0 else 999
+
+        if ratio > 8:    interval = 7200   # خیلی دور — ۲ ساعت
+        elif ratio > 4:  interval = 3600   # دور — ۱ ساعت
+        elif ratio > 2:  interval = 900    # متوسط — ۱۵ دقیقه
+        elif ratio > 1:  interval = 300    # نزدیک — ۵ دقیقه
+        elif ratio > 0.3:interval = 120    # خیلی نزدیک — ۲ دقیقه
+        else:            interval = 60     # بسیار نزدیک — ۱ دقیقه
+
+        # اسپایک → interval نصف بشه (حداقل ۶۰ ثانیه)
+        if spike:
+            interval = max(60, interval // 2)
+            print(f"[spike] {sym_up} interval → {interval}s")
+
+        return interval
+
+    # fallback جدول ثابت اگه ATR نداشتیم
+    is_gold = 'XAU' in sym_up or 'XAG' in sym_up
+    if is_gold:
+        if pips > 200: return 300
+        if pips > 100: return 180
+        if pips > 50:  return 120
+        return 60
+    if pips > 150: return 7200
+    if pips > 50:  return 3600
+    if pips > 30:  return 900
+    if pips > 10:  return 120
+    return 60
 
 def check_alerts():
     while True:
