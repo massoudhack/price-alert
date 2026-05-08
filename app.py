@@ -313,9 +313,9 @@ def get_interval(sym, atype, cur, tgt):
     - fallback: جدول ثابت اگه ATR نداشتیم
     """
     if atype == 'crypto':
-        return 120
+        return 120, False
     if not cur or not tgt:
-        return 3600
+        return 3600, False
 
     diff   = abs(cur - tgt)
     sym_up = sym.upper()
@@ -343,20 +343,20 @@ def get_interval(sym, atype, cur, tgt):
             interval = max(60, interval // 2)
             print(f"[spike] {sym_up} interval → {interval}s")
 
-        return interval
+        return interval, True  # True = ATR-based
 
     # fallback جدول ثابت اگه ATR نداشتیم
     is_gold = 'XAU' in sym_up or 'XAG' in sym_up
     if is_gold:
-        if pips > 200: return 300
-        if pips > 100: return 180
-        if pips > 50:  return 120
-        return 60
-    if pips > 150: return 7200
-    if pips > 50:  return 3600
-    if pips > 30:  return 900
-    if pips > 10:  return 120
-    return 60
+        if pips > 200: return 300, False
+        if pips > 100: return 180, False
+        if pips > 50:  return 120, False
+        return 60, False
+    if pips > 150: return 7200, False
+    if pips > 50:  return 3600, False
+    if pips > 30:  return 900,  False
+    if pips > 10:  return 120,  False
+    return 60, False
 
 def check_alerts():
     while True:
@@ -373,7 +373,7 @@ def check_alerts():
             for a in active:
                 sym   = a["symbol"]
                 atype = a.get("type", "crypto")
-                interval = get_interval(sym, atype, a.get("last_price"), float(a["target_price"]))
+                interval, is_atr = get_interval(sym, atype, a.get("last_price"), float(a["target_price"]))
                 last_ts  = a.get("last_checked")
                 is_due   = True
                 if last_ts:
@@ -431,7 +431,9 @@ def check_alerts():
 
                 a["last_price"]     = cur
                 a["last_checked"]   = now_teh()
-                a["check_interval"] = get_interval(sym, atype, cur, tgt)
+                iv_val, iv_atr = get_interval(sym, atype, cur, tgt)
+                a["check_interval"] = iv_val
+                a["atr_based"]      = iv_atr
                 data["last_update"] = now_teh()
 
                 triggered = (cond == "above" and cur >= tgt) or (cond == "below" and cur <= tgt)
@@ -590,8 +592,80 @@ def status():
 def health():
     return jsonify({"status": "ok", "time": now_teh()})
 
+
+# ── Forex Factory High-Impact News ────────────────────────────────
+_news_cache = {"ts": 0, "events": []}
+
+def fetch_forex_news():
+    global _news_cache
+    if time.time() - _news_cache["ts"] < 3600:
+        return _news_cache["events"]
+    try:
+        r = requests.get(
+            "https://nfs.faireconomy.media/ff_calendar_thisweek.json",
+            headers={**H, "Referer": "https://www.forexfactory.com/"},
+            timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            high = [e for e in data if e.get("impact") == "High"]
+            _news_cache = {"ts": time.time(), "events": high}
+            return high
+    except Exception as e:
+        log_error("forex news fetch: " + str(e))
+    return _news_cache.get("events", [])
+
+def _build_news_msg(today_events):
+    teh_date = datetime.now(TEHRAN).strftime("%Y/%m/%d")
+    if not today_events:
+        return ("📅 اخبار فارکس امروز\n"
+                "⏰ " + teh_date + " (تهران)\n\n"
+                "✅ امروز خبر High Impact نداریم.")
+    lines = ["📅 <b>اخبار مهم فارکس امروز</b>",
+             "⏰ " + teh_date + " — ساعت تهران", ""]
+    for e in today_events:
+        raw_date = e.get("date", "")
+        time_str = raw_date[11:16] if len(raw_date) > 15 else "—"
+        currency = e.get("currency", "")
+        title    = e.get("title", "")
+        forecast = e.get("forecast", "")
+        prev     = e.get("previous", "")
+        line = "🔴 <b>" + time_str + "</b> [" + currency + "] " + title
+        if forecast: line += " · پیش‌بینی: " + str(forecast)
+        if prev:     line += " · قبلی: " + str(prev)
+        lines.append(line)
+    lines.append("")
+    lines.append("⚡ High Impact Only · ForexFactory")
+    return "\n".join(lines)
+
+def send_daily_news():
+    while True:
+        try:
+            now = datetime.now(TEHRAN)
+            target = now.replace(hour=9, minute=0, second=0, microsecond=0)
+            if now >= target:
+                from datetime import timedelta
+                target = target + timedelta(days=1)
+            secs = (target - now).total_seconds()
+            print("[news] بعدی در " + str(round(secs/3600, 1)) + " ساعت")
+            time.sleep(max(secs, 1))
+
+            token, cids, _ = _get_token_and_cids()
+            if not token or not cids:
+                continue
+            events = fetch_forex_news()
+            today  = datetime.now(TEHRAN).strftime("%Y-%m-%d")
+            today_events = [e for e in events if e.get("date","").startswith(today)]
+            msg = _build_news_msg(today_events)
+            broadcast(token, cids, msg)
+            print("[news] ارسال شد: " + str(len(today_events)) + " رویداد")
+            time.sleep(60)
+        except Exception as e:
+            log_error("send_daily_news: " + str(e))
+            time.sleep(300)
+
 threading.Thread(target=check_alerts,  daemon=True).start()
-threading.Thread(target=poll_telegram, daemon=True).start()
+threading.Thread(target=poll_telegram,   daemon=True).start()
+threading.Thread(target=send_daily_news, daemon=True).start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
