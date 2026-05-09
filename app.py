@@ -201,14 +201,14 @@ def get_forex_prices_batch(symbols):
                     result[sym.upper()] = float(bid)
                     print(f"[biquote] {sym} = {float(bid)}")
         if result:
-            print(f"[batch] forex={list(result.keys())} → {len(result)} prices")
+            print(f"[batch-OK] {len(result)}/{len(clean)} prices: " + " | ".join(f"{k}={v}" for k,v in result.items()))
             return result
-        # اگه نتیجه خالی — fallback تکی
         log_error(f"biquote batch empty for {clean}")
     except Exception as e:
         log_error(f"biquote batch failed ({','.join(clean)}): {e}")
 
-    # ── Fallback: تک تک با biquote ───────────────────────────────
+    # ── Fallback: تک تک ───────────────────────────────────────────
+    print(f"[fallback] batch failed → trying {len(clean)} symbols one by one")
     result = {}
     for sym in clean:
         try:
@@ -223,10 +223,9 @@ def get_forex_prices_batch(symbols):
                 bid = raw2.get("bid") or raw2.get("price") or raw2.get("last")
             if bid and float(bid) > 0:
                 result[sym] = float(bid)
-                print(f"[biquote-single] {sym} = {float(bid)}")
+                print(f"[single-OK] {sym} = {float(bid)}")
         except Exception as e2:
-            print(f"[biquote-single] {sym} failed: {e2}")
-            # Frankfurter fallback برای جفت‌ارزهای معمول
+            print(f"[single-ERR] {sym}: {e2} → trying frankfurter")
             try:
                 base, quote = sym[:3], sym[3:6]
                 r3 = requests.get(
@@ -236,9 +235,11 @@ def get_forex_prices_batch(symbols):
                     rate = r3.json().get("rates", {}).get(quote)
                     if rate:
                         result[sym] = float(rate)
-                        print(f"[frankfurter] {sym} = {float(rate)}")
-            except Exception:
-                pass
+                        print(f"[frankfurter-OK] {sym} = {float(rate)}")
+                    else:
+                        print(f"[frankfurter-ERR] {sym}: no rate in response")
+            except Exception as e3:
+                print(f"[frankfurter-ERR] {sym}: {e3}")
     return result
 
 def get_forex_price(symbol):
