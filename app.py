@@ -4,6 +4,9 @@ from datetime import datetime
 
 app = Flask(__name__, static_folder='static')
 
+VERSION = "2.1"
+
+
 TEHRAN     = pytz.timezone("Asia/Tehran")
 GIST_ID    = os.environ.get("GIST_ID", "")
 GIST_TOKEN = os.environ.get("GIST_TOKEN", "")
@@ -30,7 +33,7 @@ def _fix(data):
             data[k] = v
     return data
 
-# ── Storage ─────────د──────────────────────────────────────────────
+# ── Storage ───────────────────────────────────────────────────────
 def load_data():
     global _cache
     if _cache is not None:
@@ -660,6 +663,10 @@ def status():
         "forex_open":   is_forex_market_open(),
         "loop_count":   _loop_count,
     })
+
+@app.route("/api/version")
+def version():
+    return jsonify({"version": VERSION})
 
 @app.route("/health")
 def health():
