@@ -49,7 +49,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .theme-btn{width:36px;height:36px;border-radius:9px;background:var(--bg3);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;transition:.18s;line-height:1}
 .theme-btn:hover{border-color:var(--border2);transform:scale(1.08)}
 
-/* ── Statsد ── */
+/* ── Stats ── */
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:1.5rem}
 @media(max-width:600px){.stats{grid-template-columns:1fr 1fr}}
 .scard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rad2);padding:1rem 1.1rem .9rem}
@@ -538,9 +538,13 @@ function buildCard(a) {
   const cmtHtml  = a.comment ? `<div class="acard-cmt">📝 ${a.comment}</div>` : '';
   const ivBadge  = `<span class="iv-badge ${iv.cls}">${iv.label}</span>`;
   const agoHtml  = ago ? `<span class="ago-lbl ${iv.cls}">${ago}</span>` : '';
+  // stale = قیمت از cache — بازار تعطیله
+  const staleHtml = a.price_stale
+    ? `<div style="font-size:10px;color:var(--gold);font-family:var(--mono);margin-top:4px;padding:3px 7px;background:var(--gdold);border-radius:5px;">⏸ بازار تعطیل — آخرین قیمت ${a.price_stale.slice(11,16)}</div>`
+    : '';
 
   const liveHtml = cur != null
-    ? `<div class="pbox-val live" id="pv-${a.id}">$${fmt(cur,a.symbol)}</div>`
+    ? `<div class="pbox-val live" id="pv-${a.id}" style="${a.price_stale?'color:var(--gold)':''}">$${fmt(cur,a.symbol)}</div>`
     : `<div class="pbox-val loading" id="pv-${a.id}">دریافت...</div>`;
 
   const distHtml = cur != null ? `
@@ -578,6 +582,7 @@ function buildCard(a) {
       <span class="acard-dir ${isAbove?'up':'dn'}">${isAbove?'↑ بالاتر':'↓ پایین‌تر'}</span>
       ${cmtHtml}
     </div>
+    ${staleHtml}
   </div>`;
 }
 
