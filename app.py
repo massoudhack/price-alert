@@ -158,32 +158,80 @@ def get_forex_price(symbol):
 
 def get_forex_prices_batch(symbols):
     """
-    یه درخواست برای چند نماد فارکس — بجای N درخواست جداگانه.
-    biquote.io/api/EURUSD,GBPUSD,XAUUSD → یه JSON با همه قیمت‌ها
-    برمیگردونه: {"EURUSD": 1.17503, "GBPUSD": 1.35941, ...}
+    یه درخواست برای همه نمادهای فارکس.
+    URL: biquote.io/api/latest?symbols=EURUSD&symbols=GBPUSD&...
     """
     if not symbols:
         return {}
-    syms = ",".join(s.upper().replace("/","").replace(" ","") for s in symbols)
+    syms_clean = [s.upper().replace("/","").replace(" ","") for s in symbols]
+    params = "&".join(f"symbols={s}" for s in syms_clean)
+    url = f"https://biquote.io/api/latest?{params}"
     try:
-        r = requests.get(f"https://biquote.io/api/{syms}", timeout=10, headers=H)
+        r = requests.get(url, timeout=10, headers=H)
         r.raise_for_status()
         d = r.json()
         result = {}
-        for sym, data in d.items():
-            bid = data.get("bid")
+        # response: {"EURUSD": {"bid":1.175,...}, "GBPUSD": {...}}
+        for sym, info in d.items():
+            if not isinstance(info, dict):
+                continue
+            bid = info.get("bid")
             if bid is not None and float(bid) > 0:
                 result[sym.upper()] = float(bid)
-                print(f"[biquote-batch] {sym} = {float(bid)}")
+        print(f"[batch] {len(result)}/{len(syms_clean)} prices via latest endpoint")
         return result
     except Exception as e:
-        log_error(f"biquote batch failed ({syms}): {e}")
-        # fallback: تک تک بگیر
+        log_error(f"biquote batch failed: {e}")
+        # fallback تک تک
         result = {}
-        for sym in symbols:
+        for sym in syms_clean:
             p = get_forex_price(sym)
-            if p: result[sym.upper()] = p
+            if p: result[sym] = p
         return result
+
+
+def get_crypto_prices_batch(symbols):
+    """
+    کریپتوها رو هم با biquote latest بگیر (BTCUSD, ETHUSD...)
+    اگه نشد از OKX/CoinGecko جداگانه بگیر
+    """
+    if not symbols:
+        return {}
+    # کریپتو در biquote با USD نوشته میشه: BTCUSD, ETHUSD
+    syms_biquote = []
+    sym_map = {}  # BTCUSD -> BTC
+    for sym in symbols:
+        s = sym.upper().replace("/","").strip()
+        # حذف USDT/USDC اگه داشت
+        base = s.replace("USDT","").replace("USDC","").replace("USD","")
+        bq_sym = base + "USD"
+        syms_biquote.append(bq_sym)
+        sym_map[bq_sym] = s  # برای map کردن برگشت
+
+    params = "&".join(f"symbols={s}" for s in syms_biquote)
+    url = f"https://biquote.io/api/latest?{params}"
+    result = {}
+    try:
+        r = requests.get(url, timeout=10, headers=H)
+        if r.status_code == 200:
+            d = r.json()
+            for bq_sym, info in d.items():
+                if not isinstance(info, dict): continue
+                bid = info.get("bid")
+                if bid and float(bid) > 0:
+                    orig = sym_map.get(bq_sym.upper(), bq_sym)
+                    result[orig] = float(bid)
+                    print(f"[batch-crypto] {bq_sym} = {float(bid)}")
+    except Exception:
+        pass
+
+    # fallback برای اونایی که نگرفتیم
+    for sym in symbols:
+        if sym.upper() not in result and sym.upper().replace("USDT","").replace("USD","") not in [k.replace("USDT","").replace("USD","") for k in result]:
+            p = get_crypto_price(sym)
+            if p: result[sym.upper()] = p
+
+    return result
 
 
 def get_price(symbol, asset_type):
@@ -262,176 +310,99 @@ def poll_telegram():
             print(f"[poll] {e}")
         time.sleep(5)
 
-# ── ATR Cache ─────────────────────────────────────────────────────
-_atr_cache  = {}  # {"EURUSD": {"atr": 8.5, "spike": False, "ts": 1234}}
-
 # ── Price alert checker ────────────────────────────────────────────
 notified = set()
 
-def fetch_atr(sym):
-    """
-    ATR از ۱۰ کندل ۱۵ دقیقه‌ای.
-    هر ۱ ساعت آپدیت — cache در RAM.
-    spike = کندل آخر بسته > 2x ATR میانگین
-    """
+def needs_1min(sym, atype, pips):
+    """آیا این آلارم باید هر ۱ دقیقه چک بشه؟"""
     sym_up = sym.upper()
-    cached = _atr_cache.get(sym_up)
-    if cached and time.time() - cached["ts"] < 3600:
-        return cached
+    is_gold = 'XAU' in sym_up or 'XAG' in sym_up
+    if is_gold and pips < 50:   return True
+    if not is_gold and atype == 'forex' and pips < 5: return True
+    return False
 
-    try:
-        r = requests.get(
-            f"https://biquote.io/api/{sym_up}/ohlc?interval=15m&limit=10",
-            headers=H, timeout=8)
-        if r.status_code != 200:
-            return cached  # برگردون cache قدیمی
-        bars   = r.json().get("bars", [])
-        closed = [b for b in bars if not b.get("isOpen", True)]
-        if len(closed) < 3:
-            return cached
-        is_jpy = 'JPY' in sym_up
-        mult   = 100 if is_jpy else 10000
-        ranges = [(b["high"] - b["low"]) * mult for b in closed]
-        atr    = sum(ranges) / len(ranges)
-        # اسپایک: آخرین کندل بسته > 2x میانگین
-        spike  = ranges[0] > atr * 2
-        result = {"atr": atr, "spike": spike, "ts": time.time()}
-        _atr_cache[sym_up] = result
-        print(f"[ATR] {sym_up} atr={atr:.1f}pip spike={spike}")
-        return result
-    except Exception as e:
-        print(f"[ATR] {sym_up} error: {e}")
-        return cached
-
-
-def get_interval(sym, atype, cur, tgt):
-    """
-    interval هوشمند بر اساس ATR واقعی:
-    - ratio = فاصله_پیپ / ATR_15m
-    - اگه اسپایک داشت interval نصف میشه
-    - کریپتو همیشه ۲ دقیقه
-    - fallback: جدول ثابت اگه ATR نداشتیم
-    """
-    if atype == 'crypto':
-        return 120
-    if not cur or not tgt:
-        return 3600
-
+def get_pips(sym, atype, cur, tgt):
+    if not cur or not tgt: return 9999
     diff   = abs(cur - tgt)
     sym_up = sym.upper()
     is_jpy = 'JPY' in sym_up
-    pips   = round(diff * (100 if is_jpy else 10000))
-
-    # ATR بگیر
-    atr_data = fetch_atr(sym_up)
-
-    if atr_data and atr_data.get("atr"):
-        atr   = atr_data["atr"]
-        spike = atr_data.get("spike", False)
-        # ratio: چند برابر ATR فاصله داریم
-        ratio = pips / atr if atr > 0 else 999
-
-        if ratio > 8:    interval = 7200   # خیلی دور — ۲ ساعت
-        elif ratio > 4:  interval = 3600   # دور — ۱ ساعت
-        elif ratio > 2:  interval = 900    # متوسط — ۱۵ دقیقه
-        elif ratio > 1:  interval = 300    # نزدیک — ۵ دقیقه
-        elif ratio > 0.3:interval = 120    # خیلی نزدیک — ۲ دقیقه
-        else:            interval = 60     # بسیار نزدیک — ۱ دقیقه
-
-        # اسپایک → interval نصف بشه (حداقل ۶۰ ثانیه)
-        if spike:
-            interval = max(60, interval // 2)
-            print(f"[spike] {sym_up} interval → {interval}s")
-
-        return interval
-
-    # fallback جدول ثابت اگه ATR نداشتیم
-    is_gold = 'XAU' in sym_up or 'XAG' in sym_up
-    if is_gold:
-        if pips > 200: return 300
-        if pips > 100: return 180
-        if pips > 50:  return 120
-        return 60
-    if pips > 150: return 7200
-    if pips > 50:  return 3600
-    if pips > 30:  return 900
-    if pips > 10:  return 120
-    return 60
+    if atype == 'crypto':
+        return diff / tgt * 10000  # درصد به پیپ معادل
+    return round(diff * (100 if is_jpy else 10000))
 
 def check_alerts():
+    """
+    هر ۲ دقیقه یه batch request برای همه نمادها.
+    آلارم‌هایی که زیر ۵ پیپ یا طلا زیر ۵۰ پیپ هستن → هر ۱ دقیقه چک میشن.
+    بقیه → هر ۲ دقیقه.
+    notified در RAM نگه داشته میشه تا آلارم تکراری نره.
+    """
+    last_1min_check = 0
+
     while True:
         try:
             global _cache
             _cache = None
             token, cids, data = _get_token_and_cids()
+            now_ts = time.time()
             now_dt = datetime.now(TEHRAN)
 
             active = [a for a in data.get("alerts", []) if a.get("active")]
-
-            # ── مرحله ۱: کدوم نمادها این دور due هستن ──
-            due_symbols = set()
-            for a in active:
-                sym   = a["symbol"]
-                atype = a.get("type", "crypto")
-                interval = get_interval(sym, atype, a.get("last_price"), float(a["target_price"]))
-                last_ts  = a.get("last_checked")
-                is_due   = True
-                if last_ts:
-                    try:
-                        lt      = TEHRAN.localize(datetime.strptime(last_ts, "%Y-%m-%d %H:%M:%S"))
-                        elapsed = (now_dt - lt).total_seconds()
-                        if elapsed < interval:
-                            is_due = False
-                    except Exception:
-                        pass
-                if is_due:
-                    due_symbols.add((sym, atype))
-
-            if not due_symbols:
+            if not active:
                 save_data(data)
                 time.sleep(120)
                 continue
 
-            # ── مرحله ۲: قیمت‌ها رو دسته‌ای بگیر ──
-            # فارکس‌ها رو یه‌جا، کریپتو‌ها جداگانه
-            forex_due  = [sym for (sym, atype) in due_symbols if atype == 'forex']
-            crypto_due = [(sym, atype) for (sym, atype) in due_symbols if atype == 'crypto']
+            # ── همه نمادها رو یه‌جا بگیر ──
+            forex_syms  = list({a["symbol"] for a in active if a.get("type","crypto") == "forex"})
+            crypto_syms = list({a["symbol"] for a in active if a.get("type","crypto") == "crypto"})
 
             price_cache = {}
 
-            # فارکس — یه درخواست برای همه
-            if forex_due:
-                batch = get_forex_prices_batch(forex_due)
-                for sym in forex_due:
-                    price_cache[(sym, 'forex')] = batch.get(sym.upper())
-                print(f"[batch] forex={forex_due} → {len(batch)} prices")
+            if forex_syms:
+                batch = get_forex_prices_batch(forex_syms)
+                price_cache.update({(s, "forex"): batch.get(s.upper()) for s in forex_syms})
 
-            # کریپتو — هر کدوم جداگانه (Binance و...)
-            for (sym, atype) in crypto_due:
-                price_cache[(sym, atype)] = get_crypto_price(sym)
-                print(f"[fetch] crypto {sym} = {price_cache[(sym, atype)]}")
+            if crypto_syms:
+                cbatch = get_crypto_prices_batch(crypto_syms)
+                price_cache.update({(s, "crypto"): cbatch.get(s.upper()) for s in crypto_syms})
 
-            # ── مرحله ۳: همه آلارم‌های اون نماد آپدیت بشن (نه فقط due‌ها) ──
-            # اگه برای EURUSD قیمت گرفتیم، همه آلارم‌های EURUSD رو آپدیت کن
+            # ── بررسی هر آلارم ──
             fired = []
             for a in active:
                 sym   = a["symbol"]
                 atype = a.get("type", "crypto")
                 key   = (sym, atype)
+                cur   = price_cache.get(key)
 
-                if key not in price_cache:
-                    continue  # این نماد این دور fetch نشد
-
-                cur = price_cache[key]
                 if cur is None:
                     continue
 
                 tgt  = float(a["target_price"])
                 cond = a.get("condition", "above")
+                pips = get_pips(sym, atype, cur, tgt)
 
+                # بررسی interval — آلارم‌های نزدیک هر ۱ دقیقه، بقیه هر ۲ دقیقه
+                is_close   = needs_1min(sym, atype, pips)
+                interval   = 60 if is_close else 120
+                last_ts    = a.get("last_checked")
+                should_check = True
+                if last_ts:
+                    try:
+                        lt      = TEHRAN.localize(datetime.strptime(last_ts, "%Y-%m-%d %H:%M:%S"))
+                        elapsed = (now_dt - lt).total_seconds()
+                        if elapsed < interval:
+                            should_check = False
+                    except Exception:
+                        pass
+
+                if not should_check:
+                    continue
+
+                # آپدیت قیمت
                 a["last_price"]     = cur
                 a["last_checked"]   = now_teh()
-                a["check_interval"] = get_interval(sym, atype, cur, tgt)
+                a["check_interval"] = interval
                 data["last_update"] = now_teh()
 
                 triggered = (cond == "above" and cur >= tgt) or (cond == "below" and cur <= tgt)
@@ -464,12 +435,12 @@ def check_alerts():
                 data["alerts"]  = [x for x in data["alerts"] if x["id"] not in fired]
 
             save_data(data)
-            print(f"[check] active={len(active)} fetched={len(price_cache)} fired={len(fired)}")
+            print(f"[check] active={len(active)} forex={len(forex_syms)} crypto={len(crypto_syms)} fired={len(fired)}")
 
         except Exception as e:
             log_error(f"check_alerts: {e}")
 
-        time.sleep(120)
+        time.sleep(60)  # loop هر ۱ دقیقه — interval رو خودش تشخیص میده
 
 
 # ── Routes ────────────────────────────────────────────────────────
