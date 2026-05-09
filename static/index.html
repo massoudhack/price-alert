@@ -507,9 +507,16 @@ async function addAlert() {
 
 // ── Render alert cards ────────────────────────────────────────────
 function getIntervalLabel(interval, sym) {
-  // الان فقط ۶۰ (نزدیک) یا ۱۲۰ (عادی) هست
-  if (!interval || interval <= 60)  return { label: '۱ دقیقه', cls: 'hot' };
-  return                                   { label: '۲ دقیقه', cls: 'warm' };
+  const isGold = sym && (sym.includes('XAU') || sym.includes('XAG'));
+  if (isGold) {
+    if (!interval || interval <= 60)  return { label: '۱ دقیقه', cls: 'hot' };
+    if (interval <= 180)              return { label: '۳ دقیقه', cls: 'hot' };
+    return                                   { label: '۵ دقیقه', cls: 'warm' };
+  }
+  if (!interval || interval <= 120)  return { label: '۲ دقیقه',  cls: 'hot' };
+  if (interval <= 900)               return { label: '۱۵ دقیقه', cls: 'warm' };
+  if (interval <= 3600)              return { label: '۱ ساعت',   cls: 'cold' };
+  return                                    { label: '۲ ساعت',   cls: 'cold' };
 }
 
 function getGroup(interval, sym, pipDist) {
