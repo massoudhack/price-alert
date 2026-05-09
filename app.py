@@ -30,7 +30,7 @@ def _fix(data):
             data[k] = v
     return data
 
-# ── Storage ───────────────────────────────────────────────────────
+# ── Storage ─────────د──────────────────────────────────────────────
 def load_data():
     global _cache
     if _cache is not None:
