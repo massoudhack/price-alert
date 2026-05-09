@@ -162,17 +162,19 @@ def _get(url, timeout=8):
     r.raise_for_status()
     return r.json()
 
+# ── cache آخرین قیمت‌های موفق ────────────────────────────────────
+_last_known = {}  # {"EURUSD": {"price": 1.175, "ts": "2026-05-09 10:00:00", "stale": False}}
+
 # ── Forex batch — biquote با فرمت درست ───────────────────────────
 def get_forex_prices_batch(symbols):
     """
     biquote.io/api/latest?symbols=EURUSD&symbols=GBPUSD&...
-    برمی‌گردونه: {"EURUSD": 1.1750, "GBPUSD": 1.2345, ...}
+    اگه ۴۰۴ یا خطا داد → از آخرین قیمت موفق استفاده کن (stale)
     """
     if not symbols:
         return {}
 
     clean = [s.upper().replace("/", "").replace(" ", "") for s in symbols]
-    # ساخت query string با symbols= جداگانه برای هر نماد
     qs = "&".join(f"symbols={s}" for s in clean)
     url = f"https://biquote.io/api/latest?{qs}"
 
@@ -180,7 +182,6 @@ def get_forex_prices_batch(symbols):
         r = requests.get(url, timeout=12, headers=H)
         r.raise_for_status()
         raw = r.json()
-        # raw می‌تونه list یا dict باشه
         result = {}
         if isinstance(raw, list):
             for item in raw:
@@ -188,6 +189,7 @@ def get_forex_prices_batch(symbols):
                 bid = item.get("bid") or item.get("price") or item.get("last")
                 if sym and bid and float(bid) > 0:
                     result[sym] = float(bid)
+                    _last_known[sym] = {"price": float(bid), "ts": now_teh(), "stale": False}
                     print(f"[biquote] {sym} = {float(bid)}")
         elif isinstance(raw, dict):
             for sym, data in raw.items():
@@ -199,33 +201,26 @@ def get_forex_prices_batch(symbols):
                     bid = None
                 if bid and float(bid) > 0:
                     result[sym.upper()] = float(bid)
+                    _last_known[sym.upper()] = {"price": float(bid), "ts": now_teh(), "stale": False}
                     print(f"[biquote] {sym} = {float(bid)}")
         if result:
-            print(f"[batch-OK] {len(result)}/{len(clean)} prices: " + " | ".join(f"{k}={v}" for k,v in result.items()))
+            print(f"[batch-OK] {len(result)}/{len(clean)} prices")
             return result
         log_error(f"biquote batch empty for {clean}")
     except Exception as e:
-        log_error(f"biquote batch failed ({','.join(clean)}): {e}")
+        status = "404" if "404" in str(e) else str(e)
+        print(f"[batch-ERR] {status} — using last known prices")
 
-    # ── Fallback: تک تک ───────────────────────────────────────────
-    print(f"[fallback] batch failed → trying {len(clean)} symbols one by one")
+    # ── Fallback: آخرین قیمت موفق ────────────────────────────────
     result = {}
     for sym in clean:
-        try:
-            r2 = requests.get(f"https://biquote.io/api/latest?symbols={sym}",
-                              timeout=8, headers=H)
-            r2.raise_for_status()
-            raw2 = r2.json()
-            bid  = None
-            if isinstance(raw2, list) and raw2:
-                bid = raw2[0].get("bid") or raw2[0].get("price") or raw2[0].get("last")
-            elif isinstance(raw2, dict):
-                bid = raw2.get("bid") or raw2.get("price") or raw2.get("last")
-            if bid and float(bid) > 0:
-                result[sym] = float(bid)
-                print(f"[single-OK] {sym} = {float(bid)}")
-        except Exception as e2:
-            print(f"[single-ERR] {sym}: {e2} → trying frankfurter")
+        if sym in _last_known:
+            cached = _last_known[sym]
+            _last_known[sym]["stale"] = True
+            result[sym] = cached["price"]
+            print(f"[stale] {sym} = {cached['price']} (از {cached['ts']})")
+        else:
+            # اگه اصلاً قیمتی نداریم → frankfurter fallback
             try:
                 base, quote = sym[:3], sym[3:6]
                 r3 = requests.get(
@@ -235,9 +230,8 @@ def get_forex_prices_batch(symbols):
                     rate = r3.json().get("rates", {}).get(quote)
                     if rate:
                         result[sym] = float(rate)
-                        print(f"[frankfurter-OK] {sym} = {float(rate)}")
-                    else:
-                        print(f"[frankfurter-ERR] {sym}: no rate in response")
+                        _last_known[sym] = {"price": float(rate), "ts": now_teh(), "stale": False}
+                        print(f"[frankfurter] {sym} = {float(rate)}")
             except Exception as e3:
                 print(f"[frankfurter-ERR] {sym}: {e3}")
     return result
@@ -438,11 +432,14 @@ def check_alerts():
             price_map = {}
 
             if due_forex:
-                # dedupe
                 uniq_forex = list(dict.fromkeys(due_forex))
                 batch = get_forex_prices_batch(uniq_forex)
                 for sym, p in batch.items():
                     price_map[(sym, "forex")] = p
+                    # stale flag
+                    known = _last_known.get(sym, {})
+                    if known.get("stale"):
+                        price_map[(sym, "forex", "stale")] = known.get("ts", "")
 
             # ── کریپتو ───────────────────────────────────────────
             uniq_crypto = list(dict.fromkeys(due_crypto))
@@ -472,6 +469,9 @@ def check_alerts():
                 a["last_price"]     = cur
                 a["last_checked"]   = now_teh()
                 a["check_interval"] = get_check_interval(sym, atype, cur, tgt)
+                # اگه قیمت stale (تعطیل بازار) بود نشون بده
+                stale_ts = price_map.get((sym.upper(), atype, "stale"))
+                a["price_stale"]    = stale_ts if stale_ts else None
                 data["last_update"] = now_teh()
 
                 triggered = (cond == "above" and cur >= tgt) or (cond == "below" and cur <= tgt)
