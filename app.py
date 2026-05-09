@@ -24,7 +24,6 @@ def _empty():
     }
 
 def _fix(data):
-    """مطمئن میشه همه کلیدها وجود دارن"""
     e = _empty()
     for k, v in e.items():
         if k not in data:
@@ -48,7 +47,6 @@ def load_data():
                 return _cache
         except Exception as e:
             print(f"[gist load] {e}")
-    # fallback local
     if os.path.exists("alerts.json"):
         try:
             with open("alerts.json", "r", encoding="utf-8") as f:
@@ -89,7 +87,74 @@ def log_error(msg):
         pass
     print(f"[ERR] {msg}")
 
-# ── Price Fetching — multi-source with full precision ─────────────
+# ── Weekend check ─────────────────────────────────────────────────
+def is_forex_market_open():
+    """
+    فارکس شنبه و یکشنبه بسته‌ست.
+    شنبه از ساعت ۰۰:۰۰ UTC تا یکشنبه ۲۱:۰۰ UTC بازار بسته است.
+    """
+    now_utc = datetime.utcnow()
+    wd = now_utc.weekday()  # 0=Mon, 5=Sat, 6=Sun
+    if wd == 5:  # شنبه — کل روز بسته
+        return False
+    if wd == 6:  # یکشنبه — تا ۲۱:۰۰ UTC بسته
+        return now_utc.hour >= 21
+    return True
+
+# ── Pip distance ──────────────────────────────────────────────────
+def calc_pips(symbol, cur, tgt):
+    if not cur or not tgt:
+        return None
+    diff   = abs(float(cur) - float(tgt))
+    sym_up = symbol.upper()
+    if "XAU" in sym_up or "XAG" in sym_up:
+        return diff  # دلار فاصله برای طلا
+    if "JPY" in sym_up:
+        return diff * 100
+    return diff * 10000
+
+def calc_dist_str(symbol, atype, cur, tgt):
+    if not cur or not tgt:
+        return ""
+    diff   = abs(float(cur) - float(tgt))
+    sym_up = symbol.upper()
+    if atype == "crypto":
+        return f"{diff/float(tgt)*100:.2f}%"
+    if "XAU" in sym_up or "XAG" in sym_up:
+        return f"{diff:.2f} $"
+    if "JPY" in sym_up:
+        return f"{round(diff*100):,} pip"
+    return f"{round(diff*10000):,} pip"
+
+# ── Smart interval ────────────────────────────────────────────────
+def get_check_interval(symbol, atype, cur, tgt):
+    """
+    کریپتو: همیشه ۱۲۰ ثانیه (batch یه‌جا همه رو می‌گیره)
+    فارکس معمولی:
+      < 5 pip  → 60s
+      < 30 pip → 120s (2 min)
+      باقی     → 120s (batch)
+    طلا (XAU):
+      < 50 pip → 60s
+      باقی     → 120s (batch)
+    """
+    if atype == "crypto":
+        return 120
+
+    sym_up = symbol.upper()
+    is_gold = "XAU" in sym_up or "XAG" in sym_up
+
+    pips = calc_pips(symbol, cur, tgt)
+    if pips is None:
+        return 120
+
+    if is_gold:
+        return 60 if pips < 50 else 120
+
+    # فارکس معمولی
+    return 60 if pips < 5 else 120
+
+# ── Price — H ─────────────────────────────────────────────────────
 H = {"User-Agent": "Mozilla/5.0 (compatible; PriceBot/1.0)"}
 
 def _get(url, timeout=8):
@@ -97,33 +162,92 @@ def _get(url, timeout=8):
     r.raise_for_status()
     return r.json()
 
-def get_crypto_price(symbol):
-    """Try 6 sources in order, return first successful price"""
-    base = symbol.upper()
-    for s in ["USDT","USDC","USD","BUSD"]:
-        base = base.replace(s,"")
-    base = base.replace("/","").strip()
+# ── Forex batch — biquote با فرمت درست ───────────────────────────
+def get_forex_prices_batch(symbols):
+    """
+    biquote.io/api/latest?symbols=EURUSD&symbols=GBPUSD&...
+    برمی‌گردونه: {"EURUSD": 1.1750, "GBPUSD": 1.2345, ...}
+    """
+    if not symbols:
+        return {}
 
-    sources = [
-        ("Binance-USDT",   lambda: float(_get(f"https://api.binance.com/api/v3/ticker/price?symbol={base}USDT")["price"])),
-        ("Binance-USDC",   lambda: float(_get(f"https://api.binance.com/api/v3/ticker/price?symbol={base}USDC")["price"])),
-        ("Bybit",          lambda: float(_get(f"https://api.bybit.com/v5/market/tickers?category=spot&symbol={base}USDT")["result"]["list"][0]["lastPrice"])),
-        ("OKX",            lambda: float(_get(f"https://www.okx.com/api/v5/market/ticker?instId={base}-USDT")["data"][0]["last"])),
-        ("KuCoin",         lambda: float(_get(f"https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={base}-USDT")["data"]["price"])),
-        ("CoinGecko",      lambda: _cg_price(base)),
-        ("CryptoCompare",  lambda: float(_get(f"https://min-api.cryptocompare.com/data/price?fsym={base}&tsyms=USD")["USD"])),
-    ]
-    for name, fn in sources:
+    clean = [s.upper().replace("/", "").replace(" ", "") for s in symbols]
+    # ساخت query string با symbols= جداگانه برای هر نماد
+    qs = "&".join(f"symbols={s}" for s in clean)
+    url = f"https://biquote.io/api/latest?{qs}"
+
+    try:
+        r = requests.get(url, timeout=12, headers=H)
+        r.raise_for_status()
+        raw = r.json()
+        # raw می‌تونه list یا dict باشه
+        result = {}
+        if isinstance(raw, list):
+            for item in raw:
+                sym = item.get("symbol","").upper().replace("/","")
+                bid = item.get("bid") or item.get("price") or item.get("last")
+                if sym and bid and float(bid) > 0:
+                    result[sym] = float(bid)
+                    print(f"[biquote] {sym} = {float(bid)}")
+        elif isinstance(raw, dict):
+            for sym, data in raw.items():
+                if isinstance(data, dict):
+                    bid = data.get("bid") or data.get("price") or data.get("last")
+                elif isinstance(data, (int, float)):
+                    bid = data
+                else:
+                    bid = None
+                if bid and float(bid) > 0:
+                    result[sym.upper()] = float(bid)
+                    print(f"[biquote] {sym} = {float(bid)}")
+        if result:
+            print(f"[batch] forex={list(result.keys())} → {len(result)} prices")
+            return result
+        # اگه نتیجه خالی — fallback تکی
+        log_error(f"biquote batch empty for {clean}")
+    except Exception as e:
+        log_error(f"biquote batch failed ({','.join(clean)}): {e}")
+
+    # ── Fallback: تک تک با biquote ───────────────────────────────
+    result = {}
+    for sym in clean:
         try:
-            p = fn()
-            if p and p > 0:
-                print(f"[price] {base} = {p} via {name}")
-                return float(p)
-        except Exception as e:
-            print(f"[{name}] {base} failed: {e}")
-    log_error(f"All crypto sources failed for {symbol}")
-    return None
+            r2 = requests.get(f"https://biquote.io/api/latest?symbols={sym}",
+                              timeout=8, headers=H)
+            r2.raise_for_status()
+            raw2 = r2.json()
+            bid  = None
+            if isinstance(raw2, list) and raw2:
+                bid = raw2[0].get("bid") or raw2[0].get("price") or raw2[0].get("last")
+            elif isinstance(raw2, dict):
+                bid = raw2.get("bid") or raw2.get("price") or raw2.get("last")
+            if bid and float(bid) > 0:
+                result[sym] = float(bid)
+                print(f"[biquote-single] {sym} = {float(bid)}")
+        except Exception as e2:
+            print(f"[biquote-single] {sym} failed: {e2}")
+            # Frankfurter fallback برای جفت‌ارزهای معمول
+            try:
+                base, quote = sym[:3], sym[3:6]
+                r3 = requests.get(
+                    f"https://api.frankfurter.app/latest?from={base}&to={quote}",
+                    timeout=7)
+                if r3.ok:
+                    rate = r3.json().get("rates", {}).get(quote)
+                    if rate:
+                        result[sym] = float(rate)
+                        print(f"[frankfurter] {sym} = {float(rate)}")
+            except Exception:
+                pass
+    return result
 
+def get_forex_price(symbol):
+    """تک نماد فارکس — برای endpoint /api/price"""
+    sym = symbol.upper().replace("/","").replace(" ","")
+    batch = get_forex_prices_batch([sym])
+    return batch.get(sym)
+
+# ── Crypto ────────────────────────────────────────────────────────
 CG_MAP = {
     "BTC":"bitcoin","ETH":"ethereum","BNB":"binancecoin","SOL":"solana",
     "XRP":"ripple","ADA":"cardano","DOGE":"dogecoin","TRX":"tron",
@@ -139,64 +263,53 @@ def _cg_price(base):
     d = _get(f"https://api.coingecko.com/api/v3/simple/price?ids={gid}&vs_currencies=usd")
     return float(d[gid]["usd"])
 
-def get_forex_price(symbol):
-    """یه نماد — از cache دسته‌ای بخون، اگه نبود تک بگیر"""
-    sym = symbol.upper().replace("/","").replace(" ","").strip()
-    try:
-        r = requests.get(f"https://biquote.io/api/{sym}", timeout=8, headers=H)
-        r.raise_for_status()
-        d = r.json()
-        bid = d.get("bid")
-        if bid is not None and float(bid) > 0:
-            print(f"[biquote] {sym} = {float(bid)}")
-            return float(bid)
-        log_error(f"biquote zero for {sym}")
-        return None
-    except Exception as e:
-        log_error(f"biquote failed for {sym}: {e}")
-        return None
+def get_crypto_price(symbol):
+    base = symbol.upper()
+    for s in ["USDT","USDC","USD","BUSD"]:
+        base = base.replace(s,"")
+    base = base.replace("/","").strip()
 
-def get_forex_prices_batch(symbols):
-    """
-    یه درخواست برای چند نماد فارکس — بجای N درخواست جداگانه.
-    biquote.io/api/EURUSD,GBPUSD,XAUUSD → یه JSON با همه قیمت‌ها
-    برمیگردونه: {"EURUSD": 1.17503, "GBPUSD": 1.35941, ...}
-    """
-    if not symbols:
-        return {}
-    syms = ",".join(s.upper().replace("/","").replace(" ","") for s in symbols)
+    # biquote هم کریپتو داره — BTCUSD فرمت می‌خواد
     try:
-        r = requests.get(f"https://biquote.io/api/{syms}", timeout=10, headers=H)
-        r.raise_for_status()
-        d = r.json()
-        result = {}
-        for sym, data in d.items():
-            bid = data.get("bid")
-            if bid is not None and float(bid) > 0:
-                result[sym.upper()] = float(bid)
-                print(f"[biquote-batch] {sym} = {float(bid)}")
-        return result
-    except Exception as e:
-        log_error(f"biquote batch failed ({syms}): {e}")
-        # fallback: تک تک بگیر
-        result = {}
-        for sym in symbols:
-            p = get_forex_price(sym)
-            if p: result[sym.upper()] = p
-        return result
+        r = requests.get(f"https://biquote.io/api/latest?symbols={base}USD",
+                         timeout=8, headers=H)
+        if r.ok:
+            raw = r.json()
+            bid = None
+            if isinstance(raw, list) and raw:
+                bid = raw[0].get("bid") or raw[0].get("price") or raw[0].get("last")
+            elif isinstance(raw, dict):
+                bid = raw.get("bid") or raw.get("price") or raw.get("last")
+            if bid and float(bid) > 100:  # کریپتو باید > 100 باشه
+                print(f"[biquote-crypto] {base} = {float(bid)}")
+                return float(bid)
+    except Exception:
+        pass
 
+    sources = [
+        ("OKX",           lambda: float(_get(f"https://www.okx.com/api/v5/market/ticker?instId={base}-USDT")["data"][0]["last"])),
+        ("KuCoin",        lambda: float(_get(f"https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={base}-USDT")["data"]["price"])),
+        ("CoinGecko",     lambda: _cg_price(base)),
+        ("CryptoCompare", lambda: float(_get(f"https://min-api.cryptocompare.com/data/price?fsym={base}&tsyms=USD")["USD"])),
+        ("Binance-USDT",  lambda: float(_get(f"https://api.binance.com/api/v3/ticker/price?symbol={base}USDT")["price"])),
+        ("Binance-USDC",  lambda: float(_get(f"https://api.binance.com/api/v3/ticker/price?symbol={base}USDC")["price"])),
+        ("Bybit",         lambda: float(_get(f"https://api.bybit.com/v5/market/tickers?category=spot&symbol={base}USDT")["result"]["list"][0]["lastPrice"])),
+    ]
+    for name, fn in sources:
+        try:
+            p = fn()
+            if p and p > 0:
+                print(f"[price] {base} = {p} via {name}")
+                return float(p)
+        except Exception as e:
+            print(f"[{name}] {base} failed: {e}")
+    log_error(f"All crypto sources failed for {symbol}")
+    return None
 
 def get_price(symbol, asset_type):
-    if asset_type == "crypto": return get_crypto_price(symbol)
+    if asset_type == "crypto":
+        return get_crypto_price(symbol)
     return get_forex_price(symbol)
-
-def calc_dist(symbol, atype, cur, tgt):
-    if not cur or not tgt: return ""
-    diff = abs(tgt - cur)
-    if atype == "crypto":
-        return f"{diff/cur*100:.2f}%"
-    is_jpy = "JPY" in symbol.upper()
-    return f"{round(diff*(100 if is_jpy else 10000)):,} pip"
 
 # ── Telegram ──────────────────────────────────────────────────────
 def send_tg(token, chat_id, text):
@@ -262,167 +375,93 @@ def poll_telegram():
             print(f"[poll] {e}")
         time.sleep(5)
 
-# ── ATR Cache ─────────────────────────────────────────────────────
-_atr_cache  = {}  # {"EURUSD": {"atr": 8.5, "spike": False, "ts": 1234}}
-
-# ── Price alert checker ────────────────────────────────────────────
+# ── Main check loop ───────────────────────────────────────────────
+#
+# منطق جدید:
+# - هر ۶۰ ثانیه loop می‌زنه
+# - یه batch برای همه فارکس‌ها می‌فرسته (اگه بازار باز باشه)
+# - کریپتوها هم جداگانه
+# - آلارم‌هایی که interval=60s دارن هر دور چک می‌شن
+# - بقیه (interval=120s) یک در میان
+# - شنبه/یکشنبه فارکس چک نمی‌شه مگه کلیک دستی
+#
 notified = set()
-
-def fetch_atr(sym):
-    """
-    ATR از ۱۰ کندل ۱۵ دقیقه‌ای.
-    هر ۱ ساعت آپدیت — cache در RAM.
-    spike = کندل آخر بسته > 2x ATR میانگین
-    """
-    sym_up = sym.upper()
-    cached = _atr_cache.get(sym_up)
-    if cached and time.time() - cached["ts"] < 3600:
-        return cached
-
-    try:
-        r = requests.get(
-            f"https://biquote.io/api/{sym_up}/ohlc?interval=15m&limit=10",
-            headers=H, timeout=8)
-        if r.status_code != 200:
-            return cached  # برگردون cache قدیمی
-        bars   = r.json().get("bars", [])
-        closed = [b for b in bars if not b.get("isOpen", True)]
-        if len(closed) < 3:
-            return cached
-        is_jpy = 'JPY' in sym_up
-        mult   = 100 if is_jpy else 10000
-        ranges = [(b["high"] - b["low"]) * mult for b in closed]
-        atr    = sum(ranges) / len(ranges)
-        # اسپایک: آخرین کندل بسته > 2x میانگین
-        spike  = ranges[0] > atr * 2
-        result = {"atr": atr, "spike": spike, "ts": time.time()}
-        _atr_cache[sym_up] = result
-        print(f"[ATR] {sym_up} atr={atr:.1f}pip spike={spike}")
-        return result
-    except Exception as e:
-        print(f"[ATR] {sym_up} error: {e}")
-        return cached
-
-
-def get_interval(sym, atype, cur, tgt):
-    """
-    interval هوشمند بر اساس ATR واقعی:
-    - ratio = فاصله_پیپ / ATR_15m
-    - اگه اسپایک داشت interval نصف میشه
-    - کریپتو همیشه ۲ دقیقه
-    - fallback: جدول ثابت اگه ATR نداشتیم
-    """
-    if atype == 'crypto':
-        return 120
-    if not cur or not tgt:
-        return 3600
-
-    diff   = abs(cur - tgt)
-    sym_up = sym.upper()
-    is_jpy = 'JPY' in sym_up
-    pips   = round(diff * (100 if is_jpy else 10000))
-
-    # ATR بگیر
-    atr_data = fetch_atr(sym_up)
-
-    if atr_data and atr_data.get("atr"):
-        atr   = atr_data["atr"]
-        spike = atr_data.get("spike", False)
-        # ratio: چند برابر ATR فاصله داریم
-        ratio = pips / atr if atr > 0 else 999
-
-        if ratio > 8:    interval = 7200   # خیلی دور — ۲ ساعت
-        elif ratio > 4:  interval = 3600   # دور — ۱ ساعت
-        elif ratio > 2:  interval = 900    # متوسط — ۱۵ دقیقه
-        elif ratio > 1:  interval = 300    # نزدیک — ۵ دقیقه
-        elif ratio > 0.3:interval = 120    # خیلی نزدیک — ۲ دقیقه
-        else:            interval = 60     # بسیار نزدیک — ۱ دقیقه
-
-        # اسپایک → interval نصف بشه (حداقل ۶۰ ثانیه)
-        if spike:
-            interval = max(60, interval // 2)
-            print(f"[spike] {sym_up} interval → {interval}s")
-
-        return interval
-
-    # fallback جدول ثابت اگه ATR نداشتیم
-    is_gold = 'XAU' in sym_up or 'XAG' in sym_up
-    if is_gold:
-        if pips > 200: return 300
-        if pips > 100: return 180
-        if pips > 50:  return 120
-        return 60
-    if pips > 150: return 7200
-    if pips > 50:  return 3600
-    if pips > 30:  return 900
-    if pips > 10:  return 120
-    return 60
+_loop_count = 0  # شمارنده دور
 
 def check_alerts():
+    global _loop_count
     while True:
         try:
+            _loop_count += 1
             global _cache
             _cache = None
             token, cids, data = _get_token_and_cids()
             now_dt = datetime.now(TEHRAN)
-
             active = [a for a in data.get("alerts", []) if a.get("active")]
 
-            # ── مرحله ۱: کدوم نمادها این دور due هستن ──
-            due_symbols = set()
+            if not active:
+                save_data(data)
+                time.sleep(60)
+                continue
+
+            forex_open = is_forex_market_open()
+
+            # ── تعیین کدوم آلارم‌ها این دور باید چک بشن ──────────
+            due_forex  = []
+            due_crypto = []
+
             for a in active:
                 sym   = a["symbol"]
                 atype = a.get("type", "crypto")
-                interval = get_interval(sym, atype, a.get("last_price"), float(a["target_price"]))
-                last_ts  = a.get("last_checked")
-                is_due   = True
-                if last_ts:
-                    try:
-                        lt      = TEHRAN.localize(datetime.strptime(last_ts, "%Y-%m-%d %H:%M:%S"))
-                        elapsed = (now_dt - lt).total_seconds()
-                        if elapsed < interval:
-                            is_due = False
-                    except Exception:
-                        pass
-                if is_due:
-                    due_symbols.add((sym, atype))
+                cur   = a.get("last_price")
+                tgt   = float(a["target_price"])
+                iv    = get_check_interval(sym, atype, cur, tgt)
 
-            if not due_symbols:
-                save_data(data)
-                time.sleep(120)
-                continue
+                # فارکس شنبه/یکشنبه skip (مگه آلارم تازه و قیمت نداره)
+                if atype == "forex" and not forex_open:
+                    continue
 
-            # ── مرحله ۲: قیمت‌ها رو دسته‌ای بگیر ──
-            # فارکس‌ها رو یه‌جا، کریپتو‌ها جداگانه
-            forex_due  = [sym for (sym, atype) in due_symbols if atype == 'forex']
-            crypto_due = [(sym, atype) for (sym, atype) in due_symbols if atype == 'crypto']
+                # آلارم‌های 60s هر دور، آلارم‌های 120s یک در میان
+                if iv <= 60:
+                    pass  # همیشه due
+                else:
+                    if _loop_count % 2 != 0:  # دور فرد skip
+                        continue
 
-            price_cache = {}
+                if atype == "forex":
+                    due_forex.append(sym)
+                else:
+                    due_crypto.append(sym)
 
-            # فارکس — یه درخواست برای همه
-            if forex_due:
-                batch = get_forex_prices_batch(forex_due)
-                for sym in forex_due:
-                    price_cache[(sym, 'forex')] = batch.get(sym.upper())
-                print(f"[batch] forex={forex_due} → {len(batch)} prices")
+            # ── یه batch برای همه فارکس‌ها ───────────────────────
+            price_map = {}
 
-            # کریپتو — هر کدوم جداگانه (Binance و...)
-            for (sym, atype) in crypto_due:
-                price_cache[(sym, atype)] = get_crypto_price(sym)
-                print(f"[fetch] crypto {sym} = {price_cache[(sym, atype)]}")
+            if due_forex:
+                # dedupe
+                uniq_forex = list(dict.fromkeys(due_forex))
+                batch = get_forex_prices_batch(uniq_forex)
+                for sym, p in batch.items():
+                    price_map[(sym, "forex")] = p
 
-            # ── مرحله ۳: همه آلارم‌های اون نماد آپدیت بشن (نه فقط due‌ها) ──
-            # اگه برای EURUSD قیمت گرفتیم، همه آلارم‌های EURUSD رو آپدیت کن
+            # ── کریپتو ───────────────────────────────────────────
+            uniq_crypto = list(dict.fromkeys(due_crypto))
+            for sym in uniq_crypto:
+                p = get_crypto_price(sym)
+                price_map[(sym.upper(), "crypto")] = p
+
+            print(f"[check] loop={_loop_count} forex_open={forex_open} due_f={len(due_forex)} due_c={len(due_crypto)} prices={len(price_map)}")
+
+            # ── بررسی آلارم‌ها ────────────────────────────────────
             fired = []
             for a in active:
                 sym   = a["symbol"]
                 atype = a.get("type", "crypto")
-                key   = (sym, atype)
+                key   = (sym.upper(), atype)
 
-                if key not in price_cache:
-                    continue  # این نماد این دور fetch نشد
+                if key not in price_map:
+                    continue
 
-                cur = price_cache[key]
+                cur = price_map[key]
                 if cur is None:
                     continue
 
@@ -431,30 +470,34 @@ def check_alerts():
 
                 a["last_price"]     = cur
                 a["last_checked"]   = now_teh()
-                a["check_interval"] = get_interval(sym, atype, cur, tgt)
+                a["check_interval"] = get_check_interval(sym, atype, cur, tgt)
                 data["last_update"] = now_teh()
 
                 triggered = (cond == "above" and cur >= tgt) or (cond == "below" and cur <= tgt)
+
                 if triggered and a["id"] not in notified:
                     notified.add(a["id"])
                     a["active"]      = False
                     a["fired_at"]    = now_teh()
                     a["fired_price"] = cur
                     fired.append(a["id"])
+
                     if token and cids:
-                        dist = calc_dist(sym, atype, cur, tgt)
+                        dist = calc_dist_str(sym, atype, cur, tgt)
                         cmt  = f"\n💬 <i>{a['comment']}</i>" if a.get("comment") else ""
-                        msg  = (
+                        arrow = "📈 از هدف رد شد" if cond == "above" else "📉 به هدف رسید"
+                        msg = (
                             f"🚨 <b>آلارم قیمت!</b>\n\n"
-                            f"💰 <b>{sym}</b> "
-                            f"{'📈 از هدف رد شد' if cond=='above' else '📉 به هدف رسید'}\n\n"
-                            f"🎯 هدف: <b>${tgt:,.5f}</b>\n"
-                            f"📊 قیمت: <b>${cur:,.5f}</b>\n"
+                            f"💰 <b>{sym}</b> {arrow}\n\n"
+                            f"🎯 هدف: <b>{fmt_price(tgt, sym)}</b>\n"
+                            f"📊 قیمت: <b>{fmt_price(cur, sym)}</b>\n"
                             f"📏 فاصله: <b>{dist}</b>"
                             f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
                         )
-                        broadcast(token, cids, msg)
+                        results = broadcast(token, cids, msg)
+                        print(f"[FIRED] {sym} → sent={sum(results)}/{len(cids)}")
 
+            # ── آرشیو کردن فایرشده‌ها ────────────────────────────
             if fired:
                 arch = data.get("archive", [])
                 for fid in fired:
@@ -462,20 +505,34 @@ def check_alerts():
                     if obj: arch.append(obj)
                 data["archive"] = arch
                 data["alerts"]  = [x for x in data["alerts"] if x["id"] not in fired]
+                print(f"[check] fired={len(fired)} → archived")
 
             save_data(data)
-            print(f"[check] active={len(active)} fetched={len(price_cache)} fired={len(fired)}")
 
         except Exception as e:
             log_error(f"check_alerts: {e}")
 
-        time.sleep(120)
+        time.sleep(60)  # هر ۶۰ ثانیه
 
+def fmt_price(p, sym=""):
+    if p is None: return "—"
+    v  = float(p)
+    su = sym.upper()
+    if "XAU" in su or "XAG" in su: return f"${v:,.2f}"
+    if "JPY" in su: return f"${v:.3f}"
+    if v >= 10000:  return f"${v:,.1f}"
+    if v >= 100:    return f"${v:,.2f}"
+    if v >= 1:      return f"${v:.5f}"
+    return f"${v:.6f}"
 
 # ── Routes ────────────────────────────────────────────────────────
 @app.route("/")
 def index():
     return send_from_directory("static", "index.html")
+
+@app.route("/journal")
+def journal():
+    return send_from_directory("static", "journal.html")
 
 @app.route("/api/config", methods=["GET","POST"])
 def config():
@@ -495,8 +552,12 @@ def config():
         save_data(data)
         return jsonify({"ok": True})
     tg = data.get("telegram", {})
-    return jsonify({"bot_token": tg.get("bot_token",""), "chat_id": tg.get("chat_id",""),
-                    "chat_ids": tg.get("chat_ids",[]), "user_count": len(data.get("users",[]))})
+    return jsonify({
+        "bot_token":  tg.get("bot_token",""),
+        "chat_id":    tg.get("chat_id",""),
+        "chat_ids":   tg.get("chat_ids",[]),
+        "user_count": len(data.get("users",[]))
+    })
 
 @app.route("/api/alerts", methods=["GET"])
 def get_alerts():
@@ -506,17 +567,25 @@ def get_alerts():
 def add_alert():
     data = load_data()
     body = request.json or {}
+    sym  = body.get("symbol","").upper().strip()
+    atype= body.get("type","crypto")
+    tgt  = float(body.get("target_price", 0))
+
+    # قیمت لحظه‌ای رو هنگام ثبت بگیر
+    cur = get_price(sym, atype) if (atype!="forex" or is_forex_market_open()) else None
+
     a = {
-        "id": str(int(time.time() * 1000)),
-        "symbol":       body.get("symbol","").upper().strip(),
-        "type":         body.get("type","crypto"),
-        "target_price": float(body.get("target_price", 0)),
-        "condition":    body.get("condition","above"),
-        "comment":      body.get("comment","").strip(),
-        "active":       True,
-        "last_price":   None,
-        "last_checked": None,
-        "created_at":   now_teh()
+        "id":             str(int(time.time() * 1000)),
+        "symbol":         sym,
+        "type":           atype,
+        "target_price":   tgt,
+        "condition":      body.get("condition","above"),
+        "comment":        body.get("comment","").strip(),
+        "active":         True,
+        "last_price":     cur,
+        "last_checked":   now_teh() if cur else None,
+        "check_interval": get_check_interval(sym, atype, cur, tgt),
+        "created_at":     now_teh()
     }
     data["alerts"].append(a)
     save_data(data)
@@ -562,28 +631,33 @@ def del_user(cid):
 
 @app.route("/api/price/<atype>/<symbol>")
 def live_price(atype, symbol):
-    p = get_price(symbol.upper(), atype)
+    """همیشه قیمت لحظه‌ای رو برمی‌گردونه — حتی آخر هفته (برای کلیک دستی)"""
+    sym = symbol.upper().replace("-","/")
+    p = get_price(sym, atype)
     if p is None:
         return jsonify({"error": "قیمت پیدا نشد"}), 404
-    return jsonify({"symbol": symbol.upper(), "price": p})
+    return jsonify({"symbol": sym, "price": p})
 
 @app.route("/api/test-telegram", methods=["POST"])
 def test_tg():
     token, cids, _ = _get_token_and_cids()
     if not token or not cids:
         return jsonify({"ok": False, "error": "توکن یا chat_id ست نشده"})
-    res = broadcast(token, cids, f"✅ <b>تست موفق</b>\n🔔 اتصال برقرار است.\n⏰ {now_pretty()} (تهران)")
+    res = broadcast(token, cids,
+        f"✅ <b>تست موفق</b>\n🔔 اتصال برقرار است.\n⏰ {now_pretty()} (تهران)")
     return jsonify({"ok": any(res), "sent": sum(res), "total": len(cids)})
 
 @app.route("/api/status")
 def status():
     data = load_data()
     return jsonify({
-        "status":      "ok",
-        "last_update": data.get("last_update"),
-        "errors":      data.get("errors", [])[-5:],
-        "time_tehran": now_teh(),
-        "alert_count": len(data.get("alerts",[])),
+        "status":       "ok",
+        "last_update":  data.get("last_update"),
+        "errors":       data.get("errors", [])[-5:],
+        "time_tehran":  now_teh(),
+        "alert_count":  len(data.get("alerts",[])),
+        "forex_open":   is_forex_market_open(),
+        "loop_count":   _loop_count,
     })
 
 @app.route("/health")
