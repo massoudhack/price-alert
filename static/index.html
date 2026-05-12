@@ -67,6 +67,31 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .tab.on.t-users{color:var(--purple);border-color:rgba(160,112,255,.3)}
 .pnl{display:none}.pnl.on{display:block}
 
+/* ── search bar ── */
+.search-bar {
+  margin-bottom: 1rem;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--rad);
+  padding: 0.8rem 1.2rem;
+}
+.search-bar input {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: 9px;
+  padding: 9px 12px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: var(--sans);
+  outline: none;
+  transition: .15s;
+}
+.search-bar input:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 0 2px rgba(0,217,139,.1);
+}
+
 /* ── Section ── */
 .sec{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rad2);margin-bottom:1rem;overflow:hidden}
 .sec-hd{display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.2rem;border-bottom:1px solid var(--border)}
@@ -199,18 +224,13 @@ select option{background:var(--bg3)}
 .iv-badge.hot{background:rgba(0,217,139,.15);color:var(--green);border:1px solid rgba(0,217,139,.3)}
 .iv-badge.warm{background:rgba(240,165,0,.12);color:var(--gold);border:1px solid rgba(240,165,0,.25)}
 .iv-badge.cold{background:rgba(122,135,153,.1);color:var(--text2);border:1px solid var(--border)}
-
-/* کارت با border رنگی بر اساس interval */
 .acard.iv-hot  {border-color:rgba(0,217,139,.3)}
 .acard.iv-warm {border-color:rgba(240,165,0,.2)}
 .acard.iv-cold {border-color:var(--border)}
-
-/* آخرین بروزرسانی */
 .ago-lbl{font-size:9px;font-family:var(--mono);font-weight:600;padding:1px 5px;border-radius:3px;margin-right:3px;display:inline-block}
 .ago-lbl.hot {background:rgba(0,217,139,.1);color:var(--green)}
 .ago-lbl.warm{background:rgba(240,165,0,.1);color:var(--gold)}
 .ago-lbl.cold{background:rgba(122,135,153,.08);color:var(--text3)}
-
 </style>
 </head>
 <body>
@@ -299,6 +319,11 @@ select option{background:var(--bg3)}
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- جستجوی نماد -->
+    <div class="search-bar">
+      <input type="text" id="symbol-search" placeholder="🔍 جستجوی نماد (مثلاً BTC, EURUSD, XAUUSD)" autocomplete="off">
     </div>
 
     <!-- List -->
@@ -469,7 +494,6 @@ async function addAlert() {
   const btn = document.getElementById('add-btn');
   btn.textContent = '⏳'; btn.disabled = true;
 
-  // دریافت قیمت لحظه‌ای قبل از ثبت
   let livePrice = null;
   try {
     const rp = await fetch(`${API}/api/price/${type}/${symbol}`);
@@ -487,7 +511,6 @@ async function addAlert() {
   btn.textContent = '+ افزودن'; btn.disabled = false;
 
   if (d.ok) {
-    // آپدیت last_price در سرور
     if (livePrice !== null && d.alert) {
       fetch(`${API}/api/alerts`, {method:'GET'}).catch(()=>{});
     }
@@ -495,9 +518,7 @@ async function addAlert() {
     document.getElementById('sym').value    = '';
     document.getElementById('tprice').value = '';
     document.getElementById('acmt').value   = '';
-    // لود فوری با قیمت واقعی
     await loadAlerts();
-    // اگه قیمت لحظه‌ای داریم بلافاصله نشون بده
     if (livePrice !== null) {
       const liveEl = document.getElementById(`live-${d.alert.id}`);
       if (liveEl) liveEl.textContent = '$' + fmt(livePrice, symbol);
@@ -505,7 +526,39 @@ async function addAlert() {
   }
 }
 
-// ── Render alert cards ────────────────────────────────────────────
+// ── Search / Filter ───────────────────────────────────────────────
+function filterAlerts() {
+  const query = document.getElementById('symbol-search').value.trim().toUpperCase();
+  const cards = document.querySelectorAll('#cards-grid .acard');
+  let anyVisible = false;
+  cards.forEach(card => {
+    const symbolElem = card.querySelector('.acard-name');
+    if (!symbolElem) return;
+    const symbolText = symbolElem.innerText.trim().toUpperCase();
+    if (query === '' || symbolText.includes(query)) {
+      card.style.display = '';
+      anyVisible = true;
+    } else {
+      card.style.display = 'none';
+    }
+  });
+  // نمایش پیام خالی اگر هیچ کارتی دیده نشود
+  let emptyMsg = document.getElementById('search-empty-msg');
+  if (!anyVisible && cards.length > 0) {
+    if (!emptyMsg) {
+      emptyMsg = document.createElement('div');
+      emptyMsg.id = 'search-empty-msg';
+      emptyMsg.className = 'empty';
+      emptyMsg.style.gridColumn = '1/-1';
+      emptyMsg.innerHTML = '<div class="empty-ico">🔍</div><p>نتیجه‌ای یافت نشد</p>';
+      document.getElementById('cards-grid').appendChild(emptyMsg);
+    }
+  } else if (emptyMsg) {
+    emptyMsg.remove();
+  }
+}
+
+// ── Render alert cards (با افزودن data-symbol برای جستجوی بهتر) ──
 function getIntervalLabel(interval, sym) {
   const isGold = sym && (sym.includes('XAU') || sym.includes('XAG'));
   if (isGold) {
@@ -538,7 +591,6 @@ function buildCard(a) {
   const cmtHtml  = a.comment ? `<div class="acard-cmt">📝 ${a.comment}</div>` : '';
   const ivBadge  = `<span class="iv-badge ${iv.cls}">${iv.label}</span>`;
   const agoHtml  = ago ? `<span class="ago-lbl ${iv.cls}">${ago}</span>` : '';
-  // stale = قیمت از cache — بازار تعطیله
   const staleHtml = a.price_stale
     ? `<div style="font-size:10px;color:var(--gold);font-family:var(--mono);margin-top:4px;padding:3px 7px;background:var(--gdold);border-radius:5px;">⏸ بازار تعطیل — آخرین قیمت ${a.price_stale.slice(11,16)}</div>`
     : '';
@@ -556,7 +608,7 @@ function buildCard(a) {
       <div class="dist-bar-bg"><div class="dist-bar ${di.cls}" style="width:${di.barPct}%"></div></div>
     </div>` : `<div id="pd-${a.id}"></div>`;
 
-  return `<div class="acard ${isAbove?'above':'below'} iv-${iv.cls}" id="ac-${a.id}" data-id="${a.id}">
+  return `<div class="acard ${isAbove?'above':'below'} iv-${iv.cls}" id="ac-${a.id}" data-id="${a.id}" data-symbol="${a.symbol}">
     <div class="acard-top">
       <div class="acard-badge">
         <div class="abadge ${isCrypto?'c':'f'}">${short}</div>
@@ -607,63 +659,26 @@ function renderAlerts(alerts) {
     return;
   }
 
-  // مرتب‌سازی: نزدیک‌ترین پیپ اول
   const sorted = [...alerts].sort((a,b) => getPipDistance(a) - getPipDistance(b));
-  const existingIds = new Set([...grid.querySelectorAll('[data-id]')].map(e=>e.dataset.id));
-  const newIds      = new Set(sorted.map(a=>a.id));
-  const needsRebuild = grid.children.length === 0 ||
-    [...newIds].some(id=>!existingIds.has(id)) ||
-    [...existingIds].some(id=>!newIds.has(id));
-
-  if (needsRebuild) {
-    const groups = {}, order = [];
-    for (const a of sorted) {
-      const pip = getPipDistance(a);
-      const g   = getGroup(a.check_interval, a.symbol, pip);
-      if (!groups[g.key]) { groups[g.key]={label:g.label,items:[]}; order.push(g.key); }
-      groups[g.key].items.push(a);
-    }
-    let html = '';
-    for (const key of order) {
-      const g = groups[key];
-      html += `<div class="group-sep" style="grid-column:1/-1">
-        <span class="group-line"></span>
-        <span class="group-label">${g.label}</span>
-        <span class="group-line"></span>
-      </div>`;
-      html += g.items.map(a=>buildCard(a)).join('');
-    }
-    grid.innerHTML = html;
-    return;
-  }
-
-  // فقط قیمت و فاصله آپدیت بشه — بدون jump
+  const groups = {}, order = [];
   for (const a of sorted) {
-    const cur = a.last_price;
-    const tgt = a.target_price;
-    const di  = calcDist(cur, tgt, a.symbol);
-    const iv  = getIntervalLabel(a.check_interval, a.symbol);
-    const ago = minutesAgo(a.last_checked);
-
-    const pvEl = document.getElementById(`pv-${a.id}`);
-    const pdEl = document.getElementById(`pd-${a.id}`);
-    const wdEl = document.getElementById(`wd-${a.id}`);
-
-    if (pvEl && cur != null) {
-      pvEl.className   = 'pbox-val live';
-      pvEl.textContent = '$'+fmt(cur,a.symbol);
-    }
-    if (pdEl && cur != null) {
-      pdEl.className = 'acard-dist';
-      pdEl.innerHTML = `
-        <div class="dist-row">
-          <span class="dist-lbl">فاصله تا هدف</span>
-          <span class="dist-chip ${di.cls}">${di.text}</span>
-        </div>
-        <div class="dist-bar-bg"><div class="dist-bar ${di.cls}" style="width:${di.barPct}%"></div></div>`;
-    }
-    if (wdEl) wdEl.className = `wdot ${cur!=null?'watch':'pend'}`;
+    const pip = getPipDistance(a);
+    const g   = getGroup(a.check_interval, a.symbol, pip);
+    if (!groups[g.key]) { groups[g.key]={label:g.label,items:[]}; order.push(g.key); }
+    groups[g.key].items.push(a);
   }
+  let html = '';
+  for (const key of order) {
+    const g = groups[key];
+    html += `<div class="group-sep" style="grid-column:1/-1">
+      <span class="group-line"></span>
+      <span class="group-label">${g.label}</span>
+      <span class="group-line"></span>
+    </div>`;
+    html += g.items.map(a=>buildCard(a)).join('');
+  }
+  grid.innerHTML = html;
+  filterAlerts(); // اعمال فیلتر جستجو بعد از رندر
 }
 
 function minutesAgo(ts) {
@@ -756,7 +771,6 @@ let _forexOpen = true;
 
 async function loadAlerts() {
   try {
-    // وضعیت سرور
     const rs = await fetch(`${API}/api/status`);
     const ds = await rs.json();
     _forexOpen = ds.forex_open !== false;
@@ -766,7 +780,6 @@ async function loadAlerts() {
     const active = alerts.filter(a => a.active);
     document.getElementById('sc-alerts').textContent = active.length;
 
-    // آپدیت update bar
     const updDot  = document.getElementById('upd-dot');
     const updTxt  = document.getElementById('upd-txt');
     const updTime = document.getElementById('upd-time');
@@ -783,7 +796,6 @@ async function loadAlerts() {
       updTxt.textContent = 'در انتظار اولین بررسی...';
     }
 
-    // خطاهای اخیر
     const errs    = ds.errors || [];
     const errLog  = document.getElementById('err-log');
     const errItems= document.getElementById('err-items');
@@ -819,7 +831,6 @@ async function initConfig() {
   } catch {}
 }
 
-
 // ── Version bar ───────────────────────────────────────────────────
 async function initVersionBar() {
   try {
@@ -827,13 +838,15 @@ async function initVersionBar() {
     const d = await r.json();
     document.getElementById('ver-num').textContent = 'v' + (d.version || '2.1');
   } catch {}
-  // ساعت تهران
   setInterval(() => {
     document.getElementById('ver-time').textContent =
       new Date().toLocaleTimeString('fa-IR', {timeZone:'Asia/Tehran', hour:'2-digit', minute:'2-digit', second:'2-digit'}) + ' تهران';
   }, 1000);
 }
 initVersionBar();
+
+// جستجو – رویداد تایپ
+document.getElementById('symbol-search')?.addEventListener('input', filterAlerts);
 
 // ── Init ──────────────────────────────────────────────────────────
 initConfig();
