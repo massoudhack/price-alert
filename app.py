@@ -486,18 +486,25 @@ def check_alerts():
                     a["fired_price"] = cur
                     fired.append(a["id"])
 
-                    if token and cids:
-                        dist = calc_dist_str(sym, atype, cur, tgt)
-                        cmt  = f"\n💬 <i>{a['comment']}</i>" if a.get("comment") else ""
-                        arrow = "📈 از هدف رد شد" if cond == "above" else "📉 به هدف رسید"
-                        msg = (
-                            f"🚨 <b>آلارم قیمت!</b>\n\n"
-                            f"💰 <b>{sym}</b> {arrow}\n\n"
-                            f"🎯 هدف: <b>{fmt_price(tgt, sym)}</b>\n"
-                            f"📊 قیمت: <b>{fmt_price(cur, sym)}</b>\n"
-                            f"📏 فاصله: <b>{dist}</b>"
-                            f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
-                        )
+                if token and cids:
+                    cmt = f"\n💬 {a['comment']}" if a.get("comment") else ""
+                if cond == "above":
+                   zone_text = "🎯 ناحیه خرید فعال شد!"
+                   arrow_emoji = "📈"
+                else:
+                   zone_text = "🎯 ناحیه فروش فعال شد!"
+                   arrow_emoji = "📉"
+    
+                msg = (
+                         f"{zone_text}\n\n"
+                         f"{arrow_emoji} <b>{sym}</b>\n\n"
+                         f"💰 قیمت فعلی: <b>{fmt_price(cur, sym)}</b>\n"
+                         f"🎯 قیمت آلارم: <b>{fmt_price(tgt, sym)}</b>"
+                         f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
+                     )
+    
+    results = broadcast(token, cids, msg)
+    print(f"[FIRED] {sym} → sent={sum(results)}/{len(cids)}")
                         results = broadcast(token, cids, msg)
                         print(f"[FIRED] {sym} → sent={sum(results)}/{len(cids)}")
 
