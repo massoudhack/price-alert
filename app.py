@@ -489,12 +489,12 @@ def check_alerts():
                     if token and cids:
                         dist = calc_dist_str(sym, atype, cur, tgt)
                         cmt  = f"\n💬 <i>{a['comment']}</i>" if a.get("comment") else ""
-                        arrow = "📈 از هدف رد شد" if cond == "above" else "📉 به هدف رسید"
+                        arrow = "📈 ناحیه فروش فعال شد!" if cond == "above" else "📉ناحیه خرید فعال شد!"
                         msg = (
                             f"🚨 <b>آلارم قیمت!</b>\n\n"
                             f"💰 <b>{sym}</b> {arrow}\n\n"
-                            f"🎯 هدف: <b>{fmt_price(tgt, sym)}</b>\n"
-                            f"📊 قیمت: <b>{fmt_price(cur, sym)}</b>\n"
+                            f"🎯 قیمت آلارم: <b>{fmt_price(tgt, sym)}</b>\n"
+                            f"📊 قیمت فعلی : <b>{fmt_price(cur, sym)}</b>\n"
                             f"📏 فاصله: <b>{dist}</b>"
                             f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
                         )
