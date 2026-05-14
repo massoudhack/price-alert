@@ -339,7 +339,7 @@ setInterval(() => {
 let _tt;
 function toast(msg) { const el = document.getElementById('toast'); el.textContent = msg; el.classList.add('show'); clearTimeout(_tt); _tt = setTimeout(() => el.classList.remove('show'), 2800); }
 
-// User name management
+// --- User name (stored in localStorage) ---
 function getUserName() {
   let name = localStorage.getItem('trader_name');
   if (!name || name.trim() === '') {
@@ -352,16 +352,26 @@ function getUserName() {
 function updateUserDisplay() { document.getElementById('user-name-display').textContent = getUserName(); }
 function changeUserName() {
   const newName = prompt('نام جدید خود را وارد کنید:', getUserName());
-  if (newName && newName.trim() !== '') { localStorage.setItem('trader_name', newName.trim()); updateUserDisplay(); toast('✅ نام شما تغییر کرد.'); }
+  if (newName && newName.trim() !== '') { 
+    localStorage.setItem('trader_name', newName.trim()); 
+    updateUserDisplay(); 
+    toast('✅ نام شما تغییر کرد.');
+    // پس از تغییر نام، حالت نمایش را از localStorage دوباره می‌خوانیم
+    if (currentTab === 'alerts') loadViewMode('all');
+    else if (currentTab === 'myalerts') loadViewMode('my');
+    filterAlerts();
+  }
 }
 updateUserDisplay();
 
+// --- Global state ---
 let allAlertsData = [];
-let currentTab = 'alerts';
+let currentTab = 'alerts';     // 'alerts', 'myalerts', 'archive', 'users'
 let currentSortAll = 'distance', currentSortMy = 'distance';
 let currentSearchAll = '', currentSearchMy = '';
 let viewModeAll = 'card', viewModeMy = 'card';
 
+// --- View mode persistence per user ---
 function setViewMode(panel, mode) {
   const user = getUserName();
   if (panel === 'all') {
@@ -379,21 +389,24 @@ function setViewMode(panel, mode) {
   }
 }
 
-function loadViewMode() {
+function loadViewMode(panel) {
   const user = getUserName();
-  if (currentTab === 'alerts') {
+  if (panel === 'all') {
     const saved = localStorage.getItem(`viewMode_all_${user}`);
-    if (saved && (saved === 'card' || saved === 'list')) viewModeAll = saved;
+    if (saved === 'card' || saved === 'list') viewModeAll = saved;
+    else viewModeAll = 'card';
     document.querySelectorAll('#view-toggle-all .view-btn').forEach(btn => btn.classList.remove('active'));
     document.querySelector(`#view-toggle-all .view-btn[data-view="${viewModeAll}"]`).classList.add('active');
-  } else if (currentTab === 'myalerts') {
+  } else if (panel === 'my') {
     const saved = localStorage.getItem(`viewMode_my_${user}`);
-    if (saved && (saved === 'card' || saved === 'list')) viewModeMy = saved;
+    if (saved === 'card' || saved === 'list') viewModeMy = saved;
+    else viewModeMy = 'card';
     document.querySelectorAll('#view-toggle-my .view-btn').forEach(btn => btn.classList.remove('active'));
     document.querySelector(`#view-toggle-my .view-btn[data-view="${viewModeMy}"]`).classList.add('active');
   }
 }
 
+// --- Tab switching ---
 function switchTab(id, el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
   document.querySelectorAll('.pnl').forEach(p => p.classList.remove('on'));
@@ -402,9 +415,13 @@ function switchTab(id, el) {
   currentTab = id === 'alerts' ? 'alerts' : (id === 'myalerts' ? 'myalerts' : id);
   if (id === 'archive') loadArchive();
   if (id === 'users') loadUsers();
-  if (id === 'alerts' || id === 'myalerts') { loadViewMode(); filterAlerts(); }
+  if (id === 'alerts' || id === 'myalerts') { 
+    loadViewMode(id === 'alerts' ? 'all' : 'my');
+    filterAlerts(); 
+  }
 }
 
+// --- Helpers ---
 function onMktChange() {
   const v = document.getElementById('mkt').value;
   const h = document.getElementById('sym-hint');
@@ -504,7 +521,7 @@ function getPipDistance(a) {
 
 function minutesAgo(ts) { if (!ts) return null; const diff = (Date.now() - new Date(ts.replace(' ', 'T') + '+03:30')) / 60000; if (diff < 1) return 'همین الان'; if (diff < 60) return Math.round(diff) + ' دقیقه پیش'; return Math.round(diff/60) + ' ساعت پیش'; }
 
-// کارت (حالت عادی)
+// --- Card rendering ---
 function buildCard(a) {
   const isCrypto = a.type === 'crypto';
   const short = (a.symbol||'').slice(0,4);
@@ -546,7 +563,7 @@ function buildCard(a) {
   </div>`;
 }
 
-// ردیف لیست فشرده
+// --- List row rendering (compact) ---
 function buildListRow(a) {
   const cur = a.last_price;
   const tgt = a.target_price;
@@ -554,7 +571,6 @@ function buildListRow(a) {
   const iv = getIntervalLabel(a.check_interval, a.symbol);
   const ago = minutesAgo(a.last_checked);
   const creatorName = a.created_by || 'ناشناس';
-  const isAbove = a.condition === 'above';
   const liveDisplay = cur != null ? fmt(cur, a.symbol) : '...';
   const targetDisplay = fmt(tgt, a.symbol);
   const distClass = di.cls === 'far' ? 'far' : (di.cls === 'close' ? 'close' : 'na');
@@ -598,7 +614,12 @@ function filterAlerts() {
     currentSearchAll = document.getElementById('search-input-all').value.toLowerCase();
     currentSortAll = document.getElementById('sort-select-all').value;
     let filtered = allAlertsData.filter(a => a.active);
-    if (currentSearchAll) filtered = filtered.filter(a => a.symbol.toLowerCase().includes(currentSearchAll) || (a.created_by && a.created_by.toLowerCase().includes(currentSearchAll)));
+    if (currentSearchAll) {
+      filtered = filtered.filter(a => 
+        a.symbol.toLowerCase().includes(currentSearchAll) || 
+        (a.created_by && a.created_by.toLowerCase().includes(currentSearchAll))
+      );
+    }
     const sorted = sortAlerts(filtered, currentSortAll);
     renderAlertsToContainer(sorted, 'cards-container-all', viewModeAll);
   } else if (currentTab === 'myalerts') {
@@ -606,7 +627,12 @@ function filterAlerts() {
     currentSortMy = document.getElementById('sort-select-my').value;
     const currentUser = getUserName();
     let filtered = allAlertsData.filter(a => a.active && a.created_by === currentUser);
-    if (currentSearchMy) filtered = filtered.filter(a => a.symbol.toLowerCase().includes(currentSearchMy) || (a.created_by && a.created_by.toLowerCase().includes(currentSearchMy)));
+    if (currentSearchMy) {
+      filtered = filtered.filter(a => 
+        a.symbol.toLowerCase().includes(currentSearchMy) || 
+        (a.created_by && a.created_by.toLowerCase().includes(currentSearchMy))
+      );
+    }
     const sorted = sortAlerts(filtered, currentSortMy);
     renderAlertsToContainer(sorted, 'cards-container-my', viewModeMy);
   }
@@ -615,7 +641,9 @@ function filterAlerts() {
 function renderAlertsToContainer(alerts, containerId, viewMode) {
   const container = document.getElementById(containerId);
   if (!alerts.length) {
-    const emptyMsg = containerId === 'cards-container-all' ? '<div class="empty"><div class="empty-ico">◎</div><p>آلارمی ثبت نشده</p></div>' : '<div class="empty"><div class="empty-ico">◎</div><p>شما هنوز آلارمی ثبت نکرده‌اید</p></div>';
+    const emptyMsg = containerId === 'cards-container-all' ? 
+      '<div class="empty"><div class="empty-ico">◎</div><p>آلارمی ثبت نشده</p></div>' : 
+      '<div class="empty"><div class="empty-ico">◎</div><p>شما هنوز آلارمی ثبت نکرده‌اید</p></div>';
     container.innerHTML = emptyMsg;
     return;
   }
@@ -687,7 +715,7 @@ setInterval(loadAlerts, 60000);
 </script>
 
 <div id="ver-bar" style="position:fixed;bottom:0;left:0;right:0;background:var(--bg2);border-top:1px solid var(--border);padding:5px 16px;display:flex;align-items:center;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--text3);z-index:100">
-  <span>PriceAlert <span id="ver-num" style="color:var(--green)">v2.5</span></span>
+  <span>PriceAlert <span id="ver-num" style="color:var(--green)">v2.6</span></span>
   <span id="ver-time" style="color:var(--text3)"></span>
 </div>
 <script>setInterval(()=>{document.getElementById('ver-time').textContent=new Date().toLocaleTimeString('fa-IR',{timeZone:'Asia/Tehran',hour:'2-digit',minute:'2-digit'})+' تهران';},1000);</script>
