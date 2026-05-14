@@ -105,10 +105,16 @@ select option{background:var(--bg3)}
 .upd-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;background:var(--green)}
 .upd-dot.err{background:var(--red)}
 
-.sort-bar{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:6px 1.2rem;background:var(--bg4);border-bottom:1px solid var(--border);font-size:11px;font-family:var(--mono)}
-.sort-bar select{background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px 8px;font-size:11px;font-family:var(--mono);color:var(--text);width:auto}
+/* جستجو و مرتب‌سازی در یک ردیف */
+.filter-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 1.2rem;background:var(--bg4);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.search-box{display:flex;align-items:center;background:var(--bg3);border:1px solid var(--border2);border-radius:40px;padding:6px 12px;flex:2;min-width:160px}
+.search-box i{color:var(--text3);font-size:13px;margin-left:8px}
+.search-box input{background:transparent;border:none;padding:6px 0;font-size:12px;width:100%;outline:none;color:var(--text)}
+.search-box input::placeholder{color:var(--text3)}
+.sort-area{display:flex;align-items:center;gap:8px;background:var(--bg3);border-radius:30px;padding:3px 6px}
+.sort-area span{font-size:11px;color:var(--text3);margin-right:5px}
+.sort-area select{background:var(--bg3);border:1px solid var(--border2);border-radius:20px;padding:5px 10px;font-size:11px;color:var(--text);outline:none}
 
-/* ====== استایل کارت‌ها ====== */
 .cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;padding:1.2rem}
 .acard{background:var(--bg3);border:1px solid var(--border);border-radius:18px;padding:18px;position:relative;overflow:hidden;transition:border-color .2s,transform .2s;animation:cardIn .25s ease}
 @keyframes cardIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
@@ -150,7 +156,6 @@ select option{background:var(--bg3)}
 .dist-bar.far{background:linear-gradient(90deg,var(--green),var(--green2))}
 .dist-bar.close{background:linear-gradient(90deg,var(--red),#ff7a90)}
 
-/* کامنت پررنگ و خوانا */
 .acard-footer{display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:8px;border-top:1px solid var(--border)}
 .acard-comment{font-size:13px;font-weight:600;color:var(--text);background:var(--bg4);padding:4px 10px;border-radius:20px;display:inline-flex;align-items:center;gap:6px;max-width:70%;word-break:break-word}
 .acard-dir{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-family:var(--mono);font-weight:700;padding:4px 12px;border-radius:30px}
@@ -253,15 +258,24 @@ select option{background:var(--bg3)}
     </div>
 
     <div class="sec">
-      <div class="sec-hd"><div class="sec-ttl"><span class="sec-dot green"></span>در حال رصد (همه)</div></div>
+      <div class="sec-hd"><div class="sec-ttl"><span class="sec-dot green"></span>در حال رصد</div></div>
       <div class="upd-bar"><span class="upd-dot" id="upd-dot"></span><span id="upd-txt">در انتظار اولین بررسی...</span><span style="margin-right:auto" id="upd-time"></span></div>
-      <div class="sort-bar">
-        <span>مرتب‌سازی:</span>
-        <select id="sort-select-all" onchange="changeSort('all')">
-          <option value="distance">📏 نزدیک‌ترین هدف</option>
-          <option value="newest">🕒 جدیدترین ثبت</option>
-        </select>
+      
+      <!-- نوار جستجو و مرتب‌سازی -->
+      <div class="filter-bar">
+        <div class="search-box">
+          <i>🔍</i>
+          <input type="text" id="search-input-all" placeholder="جستجو بر اساس نماد یا نام کاربر..." oninput="filterAlerts()">
+        </div>
+        <div class="sort-area">
+          <span>مرتب‌سازی:</span>
+          <select id="sort-select-all" onchange="filterAlerts()">
+            <option value="distance">📏 نزدیک‌ترین هدف</option>
+            <option value="newest">🕒 جدیدترین ثبت</option>
+          </select>
+        </div>
       </div>
+      
       <div class="cards-grid" id="cards-grid-all"><div class="empty" style="grid-column:1/-1"><div class="empty-ico">◎</div><p>آلارمی ثبت نشده</p></div></div>
       <div class="err-log" id="err-log"><div class="err-log-ttl">⚠ خطاهای اخیر</div><div id="err-items"></div></div>
     </div>
@@ -271,12 +285,18 @@ select option{background:var(--bg3)}
   <div class="pnl" id="pnl-myalerts">
     <div class="sec">
       <div class="sec-hd"><div class="sec-ttl"><span class="sec-dot purple"></span>آلارم‌های من</div></div>
-      <div class="sort-bar">
-        <span>مرتب‌سازی:</span>
-        <select id="sort-select-my" onchange="changeSort('my')">
-          <option value="distance">📏 نزدیک‌ترین هدف</option>
-          <option value="newest">🕒 جدیدترین ثبت</option>
-        </select>
+      <div class="filter-bar" style="border-top:none">
+        <div class="search-box">
+          <i>🔍</i>
+          <input type="text" id="search-input-my" placeholder="جستجو در آلارم‌های من..." oninput="filterAlerts()">
+        </div>
+        <div class="sort-area">
+          <span>مرتب‌سازی:</span>
+          <select id="sort-select-my" onchange="filterAlerts()">
+            <option value="distance">📏 نزدیک‌ترین هدف</option>
+            <option value="newest">🕒 جدیدترین ثبت</option>
+          </select>
+        </div>
       </div>
       <div class="cards-grid" id="cards-grid-my"><div class="empty" style="grid-column:1/-1"><div class="empty-ico">◎</div><p>شما هنوز آلارمی ثبت نکرده‌اید</p></div></div>
     </div>
@@ -340,6 +360,8 @@ let allAlertsData = [];
 let currentTab = 'alerts';
 let currentSortAll = 'distance';
 let currentSortMy = 'distance';
+let currentSearchAll = '';
+let currentSearchMy = '';
 
 function switchTab(id, el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
@@ -349,7 +371,7 @@ function switchTab(id, el) {
   currentTab = id === 'alerts' ? 'alerts' : (id === 'myalerts' ? 'myalerts' : id);
   if (id === 'archive') loadArchive();
   if (id === 'users') loadUsers();
-  if (id === 'alerts' || id === 'myalerts') renderFilteredAlerts();
+  if (id === 'alerts' || id === 'myalerts') filterAlerts();
 }
 
 function onMktChange() {
@@ -499,16 +521,47 @@ function sortAlerts(alerts, sortType) {
   return alerts;
 }
 
-function renderAlertsToContainer(alerts, containerId, sortType) {
+function filterAlerts() {
+  if (currentTab === 'alerts') {
+    currentSearchAll = document.getElementById('search-input-all').value.toLowerCase();
+    currentSortAll = document.getElementById('sort-select-all').value;
+    let filtered = allAlertsData.filter(a => a.active);
+    // فیلتر بر اساس جستجو (symbol یا created_by)
+    if (currentSearchAll) {
+      filtered = filtered.filter(a => 
+        a.symbol.toLowerCase().includes(currentSearchAll) ||
+        (a.created_by && a.created_by.toLowerCase().includes(currentSearchAll))
+      );
+    }
+    const sorted = sortAlerts(filtered, currentSortAll);
+    renderAlertsToContainer(sorted, 'cards-grid-all');
+  } else if (currentTab === 'myalerts') {
+    currentSearchMy = document.getElementById('search-input-my').value.toLowerCase();
+    currentSortMy = document.getElementById('sort-select-my').value;
+    const currentUser = getUserName();
+    let filtered = allAlertsData.filter(a => a.active && a.created_by === currentUser);
+    if (currentSearchMy) {
+      filtered = filtered.filter(a => 
+        a.symbol.toLowerCase().includes(currentSearchMy) ||
+        (a.created_by && a.created_by.toLowerCase().includes(currentSearchMy))
+      );
+    }
+    const sorted = sortAlerts(filtered, currentSortMy);
+    renderAlertsToContainer(sorted, 'cards-grid-my');
+  }
+}
+
+function renderAlertsToContainer(alerts, containerId) {
   const container = document.getElementById(containerId);
-  const sorted = sortAlerts(alerts, sortType);
-  if (!sorted.length) {
-    if (containerId === 'cards-grid-all') container.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-ico">◎</div><p>آلارمی ثبت نشده</p></div>';
-    else container.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-ico">◎</div><p>شما هنوز آلارمی ثبت نکرده‌اید</p></div>';
+  if (!alerts.length) {
+    const emptyMsg = containerId === 'cards-grid-all' ? 
+      '<div class="empty" style="grid-column:1/-1"><div class="empty-ico">◎</div><p>آلارمی ثبت نشده</p></div>' : 
+      '<div class="empty" style="grid-column:1/-1"><div class="empty-ico">◎</div><p>شما هنوز آلارمی ثبت نکرده‌اید</p></div>';
+    container.innerHTML = emptyMsg;
     return;
   }
   const groups = {}, order = [];
-  for (const a of sorted) {
+  for (const a of alerts) {
     const pip = getPipDistance(a);
     const isGold = a.symbol && (a.symbol.includes('XAU') || a.symbol.includes('XAG'));
     let key, label;
@@ -528,27 +581,6 @@ function renderAlertsToContainer(alerts, containerId, sortType) {
     html += g.items.map(a => buildCard(a)).join('');
   }
   container.innerHTML = html;
-}
-
-function renderFilteredAlerts() {
-  if (currentTab === 'alerts') {
-    const active = allAlertsData.filter(a => a.active);
-    renderAlertsToContainer(active, 'cards-grid-all', currentSortAll);
-  } else if (currentTab === 'myalerts') {
-    const currentUser = getUserName();
-    const myActive = allAlertsData.filter(a => a.active && a.created_by === currentUser);
-    renderAlertsToContainer(myActive, 'cards-grid-my', currentSortMy);
-  }
-}
-
-function changeSort(type) {
-  if (type === 'all') {
-    currentSortAll = document.getElementById('sort-select-all').value;
-    renderFilteredAlerts();
-  } else if (type === 'my') {
-    currentSortMy = document.getElementById('sort-select-my').value;
-    renderFilteredAlerts();
-  }
 }
 
 function minutesAgo(ts) { if (!ts) return null; const diff = (Date.now() - new Date(ts.replace(' ', 'T') + '+03:30')) / 60000; if (diff < 1) return 'همین الان'; if (diff < 60) return Math.round(diff) + ' دقیقه پیش'; return Math.round(diff/60) + ' ساعت پیش'; }
@@ -584,7 +616,7 @@ async function loadAlerts() {
     if (errs.length) { errLog.classList.add('show'); errItems.innerHTML = errs.slice(-3).reverse().map(e => `<div class="err-item">${e.time} — ${e.msg}</div>`).join(''); }
     else { errLog.classList.remove('show'); }
 
-    renderFilteredAlerts();
+    filterAlerts(); // رندر بر اساس فیلترها
     document.getElementById('sc-alerts-sub').textContent = active.length ? `${active.filter(a=>a.last_price).length} با قیمت` : '—';
   } catch(e) { console.error('loadAlerts:', e); }
 }
