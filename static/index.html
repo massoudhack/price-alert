@@ -2,7 +2,7 @@
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>PriceAlert</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Vazirmatn:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -56,7 +56,6 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .scard-val.green{color:var(--green)}.scard-val.gold{color:var(--gold)}.scard-val.purple{color:var(--purple)}
 .scard-sub{font-size:11px;color:var(--text2);margin-top:5px;font-family:var(--mono)}
 
-/* User card */
 .user-card{background:linear-gradient(135deg,var(--bg3),var(--bg4));border:1px solid rgba(160,112,255,.3);border-radius:var(--rad2);padding:0.7rem 1.2rem;margin-bottom:1.2rem;display:flex;align-items:center;justify-content:space-between;cursor:pointer;transition:all 0.2s ease}
 .user-card:hover{background:var(--purdim);border-color:var(--purple);transform:translateY(-1px);box-shadow:0 6px 14px rgba(0,0,0,.3)}
 .user-name-label{font-size:11px;font-family:var(--mono);color:var(--text3);margin-left:8px}
@@ -105,7 +104,6 @@ select option{background:var(--bg3)}
 .upd-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;background:var(--green)}
 .upd-dot.err{background:var(--red)}
 
-/* جستجو و مرتب‌سازی در یک ردیف */
 .filter-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 1.2rem;background:var(--bg4);border-bottom:1px solid var(--border);flex-wrap:wrap}
 .search-box{display:flex;align-items:center;background:var(--bg3);border:1px solid var(--border2);border-radius:40px;padding:6px 12px;flex:2;min-width:160px}
 .search-box i{color:var(--text3);font-size:13px;margin-left:8px}
@@ -114,7 +112,12 @@ select option{background:var(--bg3)}
 .sort-area{display:flex;align-items:center;gap:8px;background:var(--bg3);border-radius:30px;padding:3px 6px}
 .sort-area span{font-size:11px;color:var(--text3);margin-right:5px}
 .sort-area select{background:var(--bg3);border:1px solid var(--border2);border-radius:20px;padding:5px 10px;font-size:11px;color:var(--text);outline:none}
+.view-toggle{display:flex;gap:4px;background:var(--bg3);border-radius:30px;padding:3px}
+.view-btn{background:none;border:none;padding:5px 10px;border-radius:20px;font-size:13px;cursor:pointer;color:var(--text2);transition:0.2s}
+.view-btn.active{background:var(--purple);color:#fff;box-shadow:0 0 4px rgba(160,112,255,.5)}
+.view-btn:not(.active):hover{background:rgba(160,112,255,.2);color:var(--purple)}
 
+/* حالت کارتی (پیش‌فرض) */
 .cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;padding:1.2rem}
 .acard{background:var(--bg3);border:1px solid var(--border);border-radius:18px;padding:18px;position:relative;overflow:hidden;transition:border-color .2s,transform .2s;animation:cardIn .25s ease}
 @keyframes cardIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
@@ -122,7 +125,6 @@ select option{background:var(--bg3)}
 .acard::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--card-accent,var(--green));opacity:.7}
 .acard.above{--card-accent:var(--green)}
 .acard.below{--card-accent:var(--red)}
-
 .acard-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
 .acard-badge{display:flex;align-items:center;gap:12px}
 .abadge{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;font-weight:700}
@@ -133,7 +135,6 @@ select option{background:var(--bg3)}
 .creator-badge{display:inline-block;background:var(--purdim);color:var(--purple);border-radius:20px;padding:2px 10px;font-size:10px;font-weight:500;margin-top:5px;font-family:var(--mono)}
 .acard-del{background:none;border:none;cursor:pointer;color:var(--text3);font-size:14px;padding:6px 8px;border-radius:8px;transition:.15s;display:inline-flex;align-items:center}
 .acard-del:hover{background:var(--rdim);color:var(--red)}
-
 .acard-prices{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
 .pbox{background:var(--bg4);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
 .pbox-lbl{font-size:10px;font-family:var(--mono);color:var(--text3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
@@ -143,7 +144,6 @@ select option{background:var(--bg3)}
 .pbox-val.target.below{color:var(--red)}
 .pbox-val.loading{color:var(--text3);font-size:13px;font-weight:400;animation:fade 1.2s infinite}
 @keyframes fade{0%,100%{opacity:.3}50%{opacity:.9}}
-
 .acard-dist{margin-bottom:12px}
 .dist-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
 .dist-lbl{font-size:11px;color:var(--text3);font-family:var(--mono)}
@@ -155,12 +155,29 @@ select option{background:var(--bg3)}
 .dist-bar{height:4px;border-radius:3px;transition:width .5s ease}
 .dist-bar.far{background:linear-gradient(90deg,var(--green),var(--green2))}
 .dist-bar.close{background:linear-gradient(90deg,var(--red),#ff7a90)}
-
 .acard-footer{display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:8px;border-top:1px solid var(--border)}
 .acard-comment{font-size:13px;font-weight:600;color:var(--text);background:var(--bg4);padding:4px 10px;border-radius:20px;display:inline-flex;align-items:center;gap:6px;max-width:70%;word-break:break-word}
 .acard-dir{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-family:var(--mono);font-weight:700;padding:4px 12px;border-radius:30px}
 .acard-dir.up{background:var(--gdim);color:var(--green)}
 .acard-dir.dn{background:var(--rdim);color:var(--red)}
+
+/* حالت لیست فشرده */
+.list-mode .cards-grid{display:flex;flex-direction:column;gap:6px;padding:0.8rem}
+.alert-row{background:var(--bg3);border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:all 0.2s}
+.alert-row-main{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;cursor:pointer;gap:8px;flex-wrap:wrap}
+.alert-row-main:hover{background:var(--bg4)}
+.row-left{display:flex;align-items:center;gap:8px;flex:2;min-width:140px}
+.row-symbol{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--text)}
+.row-creator{font-size:10px;color:var(--purple);background:var(--purdim);padding:2px 8px;border-radius:20px;display:inline-block;margin-right:6px}
+.row-target-price{font-family:var(--mono);font-size:12px;color:var(--green);font-weight:600;background:var(--gdim);padding:2px 8px;border-radius:20px}
+.row-del{background:none;border:none;color:var(--text3);cursor:pointer;padding:4px 8px;border-radius:6px;font-size:14px}
+.row-del:hover{background:var(--rdim);color:var(--red)}
+.row-expand-icon{font-size:12px;color:var(--text3);margin-right:4px}
+.alert-details{display:none;padding:10px 12px;border-top:1px solid var(--border);background:var(--bg4);gap:8px;flex-wrap:wrap;font-size:12px}
+.alert-details.show{display:flex}
+.detail-item{display:flex;align-items:center;gap:6px;background:var(--bg3);padding:4px 10px;border-radius:20px}
+.detail-label{color:var(--text3)}
+.detail-value{color:var(--text);font-family:var(--mono);font-weight:500}
 
 .group-sep{display:flex;align-items:center;gap:10px;grid-column:1/-1;margin:16px 0 8px}
 .group-line{flex:1;height:1px;background:var(--border)}
@@ -183,7 +200,6 @@ select option{background:var(--bg3)}
 .arch-name{font-size:13px;font-weight:600;color:var(--text);font-family:var(--mono)}
 .arch-detail{font-size:11px;color:var(--text2);margin-top:3px;font-family:var(--mono)}
 .arch-cmt{font-size:11px;color:var(--text3);margin-top:2px;font-style:italic}
-
 .user-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)}
 .user-row:last-child{border-bottom:none}
 .user-av{width:34px;height:34px;border-radius:50%;background:var(--purdim);border:1px solid rgba(160,112,255,.2);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
@@ -225,7 +241,6 @@ select option{background:var(--bg3)}
     <div class="scard"><div class="scard-lbl">کاربران</div><div class="scard-val purple" id="sc-users">0</div><div class="scard-sub">ثبت‌شده</div></div>
   </div>
 
-  <!-- User card -->
   <div class="user-card" id="user-card" onclick="changeUserName()">
     <div><span class="user-name-label">شما</span> <span class="user-name-value" id="user-name-display">...</span></div>
     <div class="user-edit-icon">✎</div>
@@ -260,23 +275,15 @@ select option{background:var(--bg3)}
     <div class="sec">
       <div class="sec-hd"><div class="sec-ttl"><span class="sec-dot green"></span>در حال رصد</div></div>
       <div class="upd-bar"><span class="upd-dot" id="upd-dot"></span><span id="upd-txt">در انتظار اولین بررسی...</span><span style="margin-right:auto" id="upd-time"></span></div>
-      
-      <!-- نوار جستجو و مرتب‌سازی -->
       <div class="filter-bar">
-        <div class="search-box">
-          <i>🔍</i>
-          <input type="text" id="search-input-all" placeholder="جستجو بر اساس نماد یا نام کاربر..." oninput="filterAlerts()">
-        </div>
-        <div class="sort-area">
-          <span>مرتب‌سازی:</span>
-          <select id="sort-select-all" onchange="filterAlerts()">
-            <option value="distance">📏 نزدیک‌ترین هدف</option>
-            <option value="newest">🕒 جدیدترین ثبت</option>
-          </select>
+        <div class="search-box"><i>🔍</i><input type="text" id="search-input-all" placeholder="جستجو بر اساس نماد یا نام کاربر..." oninput="filterAlerts()"></div>
+        <div class="sort-area"><span>مرتب‌سازی:</span><select id="sort-select-all" onchange="filterAlerts()"><option value="distance">📏 نزدیک‌ترین هدف</option><option value="newest">🕒 جدیدترین ثبت</option></select></div>
+        <div class="view-toggle" id="view-toggle-all">
+          <button class="view-btn" data-view="card" onclick="setViewMode('all','card')">▤</button>
+          <button class="view-btn" data-view="list" onclick="setViewMode('all','list')">☰</button>
         </div>
       </div>
-      
-      <div class="cards-grid" id="cards-grid-all"><div class="empty" style="grid-column:1/-1"><div class="empty-ico">◎</div><p>آلارمی ثبت نشده</p></div></div>
+      <div id="cards-container-all" class="cards-grid"></div>
       <div class="err-log" id="err-log"><div class="err-log-ttl">⚠ خطاهای اخیر</div><div id="err-items"></div></div>
     </div>
   </div>
@@ -286,19 +293,14 @@ select option{background:var(--bg3)}
     <div class="sec">
       <div class="sec-hd"><div class="sec-ttl"><span class="sec-dot purple"></span>آلارم‌های من</div></div>
       <div class="filter-bar" style="border-top:none">
-        <div class="search-box">
-          <i>🔍</i>
-          <input type="text" id="search-input-my" placeholder="جستجو در آلارم‌های من..." oninput="filterAlerts()">
-        </div>
-        <div class="sort-area">
-          <span>مرتب‌سازی:</span>
-          <select id="sort-select-my" onchange="filterAlerts()">
-            <option value="distance">📏 نزدیک‌ترین هدف</option>
-            <option value="newest">🕒 جدیدترین ثبت</option>
-          </select>
+        <div class="search-box"><i>🔍</i><input type="text" id="search-input-my" placeholder="جستجو در آلارم‌های من..." oninput="filterAlerts()"></div>
+        <div class="sort-area"><span>مرتب‌سازی:</span><select id="sort-select-my" onchange="filterAlerts()"><option value="distance">📏 نزدیک‌ترین هدف</option><option value="newest">🕒 جدیدترین ثبت</option></select></div>
+        <div class="view-toggle" id="view-toggle-my">
+          <button class="view-btn" data-view="card" onclick="setViewMode('my','card')">▤</button>
+          <button class="view-btn" data-view="list" onclick="setViewMode('my','list')">☰</button>
         </div>
       </div>
-      <div class="cards-grid" id="cards-grid-my"><div class="empty" style="grid-column:1/-1"><div class="empty-ico">◎</div><p>شما هنوز آلارمی ثبت نکرده‌اید</p></div></div>
+      <div id="cards-container-my" class="cards-grid"></div>
     </div>
   </div>
 
@@ -317,7 +319,6 @@ select option{background:var(--bg3)}
       <div class="sec-bd" id="users-body"><div class="empty"><div class="empty-ico">👥</div><p>هنوز کاربری /start نزده</p></div></div>
     </div>
   </div>
-
 </div>
 <div id="toast"></div>
 
@@ -355,13 +356,43 @@ function changeUserName() {
 }
 updateUserDisplay();
 
-// Global data and state
 let allAlertsData = [];
 let currentTab = 'alerts';
-let currentSortAll = 'distance';
-let currentSortMy = 'distance';
-let currentSearchAll = '';
-let currentSearchMy = '';
+let currentSortAll = 'distance', currentSortMy = 'distance';
+let currentSearchAll = '', currentSearchMy = '';
+let viewModeAll = 'card', viewModeMy = 'card';
+
+function setViewMode(panel, mode) {
+  const user = getUserName();
+  if (panel === 'all') {
+    viewModeAll = mode;
+    localStorage.setItem(`viewMode_all_${user}`, mode);
+    document.querySelectorAll('#view-toggle-all .view-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`#view-toggle-all .view-btn[data-view="${mode}"]`).classList.add('active');
+    if (currentTab === 'alerts') filterAlerts();
+  } else {
+    viewModeMy = mode;
+    localStorage.setItem(`viewMode_my_${user}`, mode);
+    document.querySelectorAll('#view-toggle-my .view-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`#view-toggle-my .view-btn[data-view="${mode}"]`).classList.add('active');
+    if (currentTab === 'myalerts') filterAlerts();
+  }
+}
+
+function loadViewMode() {
+  const user = getUserName();
+  if (currentTab === 'alerts') {
+    const saved = localStorage.getItem(`viewMode_all_${user}`);
+    if (saved && (saved === 'card' || saved === 'list')) viewModeAll = saved;
+    document.querySelectorAll('#view-toggle-all .view-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`#view-toggle-all .view-btn[data-view="${viewModeAll}"]`).classList.add('active');
+  } else if (currentTab === 'myalerts') {
+    const saved = localStorage.getItem(`viewMode_my_${user}`);
+    if (saved && (saved === 'card' || saved === 'list')) viewModeMy = saved;
+    document.querySelectorAll('#view-toggle-my .view-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`#view-toggle-my .view-btn[data-view="${viewModeMy}"]`).classList.add('active');
+  }
+}
 
 function switchTab(id, el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
@@ -371,7 +402,7 @@ function switchTab(id, el) {
   currentTab = id === 'alerts' ? 'alerts' : (id === 'myalerts' ? 'myalerts' : id);
   if (id === 'archive') loadArchive();
   if (id === 'users') loadUsers();
-  if (id === 'alerts' || id === 'myalerts') filterAlerts();
+  if (id === 'alerts' || id === 'myalerts') { loadViewMode(); filterAlerts(); }
 }
 
 function onMktChange() {
@@ -471,6 +502,9 @@ function getPipDistance(a) {
   return diff * 10000;
 }
 
+function minutesAgo(ts) { if (!ts) return null; const diff = (Date.now() - new Date(ts.replace(' ', 'T') + '+03:30')) / 60000; if (diff < 1) return 'همین الان'; if (diff < 60) return Math.round(diff) + ' دقیقه پیش'; return Math.round(diff/60) + ' ساعت پیش'; }
+
+// کارت (حالت عادی)
 function buildCard(a) {
   const isCrypto = a.type === 'crypto';
   const short = (a.symbol||'').slice(0,4);
@@ -487,12 +521,12 @@ function buildCard(a) {
   const creatorName = a.created_by || 'ناشناس';
   const liveHtml = cur != null ? `<div class="pbox-val live" id="pv-${a.id}" style="${a.price_stale?'color:var(--gold)':''}">$${fmt(cur,a.symbol)}</div>` : `<div class="pbox-val loading" id="pv-${a.id}">دریافت...</div>`;
   const distHtml = cur != null ? `<div class="acard-dist" id="pd-${a.id}"><div class="dist-row"><span class="dist-lbl">فاصله تا هدف</span><span class="dist-chip ${di.cls}">${di.text}</span></div><div class="dist-bar-bg"><div class="dist-bar ${di.cls}" style="width:${di.barPct}%"></div></div></div>` : `<div id="pd-${a.id}"></div>`;
-  return `<div class="acard ${isAbove?'above':'below'} iv-${iv.cls}" id="ac-${a.id}" data-id="${a.id}">
+  return `<div class="acard ${isAbove?'above':'below'} iv-${iv.cls}" data-id="${a.id}">
     <div class="acard-top">
       <div class="acard-badge">
         <div class="abadge ${isCrypto?'c':'f'}">${short}</div>
         <div>
-          <div class="acard-name">${a.symbol} <span class="wdot ${cur!=null?'watch':'pend'}" id="wd-${a.id}"></span></div>
+          <div class="acard-name">${a.symbol} <span class="wdot ${cur!=null?'watch':'pend'}"></span></div>
           <div class="acard-type">${a.type.toUpperCase()} ${ivBadge}</div>
           <div class="creator-badge"><i>👤</i> ${creatorName}</div>
         </div>
@@ -512,12 +546,50 @@ function buildCard(a) {
   </div>`;
 }
 
+// ردیف لیست فشرده
+function buildListRow(a) {
+  const cur = a.last_price;
+  const tgt = a.target_price;
+  const di = calcDist(cur, tgt, a.symbol);
+  const iv = getIntervalLabel(a.check_interval, a.symbol);
+  const ago = minutesAgo(a.last_checked);
+  const creatorName = a.created_by || 'ناشناس';
+  const isAbove = a.condition === 'above';
+  const liveDisplay = cur != null ? fmt(cur, a.symbol) : '...';
+  const targetDisplay = fmt(tgt, a.symbol);
+  const distClass = di.cls === 'far' ? 'far' : (di.cls === 'close' ? 'close' : 'na');
+  return `<div class="alert-row" data-id="${a.id}">
+    <div class="alert-row-main" onclick="toggleRowDetails('${a.id}')">
+      <div class="row-left">
+        <div class="row-symbol">${a.symbol} <span class="wdot ${cur!=null?'watch':'pend'}"></span></div>
+        <span class="row-creator"><i>👤</i> ${creatorName}</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span class="row-target-price">🎯 $${targetDisplay}</span>
+        <button class="row-del" onclick="event.stopPropagation();deleteAlert('${a.id}')">✕</button>
+        <span class="row-expand-icon">▼</span>
+      </div>
+    </div>
+    <div class="alert-details" id="details-${a.id}">
+      <span class="detail-item"><span class="detail-label">📊 فعلی:</span><span class="detail-value">$${liveDisplay}</span></span>
+      <span class="detail-item"><span class="detail-label">🎯 هدف:</span><span class="detail-value">$${targetDisplay}</span></span>
+      <span class="detail-item"><span class="detail-label">📏 فاصله:</span><span class="detail-value">${di.text}</span></span>
+      <span class="detail-item"><span class="detail-label">⏱️ آخرین بررسی:</span><span class="detail-value">${ago || '—'}</span></span>
+      <span class="detail-item"><span class="detail-label">🔄 بازه:</span><span class="detail-value">${iv.label}</span></span>
+      ${a.comment ? `<span class="detail-item"><span class="detail-label">📝 یادداشت:</span><span class="detail-value">${a.comment}</span></span>` : ''}
+      ${a.price_stale ? `<span class="detail-item"><span class="detail-label">⚠️ وضعیت:</span><span class="detail-value">تعطیل (${a.price_stale.slice(11,16)})</span></span>` : ''}
+    </div>
+  </div>`;
+}
+
+function toggleRowDetails(id) {
+  const el = document.getElementById(`details-${id}`);
+  if (el) el.classList.toggle('show');
+}
+
 function sortAlerts(alerts, sortType) {
-  if (sortType === 'distance') {
-    return [...alerts].sort((a,b) => getPipDistance(a) - getPipDistance(b));
-  } else if (sortType === 'newest') {
-    return [...alerts].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
-  }
+  if (sortType === 'distance') return [...alerts].sort((a,b) => getPipDistance(a) - getPipDistance(b));
+  else if (sortType === 'newest') return [...alerts].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
   return alerts;
 }
 
@@ -526,76 +598,65 @@ function filterAlerts() {
     currentSearchAll = document.getElementById('search-input-all').value.toLowerCase();
     currentSortAll = document.getElementById('sort-select-all').value;
     let filtered = allAlertsData.filter(a => a.active);
-    // فیلتر بر اساس جستجو (symbol یا created_by)
-    if (currentSearchAll) {
-      filtered = filtered.filter(a => 
-        a.symbol.toLowerCase().includes(currentSearchAll) ||
-        (a.created_by && a.created_by.toLowerCase().includes(currentSearchAll))
-      );
-    }
+    if (currentSearchAll) filtered = filtered.filter(a => a.symbol.toLowerCase().includes(currentSearchAll) || (a.created_by && a.created_by.toLowerCase().includes(currentSearchAll)));
     const sorted = sortAlerts(filtered, currentSortAll);
-    renderAlertsToContainer(sorted, 'cards-grid-all');
+    renderAlertsToContainer(sorted, 'cards-container-all', viewModeAll);
   } else if (currentTab === 'myalerts') {
     currentSearchMy = document.getElementById('search-input-my').value.toLowerCase();
     currentSortMy = document.getElementById('sort-select-my').value;
     const currentUser = getUserName();
     let filtered = allAlertsData.filter(a => a.active && a.created_by === currentUser);
-    if (currentSearchMy) {
-      filtered = filtered.filter(a => 
-        a.symbol.toLowerCase().includes(currentSearchMy) ||
-        (a.created_by && a.created_by.toLowerCase().includes(currentSearchMy))
-      );
-    }
+    if (currentSearchMy) filtered = filtered.filter(a => a.symbol.toLowerCase().includes(currentSearchMy) || (a.created_by && a.created_by.toLowerCase().includes(currentSearchMy)));
     const sorted = sortAlerts(filtered, currentSortMy);
-    renderAlertsToContainer(sorted, 'cards-grid-my');
+    renderAlertsToContainer(sorted, 'cards-container-my', viewModeMy);
   }
 }
 
-function renderAlertsToContainer(alerts, containerId) {
+function renderAlertsToContainer(alerts, containerId, viewMode) {
   const container = document.getElementById(containerId);
   if (!alerts.length) {
-    const emptyMsg = containerId === 'cards-grid-all' ? 
-      '<div class="empty" style="grid-column:1/-1"><div class="empty-ico">◎</div><p>آلارمی ثبت نشده</p></div>' : 
-      '<div class="empty" style="grid-column:1/-1"><div class="empty-ico">◎</div><p>شما هنوز آلارمی ثبت نکرده‌اید</p></div>';
+    const emptyMsg = containerId === 'cards-container-all' ? '<div class="empty"><div class="empty-ico">◎</div><p>آلارمی ثبت نشده</p></div>' : '<div class="empty"><div class="empty-ico">◎</div><p>شما هنوز آلارمی ثبت نکرده‌اید</p></div>';
     container.innerHTML = emptyMsg;
     return;
   }
-  const groups = {}, order = [];
-  for (const a of alerts) {
-    const pip = getPipDistance(a);
-    const isGold = a.symbol && (a.symbol.includes('XAU') || a.symbol.includes('XAG'));
-    let key, label;
-    if (isGold) { key = 'gold'; label = '⭐ طلا'; }
-    else if (pip < 5) { key = 'hot'; label = '🔴 فوری — زیر ۵ پیپ'; }
-    else if (pip < 30) { key = 'warm'; label = '🟡 خیلی نزدیک — ۵ تا ۳۰ پیپ'; }
-    else if (pip < 100) { key = 'med'; label = '🔵 نزدیک — ۳۰ تا ۱۰۰ پیپ'; }
-    else if (pip < 300) { key = 'far'; label = '⚫ متوسط — ۱۰۰ تا ۳۰۰ پیپ'; }
-    else { key = 'cold'; label = '⚪ دور — بالای ۳۰۰ پیپ'; }
-    if (!groups[key]) { groups[key] = {label, items: []}; order.push(key); }
-    groups[key].items.push(a);
+  if (viewMode === 'list') {
+    container.classList.add('list-mode');
+    let html = '';
+    for (const a of alerts) html += buildListRow(a);
+    container.innerHTML = html;
+  } else {
+    container.classList.remove('list-mode');
+    const groups = {}, order = [];
+    for (const a of alerts) {
+      const pip = getPipDistance(a);
+      const isGold = a.symbol && (a.symbol.includes('XAU') || a.symbol.includes('XAG'));
+      let key, label;
+      if (isGold) { key = 'gold'; label = '⭐ طلا'; }
+      else if (pip < 5) { key = 'hot'; label = '🔴 فوری — زیر ۵ پیپ'; }
+      else if (pip < 30) { key = 'warm'; label = '🟡 خیلی نزدیک — ۵ تا ۳۰ پیپ'; }
+      else if (pip < 100) { key = 'med'; label = '🔵 نزدیک — ۳۰ تا ۱۰۰ پیپ'; }
+      else if (pip < 300) { key = 'far'; label = '⚫ متوسط — ۱۰۰ تا ۳۰۰ پیپ'; }
+      else { key = 'cold'; label = '⚪ دور — بالای ۳۰۰ پیپ'; }
+      if (!groups[key]) { groups[key] = {label, items: []}; order.push(key); }
+      groups[key].items.push(a);
+    }
+    let html = '';
+    for (const key of order) {
+      const g = groups[key];
+      html += `<div class="group-sep"><span class="group-line"></span><span class="group-label">${g.label}</span><span class="group-line"></span></div>`;
+      html += g.items.map(a => buildCard(a)).join('');
+    }
+    container.innerHTML = html;
   }
-  let html = '';
-  for (const key of order) {
-    const g = groups[key];
-    html += `<div class="group-sep" style="grid-column:1/-1"><span class="group-line"></span><span class="group-label">${g.label}</span><span class="group-line"></span></div>`;
-    html += g.items.map(a => buildCard(a)).join('');
-  }
-  container.innerHTML = html;
 }
 
-function minutesAgo(ts) { if (!ts) return null; const diff = (Date.now() - new Date(ts.replace(' ', 'T') + '+03:30')) / 60000; if (diff < 1) return 'همین الان'; if (diff < 60) return Math.round(diff) + ' دقیقه پیش'; return Math.round(diff/60) + ' ساعت پیش'; }
-
 async function deleteAlert(id) { if (!confirm('آلارم حذف شود؟')) return; await fetch(`${API}/api/alerts/${id}`, {method:'DELETE'}); toast('🗑 حذف شد'); loadAlerts(); }
-
-async function loadArchive() { try { const r = await fetch(`${API}/api/archive`); const items = await r.json(); document.getElementById('sc-arch').textContent = items.length; const body = document.getElementById('arch-body'); if (!items.length) { body.innerHTML = '<div class="empty"><div class="empty-ico">◎</div><p>بایگانی خالی است</p></div>'; return; } body.innerHTML = items.slice().reverse().map(a => { const ts = new Date(a.fired_at || a.created_at); const tStr = ts.toLocaleString('fa-IR', {timeZone:'Asia/Tehran'}); const cmt = a.comment ? `<div class="arch-cmt">💬 ${a.comment}</div>` : ''; return `<div class="arch-row"><span class="arch-tag">✓ فعال شد</span><div style="flex:1"><div class="arch-name">${a.symbol}</div><div class="arch-detail">${a.condition==='above'?'↑':'↓'} هدف: $${fmt(a.target_price,a.symbol)} · فعال‌سازی: $${fmt(a.fired_price,a.symbol)}</div><div class="arch-detail">${tStr}</div>${cmt}</div><button class="btn btn-sm btn-red" onclick="delArchItem('${a.id}')">✕</button></div>`; }).join(''); } catch {} }
-
+async function loadArchive() { try { const r = await fetch(`${API}/api/archive`); const items = await r.json(); document.getElementById('sc-arch').textContent = items.length; const body = document.getElementById('arch-body'); if (!items.length) { body.innerHTML = '<div class="empty"><div class="empty-ico">◎</div><p>بایگانی خالی است</p></div>'; return; } body.innerHTML = items.slice().reverse().map(a => { const ts = new Date(a.fired_at || a.created_at); const tStr = ts.toLocaleString('fa-IR', {timeZone:'Asia/Tehran'}); const cmt = a.comment ? `<div class="arch-cmt">💬 ${a.comment}</div>` : ''; return `<div class="arch-row"><span class="arch-tag">✓ فعال شد</span><div><div class="arch-name">${a.symbol}</div><div class="arch-detail">${a.condition==='above'?'↑':'↓'} هدف: $${fmt(a.target_price,a.symbol)} · فعال‌سازی: $${fmt(a.fired_price,a.symbol)}</div><div class="arch-detail">${tStr}</div>${cmt}</div><button class="btn btn-sm btn-red" onclick="delArchItem('${a.id}')">✕</button></div>`; }).join(''); } catch {} }
 async function clearArchive() { if (!confirm('بایگانی پاک شود؟')) return; await fetch(`${API}/api/archive`, {method:'DELETE'}); toast('پاک شد'); loadArchive(); }
 async function delArchItem(id) { await fetch(`${API}/api/archive/${id}`, {method:'DELETE'}); loadArchive(); }
-
-async function loadUsers() { try { const r = await fetch(`${API}/api/users`); const users = await r.json(); document.getElementById('sc-users').textContent = users.length; const body = document.getElementById('users-body'); if (!users.length) { body.innerHTML = '<div class="empty"><div class="empty-ico">👥</div><p>هنوز کاربری /start نزده</p></div>'; return; } body.innerHTML = users.map(u => `<div class="user-row"><div class="user-av">👤</div><div style="flex:1"><div class="user-name">${u.username || 'کاربر'}</div><div class="user-id">ID: ${u.chat_id}</div></div><span class="user-date">${(u.joined_at||'').slice(0,10)}</span></div>`).join(''); } catch {} }
+async function loadUsers() { try { const r = await fetch(`${API}/api/users`); const users = await r.json(); document.getElementById('sc-users').textContent = users.length; const body = document.getElementById('users-body'); if (!users.length) { body.innerHTML = '<div class="empty"><div class="empty-ico">👥</div><p>هنوز کاربری /start نزده</p></div>'; return; } body.innerHTML = users.map(u => `<div class="user-row"><div class="user-av">👤</div><div><div class="user-name">${u.username || 'کاربر'}</div><div class="user-id">ID: ${u.chat_id}</div></div><span class="user-date">${(u.joined_at||'').slice(0,10)}</span></div>`).join(''); } catch {} }
 
 let _forexOpen = true;
-
 async function loadAlerts() {
   try {
     const rs = await fetch(`${API}/api/status`);
@@ -606,17 +667,14 @@ async function loadAlerts() {
     allAlertsData = alerts;
     const active = alerts.filter(a => a.active);
     document.getElementById('sc-alerts').textContent = active.length;
-
     const updDot = document.getElementById('upd-dot'), updTxt = document.getElementById('upd-txt'), updTime = document.getElementById('upd-time');
     if (!_forexOpen) { updDot.className = 'upd-dot err'; updTxt.textContent = '⚠️ بازار فارکس تعطیل است (شنبه/یکشنبه) — کریپتو فعال'; }
     else if (ds.last_update) { updDot.className = 'upd-dot'; updTxt.textContent = 'آخرین بررسی سرور'; updTime.textContent = minutesAgo(ds.last_update); }
     else { updDot.className = 'upd-dot'; updTxt.textContent = 'در انتظار اولین بررسی...'; }
-
     const errs = ds.errors || [], errLog = document.getElementById('err-log'), errItems = document.getElementById('err-items');
     if (errs.length) { errLog.classList.add('show'); errItems.innerHTML = errs.slice(-3).reverse().map(e => `<div class="err-item">${e.time} — ${e.msg}</div>`).join(''); }
     else { errLog.classList.remove('show'); }
-
-    filterAlerts(); // رندر بر اساس فیلترها
+    filterAlerts();
     document.getElementById('sc-alerts-sub').textContent = active.length ? `${active.filter(a=>a.last_price).length} با قیمت` : '—';
   } catch(e) { console.error('loadAlerts:', e); }
 }
@@ -629,7 +687,7 @@ setInterval(loadAlerts, 60000);
 </script>
 
 <div id="ver-bar" style="position:fixed;bottom:0;left:0;right:0;background:var(--bg2);border-top:1px solid var(--border);padding:5px 16px;display:flex;align-items:center;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--text3);z-index:100">
-  <span>PriceAlert <span id="ver-num" style="color:var(--green)">v2.4</span></span>
+  <span>PriceAlert <span id="ver-num" style="color:var(--green)">v2.5</span></span>
   <span id="ver-time" style="color:var(--text3)"></span>
 </div>
 <script>setInterval(()=>{document.getElementById('ver-time').textContent=new Date().toLocaleTimeString('fa-IR',{timeZone:'Asia/Tehran',hour:'2-digit',minute:'2-digit'})+' تهران';},1000);</script>
