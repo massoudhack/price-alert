@@ -6,6 +6,7 @@
 <title>PriceAlert</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Vazirmatn:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
+/* ========== تمام استایل‌های قبلی بدون تغییر ========== */
 :root {
   --bg:#07090c;--bg2:#0c0f14;--bg3:#121720;--bg4:#181e29;
   --border:rgba(255,255,255,.055);--border2:rgba(255,255,255,.10);--border3:rgba(255,255,255,.18);
@@ -326,7 +327,7 @@ select option{background:var(--bg3)}
 const API = '';
 const HARDCODED_TOKEN = '8792456550:AAEuvnzzCUXniBhIWz6C-qabX96EvPWqN7A';
 
-// Theme
+// ========== Theme ==========
 function initTheme() { const t = localStorage.getItem('pa_theme') || 'dark'; applyTheme(t); }
 function applyTheme(t) { document.body.classList.toggle('light', t === 'light'); document.getElementById('theme-toggle').textContent = t === 'light' ? '☀️' : '🌙'; }
 function toggleTheme() { const isLight = document.body.classList.contains('light'); const next = isLight ? 'dark' : 'light'; localStorage.setItem('pa_theme', next); applyTheme(next); }
@@ -339,7 +340,7 @@ setInterval(() => {
 let _tt;
 function toast(msg) { const el = document.getElementById('toast'); el.textContent = msg; el.classList.add('show'); clearTimeout(_tt); _tt = setTimeout(() => el.classList.remove('show'), 2800); }
 
-// --- User name (stored in localStorage) ---
+// ========== User name (persistent) ==========
 function getUserName() {
   let name = localStorage.getItem('trader_name');
   if (!name || name.trim() === '') {
@@ -355,23 +356,23 @@ function changeUserName() {
   if (newName && newName.trim() !== '') { 
     localStorage.setItem('trader_name', newName.trim()); 
     updateUserDisplay(); 
-    toast('✅ نام شما تغییر کرد.');
-    // پس از تغییر نام، حالت نمایش را از localStorage دوباره می‌خوانیم
+    // پس از تغییر نام، حالت نمایش را از localStorage بر اساس نام جدید بارگیری کن
     if (currentTab === 'alerts') loadViewMode('all');
     else if (currentTab === 'myalerts') loadViewMode('my');
     filterAlerts();
+    toast('✅ نام شما تغییر کرد.');
   }
 }
 updateUserDisplay();
 
-// --- Global state ---
+// ========== Global state ==========
 let allAlertsData = [];
 let currentTab = 'alerts';     // 'alerts', 'myalerts', 'archive', 'users'
 let currentSortAll = 'distance', currentSortMy = 'distance';
 let currentSearchAll = '', currentSearchMy = '';
 let viewModeAll = 'card', viewModeMy = 'card';
 
-// --- View mode persistence per user ---
+// ========== View mode persistence per user ==========
 function setViewMode(panel, mode) {
   const user = getUserName();
   if (panel === 'all') {
@@ -406,7 +407,7 @@ function loadViewMode(panel) {
   }
 }
 
-// --- Tab switching ---
+// ========== Tab switching ==========
 function switchTab(id, el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
   document.querySelectorAll('.pnl').forEach(p => p.classList.remove('on'));
@@ -421,7 +422,7 @@ function switchTab(id, el) {
   }
 }
 
-// --- Helpers ---
+// ========== Helpers ==========
 function onMktChange() {
   const v = document.getElementById('mkt').value;
   const h = document.getElementById('sym-hint');
@@ -521,7 +522,7 @@ function getPipDistance(a) {
 
 function minutesAgo(ts) { if (!ts) return null; const diff = (Date.now() - new Date(ts.replace(' ', 'T') + '+03:30')) / 60000; if (diff < 1) return 'همین الان'; if (diff < 60) return Math.round(diff) + ' دقیقه پیش'; return Math.round(diff/60) + ' ساعت پیش'; }
 
-// --- Card rendering ---
+// ========== Card rendering ==========
 function buildCard(a) {
   const isCrypto = a.type === 'crypto';
   const short = (a.symbol||'').slice(0,4);
@@ -563,7 +564,7 @@ function buildCard(a) {
   </div>`;
 }
 
-// --- List row rendering (compact) ---
+// ========== List row rendering (compact) ==========
 function buildListRow(a) {
   const cur = a.last_price;
   const tgt = a.target_price;
@@ -709,9 +710,14 @@ async function loadAlerts() {
 
 async function initConfig() { try { const r = await fetch(`${API}/api/config`); const d = await r.json(); if (!d.bot_token || d.bot_token !== HARDCODED_TOKEN) { await fetch(`${API}/api/config`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({bot_token: HARDCODED_TOKEN, chat_id: d.chat_id||''}) }); } document.getElementById('sc-users').textContent = d.user_count || 0; } catch {} }
 
+// ========== Initialization ==========
 initConfig();
 loadAlerts();
 setInterval(loadAlerts, 60000);
+// پس از بارگذاری صفحه، حالت نمایش را برای تب فعال (همه آلارم‌ها) بارگیری کن
+// ابتدا باید نام کاربر مشخص باشد (updateUserDisplay قبلاً فراخوانی شده)
+loadViewMode('all');
+loadViewMode('my');
 </script>
 
 <div id="ver-bar" style="position:fixed;bottom:0;left:0;right:0;background:var(--bg2);border-top:1px solid var(--border);padding:5px 16px;display:flex;align-items:center;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--text3);z-index:100">
