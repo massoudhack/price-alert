@@ -269,6 +269,12 @@ select option{background:var(--bg3)}
             <button class="btn btn-blue" style="flex:1" onclick="checkPrice()">👁 قیمت</button>
             <button class="btn btn-green" style="flex:1" id="add-btn" onclick="addAlert()">+ افزودن</button>
           </div>
+          <div class="fld" style="grid-column:1/-1">
+            <button class="btn" style="width:100%;background:linear-gradient(135deg,rgba(255,69,96,.15),rgba(160,112,255,.12));color:#ff6b8a;border-color:rgba(255,69,96,.35);font-size:13px;font-weight:600;padding:11px 16px;" id="instant-btn" onclick="sendInstant()">
+              ⚡ ارسال فوری به تلگرام
+            </button>
+            <div style="font-size:10px;color:var(--text3);font-family:var(--mono);text-align:center;margin-top:5px;">برای مواقعی که ناحیه رو فراموش کردید آلارم بذارید — همین الان به همه ارسال می‌شه</div>
+          </div>
         </div>
       </div>
     </div>
@@ -498,6 +504,39 @@ async function addAlert() {
     document.getElementById('acmt').value = '';
     await loadAlerts();
   } else toast('❌ خطا در ثبت آلارم');
+}
+
+async function sendInstant() {
+  const symbol = document.getElementById('sym').value.trim().toUpperCase();
+  const type = document.getElementById('mkt').value;
+  const target_price = parseFloat(document.getElementById('tprice').value) || null;
+  const condition = document.getElementById('adir').value;
+  const comment = document.getElementById('acmt').value.trim();
+  const creator = getUserName();
+  if (!symbol) { toast('نماد را وارد کنید'); return; }
+  const btn = document.getElementById('instant-btn');
+  const orig = btn.innerHTML;
+  btn.innerHTML = '⏳ در حال ارسال...'; btn.disabled = true;
+  try {
+    const r = await fetch(`${API}/api/instant-alert`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ symbol, type, target_price, condition, comment, creator, only_me: true })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      toast(`⚡ آلارم فوری ${symbol} به ${d.sent} نفر ارسال شد`);
+      document.getElementById('sym').value = '';
+      document.getElementById('tprice').value = '';
+      document.getElementById('acmt').value = '';
+      await loadAlerts();
+    } else {
+      toast(`❌ خطا: ${d.error || 'ارسال ناموفق'}`);
+    }
+  } catch(e) {
+    toast('❌ خطا در ارتباط با سرور');
+  }
+  btn.innerHTML = orig; btn.disabled = false;
 }
 
 function getIntervalLabel(interval, sym) {
