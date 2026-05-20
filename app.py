@@ -392,6 +392,77 @@ def poll_telegram():
                         data["archive"] = arch
                         save_data(data)
                         send_tg(token, cid, f"✅ آلارم فوری {sym} فقط برای شما ارسال شد")
+
+                elif txt.startswith("/alarm") and cid == YOUR_CHAT_ID:
+                    # فرمت: /alarm SYMBOL buy|sell PRICE [کامنت...]
+                    # مثال: /alarm eurusd sell 1.12345 ناحیه سل
+                    parts = txt.split(maxsplit=4)
+                    if len(parts) < 4:
+                        send_tg(token, cid,
+                            "⚠️ فرمت:\n<code>/alarm SYMBOL buy|sell PRICE [کامنت]</code>\n\n"
+                            "مثال‌ها:\n"
+                            "<code>/alarm eurusd sell 1.12345 ناحیه سل</code>\n"
+                            "<code>/alarm btcusdt buy 60000</code>\n"
+                            "<code>/alarm xauusd sell 2350 مقاومت مهم</code>")
+                    else:
+                        sym = parts[1].upper().replace("/", "")
+                        raw_dir = parts[2].lower()
+                        raw_price = parts[3]
+                        comment = parts[4] if len(parts) > 4 else ""
+                        condition = "above" if raw_dir in ("sell", "s", "سل", "above") else "below"
+                        atype = "crypto" if not any(x in sym for x in ["EUR","GBP","USD","JPY","XAU","XAG","CHF","CAD","AUD","NZD"]) else "forex"
+                        # اسم فرستنده از تلگرام
+                        from_user = msg.get("from", {})
+                        sender_first = from_user.get("first_name", "")
+                        sender_last = from_user.get("last_name", "")
+                        sender_uname = from_user.get("username", "")
+                        if sender_first or sender_last:
+                            sender_name = (sender_first + " " + sender_last).strip()
+                        elif sender_uname:
+                            sender_name = "@" + sender_uname
+                        else:
+                            sender_name = uname or "ناشناس"
+                        try:
+                            tgt_f = float(raw_price)
+                        except ValueError:
+                            send_tg(token, cid, f"❌ قیمت نامعتبر: <code>{raw_price}</code>")
+                            continue
+                        # دریافت قیمت لحظه‌ای
+                        cur = None
+                        try:
+                            cur = get_price(sym, atype)
+                        except Exception as ep:
+                            print(f"[alarm-cmd] price error: {ep}")
+                        dist = calc_dist_str(sym, atype, cur, tgt_f) if cur else "—"
+                        # ثبت آلارم در سیستم (با notify_only برای فایر فقط به شما)
+                        alarm_data = load_data()
+                        new_alert = {
+                            "id": str(int(time.time() * 1000)),
+                            "symbol": sym,
+                            "type": atype,
+                            "target_price": tgt_f,
+                            "condition": condition,
+                            "comment": comment,
+                            "created_by": sender_name,
+                            "active": True,
+                            "last_price": cur,
+                            "last_checked": now_teh() if cur else None,
+                            "check_interval": get_check_interval(sym, atype, cur, tgt_f),
+                            "created_at": now_teh(),
+                            "notify_only": YOUR_CHAT_ID
+                        }
+                        alarm_data["alerts"].append(new_alert)
+                        save_data(alarm_data)
+                        arrow = "سل 📈" if condition == "above" else "بای 📉"
+                        price_now = f"${fmt_price(cur, sym)}" if cur else "—"
+                        send_tg(token, cid,
+                            f"✅ <b>آلارم ثبت شد</b>\n\n"
+                            f"💰 <b>{sym}</b> — {arrow}\n"
+                            f"🎯 هدف: <b>${fmt_price(tgt_f, sym)}</b>\n"
+                            f"📊 قیمت الان: <b>{price_now}</b>\n"
+                            f"📏 فاصله: <b>{dist}</b>"
+                            + (f"\n💬 <i>{comment}</i>" if comment else "") +
+                            f"\n\n⏰ {now_pretty()} (تهران)")
         except Exception as e:
             print(f"[poll] {e}")
         time.sleep(5)
@@ -487,14 +558,12 @@ def check_alerts():
                     fired.append(a["id"])
 
                     if token and cids:
-                        # منطق فیلتر بر اساس کامنت
-                        comment = a.get("comment", "")
-                        if YOUR_CHAT_ID in comment:
-                            # فقط به چت آیدی خودتان ارسال شود
-                            target_cids = [YOUR_CHAT_ID]
-                            print(f"[FILTER] Alert comment contains {YOUR_CHAT_ID} → sending only to you")
+                        # notify_only: آلارم‌هایی که از تلگرام /alarm ثبت شدن فقط به یه نفر می‌رن
+                        notify_only = a.get("notify_only", "")
+                        if notify_only:
+                            target_cids = [str(notify_only)]
+                            print(f"[FILTER] notify_only={notify_only} → sending only to that user")
                         else:
-                            # به همه کاربران ارسال شود
                             target_cids = cids
                             print(f"[FILTER] Normal alert → sending to all {len(cids)} users")
 
