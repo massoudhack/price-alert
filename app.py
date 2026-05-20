@@ -345,7 +345,7 @@ def poll_telegram():
                             ids.append(cid)
                         data["telegram"]["chat_ids"] = ids
                         save_alerts(data)
-                        send_tg(token, cid, f"👋 سلام <b>{uname}</b>!\n✅ در سیستم آلارم ثبت شدید. 🔔")
+                    send_tg(token, cid, f"👋 سلام <b>{uname}</b>!\n✅ در سیستم آلارم ثبت شدید. 🔔")
 
                 elif txt.startswith("/sos") and cid == YOUR_CHAT_ID:
                     parts = txt.split(maxsplit=3)
@@ -389,6 +389,7 @@ def poll_telegram():
                         send_tg(token, cid, f"✅ آلارم فوری {sym} فقط برای شما ارسال شد")
 
                 elif txt.startswith("/alarm") and cid == YOUR_CHAT_ID:
+                    print(f"[alarm-cmd] received from {cid}: {txt}")
                     parts = txt.split(maxsplit=4)
                     if len(parts) < 4:
                         send_tg(token, cid,
