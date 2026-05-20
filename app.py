@@ -9,7 +9,7 @@ VERSION = "8.0"
 
 TEHRAN = pytz.timezone("Asia/Tehran")
 
-# ==================== متغیرهای محیطی ====================
+# ===============,===== متغیرهای محیطی ====================
 GIST_TOKEN = os.environ.get("GIST_TOKEN", "")
 GIST_ID_ALERTS = os.environ.get("GIST_ID", "")
 GIST_ID_JOURNAL = os.environ.get("GIST_ID_JOURNAL", "")
