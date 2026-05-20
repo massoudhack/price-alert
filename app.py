@@ -329,6 +329,69 @@ def poll_telegram():
                         save_data(data)
                         send_tg(token, cid,
                             f"👋 سلام <b>{uname}</b>!\n✅ در سیستم آلارم ثبت شدید. 🔔")
+
+                elif txt.startswith("/sos") and cid == YOUR_CHAT_ID:
+                    # فرمت: /sos SYMBOL [buy|sell] [کامنت...]
+                    # مثال: /sos GBPUSD sell سطح کلیدی
+                    # یا فقط: /sos BTCUSDT
+                    parts = txt.split(maxsplit=3)
+                    if len(parts) < 2:
+                        send_tg(token, cid,
+                            "⚠️ فرمت:\n<code>/sos SYMBOL [buy|sell] [کامنت]</code>\n"
+                            "مثال:\n<code>/sos GBPUSD sell</code>")
+                    else:
+                        sym = parts[1].upper().replace("/", "")
+                        raw_dir = parts[2].lower() if len(parts) > 2 else "sell"
+                        comment = parts[3] if len(parts) > 3 else ""
+                        condition = "above" if raw_dir in ("sell","s","سل","above") else "below"
+                        atype = "crypto" if not any(x in sym for x in ["EUR","GBP","USD","JPY","XAU","XAG","CHF","CAD","AUD","NZD"]) else "forex"
+                        # اسم فرستنده از تلگرام (first_name + last_name یا username)
+                        from_user = msg.get("from", {})
+                        sender_first = from_user.get("first_name", "")
+                        sender_last = from_user.get("last_name", "")
+                        sender_uname = from_user.get("username", "")
+                        if sender_first or sender_last:
+                            sender_name = (sender_first + " " + sender_last).strip()
+                        elif sender_uname:
+                            sender_name = "@" + sender_uname
+                        else:
+                            sender_name = uname or "ناشناس"
+                        # دریافت قیمت
+                        send_tg(token, cid, f"⏳ دریافت قیمت {sym}...")
+                        cur = None
+                        try:
+                            cur = get_price(sym, atype)
+                        except Exception as ep:
+                            print(f"[sos-cmd] price error: {ep}")
+                        dist = calc_dist_str(sym, atype, cur, cur) if cur else "—"
+                        arrow = "📈 ناحیه سل فعال شد!" if condition == "above" else "📉 ناحیه بای فعال شد!"
+                        cmt = f"\n💬 <i>{comment}</i>" if comment else ""
+                        price_text = fmt_price(cur, sym) if cur else "—"
+                        sos_msg = (
+                            f"🚨 <b>آلارم فوری!</b>\n\n"
+                            f"💰 <b>{sym}</b> {arrow}\n"
+                            f"👤 ارسال‌کننده: <b>{sender_name}</b>\n\n"
+                            f"📊 قیمت لحظه‌ای: <b>{price_text}</b>"
+                            f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
+                        )
+                        # فقط به خود شما ارسال می‌شود
+                        send_tg(token, YOUR_CHAT_ID, sos_msg)
+                        # ثبت در بایگانی
+                        data = load_data()
+                        alert_obj = {
+                            "id": str(int(time.time() * 1000)),
+                            "symbol": sym, "type": atype,
+                            "target_price": cur, "condition": condition,
+                            "comment": comment, "created_by": sender_name,
+                            "active": False, "last_price": cur,
+                            "last_checked": now_teh(), "fired_at": now_teh(),
+                            "fired_price": cur, "instant": True, "created_at": now_teh()
+                        }
+                        arch = data.get("archive", [])
+                        arch.append(alert_obj)
+                        data["archive"] = arch
+                        save_data(data)
+                        send_tg(token, cid, f"✅ آلارم فوری {sym} فقط برای شما ارسال شد")
         except Exception as e:
             print(f"[poll] {e}")
         time.sleep(5)
@@ -601,6 +664,91 @@ def test_tg():
     res = broadcast(token, cids,
         f"✅ <b>تست موفق</b>\n🔔 اتصال برقرار است.\n⏰ {now_pretty()} (تهران)")
     return jsonify({"ok": any(res), "sent": sum(res), "total": len(cids)})
+
+@app.route("/api/instant-alert", methods=["POST"])
+def instant_alert():
+    """
+    ارسال آلارم فوری — بدون انتظار برای رسیدن قیمت.
+    پیام همان قالب آلارم اصلی را دارد و در بایگانی ثبت می‌شود.
+    در حالت تست فقط به YOUR_CHAT_ID ارسال می‌شود.
+    """
+    body = request.json or {}
+    sym = body.get("symbol", "").upper().strip()
+    atype = body.get("type", "crypto")
+    tgt = body.get("target_price")
+    condition = body.get("condition", "above")
+    comment = body.get("comment", "").strip()
+    creator = body.get("creator", "ناشناس")
+    only_me = body.get("only_me", False)  # اگر True فقط به شما ارسال می‌شود
+
+    if not sym:
+        return jsonify({"ok": False, "error": "نماد الزامی است"})
+
+    token, cids, data = _get_token_and_cids()
+    if not token:
+        return jsonify({"ok": False, "error": "توکن تلگرام ست نشده"})
+
+    # دریافت قیمت لحظه‌ای
+    cur = None
+    try:
+        cur = get_price(sym, atype)
+    except Exception as e:
+        print(f"[instant] price error: {e}")
+
+    tgt_f = float(tgt) if tgt else cur
+    dist = calc_dist_str(sym, atype, cur, tgt_f) if cur and tgt_f else "—"
+
+    arrow = "📈 ناحیه سل فعال شد!" if condition == "above" else "📉 ناحیه بای فعال شد!"
+    cmt = f"\n💬 <i>{comment}</i>" if comment else ""
+    creator_text = f"\n👤 ثبت شده توسط: {creator}" if creator else ""
+    price_text = fmt_price(cur, sym) if cur else "—"
+    target_text = fmt_price(tgt_f, sym) if tgt_f else "—"
+
+    msg = (
+        f"⚡ <b>آلارم فوری!</b>\n\n"
+        f"💰 <b>{sym}</b> {arrow}\n"
+        f"{creator_text}\n"
+        f"🎯 آلارم: <b>{target_text}</b>\n"
+        f"📊 قیمت لحظه‌ای: <b>{price_text}</b>\n"
+        f"📏 فاصله: <b>{dist}</b>"
+        f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
+    )
+
+    # در حالت تست فقط به شما ارسال می‌شود
+    if only_me:
+        target_cids = [YOUR_CHAT_ID]
+        print(f"[instant] TEST MODE → sending only to {YOUR_CHAT_ID}")
+    else:
+        target_cids = cids
+        print(f"[instant] BROADCAST → sending to {len(cids)} users")
+
+    results = broadcast(token, target_cids, msg)
+    sent = sum(results)
+    print(f"[instant] {sym} → sent={sent}/{len(target_cids)}")
+
+    # ثبت در بایگانی
+    alert_obj = {
+        "id": str(int(time.time() * 1000)),
+        "symbol": sym,
+        "type": atype,
+        "target_price": tgt_f,
+        "condition": condition,
+        "comment": comment,
+        "created_by": creator,
+        "active": False,
+        "last_price": cur,
+        "last_checked": now_teh(),
+        "fired_at": now_teh(),
+        "fired_price": cur,
+        "instant": True,
+        "created_at": now_teh()
+    }
+    arch = data.get("archive", [])
+    arch.append(alert_obj)
+    data["archive"] = arch
+    save_data(data)
+
+    return jsonify({"ok": sent > 0, "sent": sent, "total": len(target_cids), "price": cur})
 
 @app.route("/api/status")
 def status():
