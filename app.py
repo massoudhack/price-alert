@@ -12,7 +12,7 @@ GIST_TOKEN = os.environ.get("GIST_TOKEN", "")
 GIST_FILE  = "alerts.json"
 _cache     = None
 
-# شناسه چت اختصاصی شما
+# شناسه چت اختصاصسی شما
 YOUR_CHAT_ID = "109419675"
 
 def now_teh():
