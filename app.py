@@ -422,47 +422,48 @@ def poll_telegram():
                             sender_name = "@" + sender_uname
                         else:
                             sender_name = uname or "ناشناس"
+                        tgt_f = None
                         try:
                             tgt_f = float(raw_price)
                         except ValueError:
                             send_tg(token, cid, f"❌ قیمت نامعتبر: <code>{raw_price}</code>")
-                            continue
-                        # دریافت قیمت لحظه‌ای
-                        cur = None
-                        try:
-                            cur = get_price(sym, atype)
-                        except Exception as ep:
-                            print(f"[alarm-cmd] price error: {ep}")
-                        dist = calc_dist_str(sym, atype, cur, tgt_f) if cur else "—"
-                        # ثبت آلارم در سیستم (با notify_only برای فایر فقط به شما)
-                        alarm_data = load_data()
-                        new_alert = {
-                            "id": str(int(time.time() * 1000)),
-                            "symbol": sym,
-                            "type": atype,
-                            "target_price": tgt_f,
-                            "condition": condition,
-                            "comment": comment,
-                            "created_by": sender_name,
-                            "active": True,
-                            "last_price": cur,
-                            "last_checked": now_teh() if cur else None,
-                            "check_interval": get_check_interval(sym, atype, cur, tgt_f),
-                            "created_at": now_teh(),
-                            "notify_only": YOUR_CHAT_ID
-                        }
-                        alarm_data["alerts"].append(new_alert)
-                        save_data(alarm_data)
-                        arrow = "سل 📈" if condition == "above" else "بای 📉"
-                        price_now = f"${fmt_price(cur, sym)}" if cur else "—"
-                        send_tg(token, cid,
-                            f"✅ <b>آلارم ثبت شد</b>\n\n"
-                            f"💰 <b>{sym}</b> — {arrow}\n"
-                            f"🎯 هدف: <b>${fmt_price(tgt_f, sym)}</b>\n"
-                            f"📊 قیمت الان: <b>{price_now}</b>\n"
-                            f"📏 فاصله: <b>{dist}</b>"
-                            + (f"\n💬 <i>{comment}</i>" if comment else "") +
-                            f"\n\n⏰ {now_pretty()} (تهران)")
+                        if tgt_f is not None:
+                            # دریافت قیمت لحظه‌ای
+                            cur = None
+                            try:
+                                cur = get_price(sym, atype)
+                            except Exception as ep:
+                                print(f"[alarm-cmd] price error: {ep}")
+                            dist = calc_dist_str(sym, atype, cur, tgt_f) if cur else "—"
+                            # ثبت آلارم در سیستم
+                            alarm_data = load_data()
+                            new_alert = {
+                                "id": str(int(time.time() * 1000)),
+                                "symbol": sym,
+                                "type": atype,
+                                "target_price": tgt_f,
+                                "condition": condition,
+                                "comment": comment,
+                                "created_by": sender_name,
+                                "active": True,
+                                "last_price": cur,
+                                "last_checked": now_teh() if cur else None,
+                                "check_interval": get_check_interval(sym, atype, cur, tgt_f),
+                                "created_at": now_teh(),
+                                "notify_only": YOUR_CHAT_ID
+                            }
+                            alarm_data["alerts"].append(new_alert)
+                            save_data(alarm_data)
+                            arrow = "سل 📈" if condition == "above" else "بای 📉"
+                            price_now = f"${fmt_price(cur, sym)}" if cur else "—"
+                            send_tg(token, cid,
+                                f"✅ <b>آلارم ثبت شد</b>\n\n"
+                                f"💰 <b>{sym}</b> — {arrow}\n"
+                                f"🎯 هدف: <b>${fmt_price(tgt_f, sym)}</b>\n"
+                                f"📊 قیمت الان: <b>{price_now}</b>\n"
+                                f"📏 فاصله: <b>{dist}</b>"
+                                + (f"\n💬 <i>{comment}</i>" if comment else "") +
+                                f"\n\n⏰ {now_pretty()} (تهران)")
         except Exception as e:
             print(f"[poll] {e}")
         time.sleep(5)
