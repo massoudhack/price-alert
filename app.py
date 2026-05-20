@@ -1,197 +1,153 @@
 import os, json, time, threading, requests, pytz
 from flask import Flask, request, jsonify, send_from_directory
-from datetime import datetime, timedelta
-from groq import Groq
-import re
+from datetime import datetime
 
 app = Flask(__name__, static_folder='static')
-VERSION = "8.0"
 
-TEHRAN = pytz.timezone("Asia/Tehran")
+VERSION = "2.3"
 
-# ===============,===== متغیرهای محیطی ====================
+TEHRAN     = pytz.timezone("Asia/Tehran")
+GIST_ID    = os.environ.get("GIST_ID", "")
 GIST_TOKEN = os.environ.get("GIST_TOKEN", "")
-GIST_ID_ALERTS = os.environ.get("GIST_ID", "")
-GIST_ID_JOURNAL = os.environ.get("GIST_ID_JOURNAL", "")
-ALERTS_FILE = "alerts.json"
-JOURNAL_FILE = "journal_data.json"
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-YOUR_CHAT_ID = "109419675"  # چت‌آیدی ادمین
+GIST_FILE  = "alerts.json"
+_cache     = None
 
-_cache_alerts = None
-_cache_journal = None
+# شناسه چت اختصاصی شما
+YOUR_CHAT_ID = "109419675"
 
 def now_teh():
     return datetime.now(TEHRAN).strftime("%Y-%m-%d %H:%M:%S")
 
 def now_pretty():
-    return datetime.now(TEHRAN).strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now(TEHRAN).strftime("%Y/%m/%d %H:%M")
 
-def get_pip_multiplier(symbol):
-    sym_up = symbol.upper()
-    crypto_list = ['BTC','ETH','SOL','BNB','XRP','ADA','DOGE','TRX','TON','AVAX','MATIC','DOT','LINK','UNI','ATOM','LTC','SHIB','OP','ARB','NEAR','FTM','SAND','MANA']
-    if any(x in sym_up for x in crypto_list):
-        return 1
-    if "XAU" in sym_up or "XAG" in sym_up:
-        return 10
-    if "JPY" in sym_up:
-        return 100
-    return 10000
-
-def is_crypto_symbol(sym):
-    sym_up = sym.upper()
-    crypto_list = ['BTC','ETH','SOL','BNB','XRP','ADA','DOGE','TRX','TON','AVAX','MATIC','DOT','LINK','UNI','ATOM','LTC','SHIB','OP','ARB','NEAR','FTM','SAND','MANA']
-    return any(c in sym_up for c in crypto_list)
-
-def _empty_alerts():
+def _empty():
     return {
-        "alerts": [], "archive": [], "telegram": {"bot_token": "", "chat_ids": []},
+        "alerts": [], "archive": [],
+        "telegram": {"bot_token": "", "chat_ids": []},
         "users": [], "errors": [], "last_update": None
     }
 
-def fix_alerts(data):
-    e = _empty_alerts()
-    for k in e:
+def _fix(data):
+    e = _empty()
+    for k, v in e.items():
         if k not in data:
-            data[k] = e[k]
+            data[k] = v
     return data
 
-def load_alerts():
-    global _cache_alerts
-    if _cache_alerts is not None:
-        return _cache_alerts
-    if GIST_ID_ALERTS and GIST_TOKEN:
+def load_data():
+    global _cache
+    if _cache is not None:
+        return _cache
+    if GIST_ID and GIST_TOKEN:
         try:
-            print(f"[alerts] Loading from Gist {GIST_ID_ALERTS}...")
-            r = requests.get(f"https://api.github.com/gists/{GIST_ID_ALERTS}",
-                             headers={"Authorization": f"token {GIST_TOKEN}"}, timeout=10)
+            r = requests.get(
+                f"https://api.github.com/gists/{GIST_ID}",
+                headers={"Authorization": f"token {GIST_TOKEN}"},
+                timeout=10)
             if r.status_code == 200:
-                content = r.json()["files"][ALERTS_FILE]["content"]
-                _cache_alerts = fix_alerts(json.loads(content))
-                print(f"[alerts] Loaded from Gist")
-                return _cache_alerts
-            else:
-                print(f"[alerts] Gist read failed: {r.status_code}")
+                content = r.json()["files"][GIST_FILE]["content"]
+                _cache = _fix(json.loads(content))
+                return _cache
         except Exception as e:
-            print(f"[alerts] Exception: {e}")
-    if os.path.exists(ALERTS_FILE):
+            print(f"[gist load] {e}")
+    if os.path.exists("alerts.json"):
         try:
-            with open(ALERTS_FILE, "r", encoding="utf-8") as f:
-                _cache_alerts = fix_alerts(json.load(f))
-                print(f"[alerts] Loaded from local")
-                return _cache_alerts
-        except Exception as e:
-            print(f"[alerts] Local error: {e}")
-    _cache_alerts = _empty_alerts()
-    return _cache_alerts
+            with open("alerts.json", "r", encoding="utf-8") as f:
+                _cache = _fix(json.load(f))
+                return _cache
+        except Exception:
+            pass
+    _cache = _empty()
+    return _cache
 
-def save_alerts(data):
-    global _cache_alerts
-    _cache_alerts = data
-    if GIST_ID_ALERTS and GIST_TOKEN:
+def save_data(data):
+    global _cache
+    _cache = data
+    if GIST_ID and GIST_TOKEN:
         try:
-            r = requests.patch(f"https://api.github.com/gists/{GIST_ID_ALERTS}",
-                               headers={"Authorization": f"token {GIST_TOKEN}"},
-                               json={"files": {ALERTS_FILE: {"content": json.dumps(data, indent=2, ensure_ascii=False)}}},
-                               timeout=10)
-            if r.status_code == 200:
-                print(f"[alerts] Saved to Gist")
-            else:
-                print(f"[alerts] Gist save failed: {r.status_code}")
+            requests.patch(
+                f"https://api.github.com/gists/{GIST_ID}",
+                headers={"Authorization": f"token {GIST_TOKEN}"},
+                json={"files": {GIST_FILE: {"content": json.dumps(data, indent=2, ensure_ascii=False)}}},
+                timeout=10)
+            return
         except Exception as e:
-            print(f"[alerts] Exception: {e}")
-    with open(ALERTS_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-
-def load_journal():
-    global _cache_journal
-    if _cache_journal is not None:
-        print(f"[JOURNAL:LOAD] از cache — {len(_cache_journal)} ترید")
-        return _cache_journal
-    print(f"[JOURNAL:LOAD] شروع لود — GIST_ID={GIST_ID_JOURNAL[:8] if GIST_ID_JOURNAL else 'ندارد'}")
-    if GIST_ID_JOURNAL and GIST_TOKEN:
-        try:
-            print(f"[JOURNAL:LOAD] درخواست Gist...")
-            r = requests.get(f"https://api.github.com/gists/{GIST_ID_JOURNAL}",
-                             headers={"Authorization": f"token {GIST_TOKEN}"}, timeout=10)
-            print(f"[JOURNAL:LOAD] Gist status: {r.status_code}")
-            if r.status_code == 200:
-                files = r.json().get("files", {})
-                if JOURNAL_FILE in files:
-                    content = files[JOURNAL_FILE]["content"]
-                    _cache_journal = json.loads(content)
-                    if not isinstance(_cache_journal, list):
-                        print(f"[JOURNAL:LOAD] ⚠️ داده Gist list نیست — reset")
-                        _cache_journal = []
-                    print(f"[JOURNAL:LOAD] ✅ {len(_cache_journal)} ترید از Gist لود شد")
-                    return _cache_journal
-                else:
-                    print(f"[JOURNAL:LOAD] ⚠️ فایل {JOURNAL_FILE} در Gist نیست — فایل‌های موجود: {list(files.keys())}")
-            else:
-                print(f"[JOURNAL:LOAD] ❌ Gist خطا: {r.status_code} — {r.text[:100]}")
-        except Exception as e:
-            print(f"[JOURNAL:LOAD] ❌ Exception Gist: {e}")
-    if os.path.exists(JOURNAL_FILE):
-        try:
-            with open(JOURNAL_FILE, "r", encoding="utf-8") as f:
-                _cache_journal = json.load(f)
-                if not isinstance(_cache_journal, list):
-                    _cache_journal = []
-                print(f"[JOURNAL:LOAD] ✅ {len(_cache_journal)} ترید از فایل لوکال لود شد")
-                return _cache_journal
-        except Exception as e:
-            print(f"[JOURNAL:LOAD] ❌ خطا فایل لوکال: {e}")
-    print(f"[JOURNAL:LOAD] ⚠️ هیچ داده‌ای نیست — لیست خالی برگشت")
-    _cache_journal = []
-    return _cache_journal
-
-def save_journal(journal_list):
-    global _cache_journal
-    _cache_journal = journal_list
-    print(f"[JOURNAL:SAVE] شروع ذخیره {len(journal_list)} ترید...")
-    if GIST_ID_JOURNAL and GIST_TOKEN:
-        try:
-            print(f"[JOURNAL:SAVE] ارسال به Gist...")
-            r = requests.patch(f"https://api.github.com/gists/{GIST_ID_JOURNAL}",
-                               headers={"Authorization": f"token {GIST_TOKEN}"},
-                               json={"files": {JOURNAL_FILE: {"content": json.dumps(journal_list, indent=2, ensure_ascii=False)}}},
-                               timeout=10)
-            if r.status_code == 200:
-                print(f"[JOURNAL:SAVE] ✅ Gist ذخیره شد — {len(journal_list)} ترید")
-            else:
-                print(f"[JOURNAL:SAVE] ❌ Gist خطا: {r.status_code} — {r.text[:120]}")
-        except Exception as e:
-            print(f"[JOURNAL:SAVE] ❌ Exception Gist: {e}")
+            print(f"[gist save] {e}")
     try:
-        with open(JOURNAL_FILE, "w", encoding="utf-8") as f:
-            json.dump(journal_list, f, indent=2, ensure_ascii=False)
-        print(f"[JOURNAL:SAVE] ✅ فایل لوکال ذخیره شد")
+        with open("alerts.json", "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
     except Exception as e:
-        print(f"[JOURNAL:SAVE] ❌ خطا فایل لوکال: {e}")
+        print(f"[local save] {e}")
 
 def log_error(msg):
     try:
-        data = load_alerts()
+        data = load_data()
         errs = data.get("errors", [])
         errs.append({"time": now_teh(), "msg": str(msg)})
         data["errors"] = errs[-20:]
-        save_alerts(data)
-    except:
+        save_data(data)
+    except Exception:
         pass
     print(f"[ERR] {msg}")
 
 def is_forex_market_open():
     now_utc = datetime.utcnow()
     wd = now_utc.weekday()
-    if wd == 5: return False
-    if wd == 6: return now_utc.hour >= 21
+    if wd == 5:
+        return False
+    if wd == 6:
+        return now_utc.hour >= 21
     return True
 
+def calc_pips(symbol, cur, tgt):
+    if not cur or not tgt:
+        return None
+    diff = abs(float(cur) - float(tgt))
+    sym_up = symbol.upper()
+    if "XAU" in sym_up or "XAG" in sym_up:
+        return diff
+    if "JPY" in sym_up:
+        return diff * 100
+    return diff * 10000
+
+def calc_dist_str(symbol, atype, cur, tgt):
+    if not cur or not tgt:
+        return ""
+    diff = abs(float(cur) - float(tgt))
+    sym_up = symbol.upper()
+    if atype == "crypto":
+        return f"{diff/float(tgt)*100:.2f}%"
+    if "XAU" in sym_up or "XAG" in sym_up:
+        return f"{diff:.2f} $"
+    if "JPY" in sym_up:
+        return f"{round(diff*100):,} pip"
+    return f"{round(diff*10000):,} pip"
+
+def get_check_interval(symbol, atype, cur, tgt):
+    if atype == "crypto":
+        return 120
+    sym_up = symbol.upper()
+    is_gold = "XAU" in sym_up or "XAG" in sym_up
+    pips = calc_pips(symbol, cur, tgt)
+    if pips is None:
+        return 120
+    if is_gold:
+        return 60 if pips < 50 else 120
+    return 60 if pips < 5 else 120
+
 H = {"User-Agent": "Mozilla/5.0 (compatible; PriceBot/1.0)"}
+
+def _get(url, timeout=8):
+    r = requests.get(url, timeout=timeout, headers=H)
+    r.raise_for_status()
+    return r.json()
+
 _last_known = {}
 
 def get_forex_prices_batch(symbols):
-    if not symbols: return {}
+    if not symbols:
+        return {}
     clean = [s.upper().replace("/", "").replace(" ", "") for s in symbols]
     qs = "&".join(f"symbols={s}" for s in clean)
     url = f"https://biquote.io/api/latest?{qs}"
@@ -207,6 +163,7 @@ def get_forex_prices_batch(symbols):
                 if sym and bid and float(bid) > 0:
                     result[sym] = float(bid)
                     _last_known[sym] = {"price": float(bid), "ts": now_teh(), "stale": False}
+                    print(f"[biquote] {sym} = {float(bid)}")
         elif isinstance(raw, dict):
             for sym, data in raw.items():
                 if isinstance(data, dict):
@@ -218,24 +175,35 @@ def get_forex_prices_batch(symbols):
                 if bid and float(bid) > 0:
                     result[sym.upper()] = float(bid)
                     _last_known[sym.upper()] = {"price": float(bid), "ts": now_teh(), "stale": False}
-        if result: return result
-    except Exception: pass
+                    print(f"[biquote] {sym} = {float(bid)}")
+        if result:
+            print(f"[batch-OK] {len(result)}/{len(clean)} prices")
+            return result
+        log_error(f"biquote batch empty for {clean}")
+    except Exception as e:
+        status = "404" if "404" in str(e) else str(e)
+        print(f"[batch-ERR] {status} — using last known prices")
     result = {}
     for sym in clean:
         if sym in _last_known:
             cached = _last_known[sym]
             _last_known[sym]["stale"] = True
             result[sym] = cached["price"]
+            print(f"[stale] {sym} = {cached['price']} (از {cached['ts']})")
         else:
             try:
                 base, quote = sym[:3], sym[3:6]
-                r3 = requests.get(f"https://api.frankfurter.app/latest?from={base}&to={quote}", timeout=7)
+                r3 = requests.get(
+                    f"https://api.frankfurter.app/latest?from={base}&to={quote}",
+                    timeout=7)
                 if r3.ok:
                     rate = r3.json().get("rates", {}).get(quote)
                     if rate:
                         result[sym] = float(rate)
                         _last_known[sym] = {"price": float(rate), "ts": now_teh(), "stale": False}
-            except Exception: pass
+                        print(f"[frankfurter] {sym} = {float(rate)}")
+            except Exception as e3:
+                print(f"[frankfurter-ERR] {sym}: {e3}")
     return result
 
 def get_forex_price(symbol):
@@ -249,16 +217,14 @@ CG_MAP = {
     "TON":"toncoin","AVAX":"avalanche-2","LINK":"chainlink","DOT":"polkadot",
     "MATIC":"matic-network","UNI":"uniswap","ATOM":"cosmos","LTC":"litecoin",
     "SHIB":"shiba-inu","OP":"optimism","ARB":"arbitrum","NEAR":"near",
+    "FTM":"fantom","SAND":"the-sandbox","MANA":"decentraland",
 }
 
 def _cg_price(base):
     gid = CG_MAP.get(base)
     if not gid: return None
-    try:
-        d = requests.get(f"https://api.coingecko.com/api/v3/simple/price?ids={gid}&vs_currencies=usd", headers=H, timeout=8).json()
-        return float(d[gid]["usd"])
-    except:
-        return None
+    d = _get(f"https://api.coingecko.com/api/v3/simple/price?ids={gid}&vs_currencies=usd")
+    return float(d[gid]["usd"])
 
 def get_crypto_price(symbol):
     base = symbol.upper()
@@ -266,7 +232,8 @@ def get_crypto_price(symbol):
         base = base.replace(s,"")
     base = base.replace("/","").strip()
     try:
-        r = requests.get(f"https://biquote.io/api/latest?symbols={base}USD", timeout=8, headers=H)
+        r = requests.get(f"https://biquote.io/api/latest?symbols={base}USD",
+                         timeout=8, headers=H)
         if r.ok:
             raw = r.json()
             bid = None
@@ -275,19 +242,28 @@ def get_crypto_price(symbol):
             elif isinstance(raw, dict):
                 bid = raw.get("bid") or raw.get("price") or raw.get("last")
             if bid and float(bid) > 100:
+                print(f"[biquote-crypto] {base} = {float(bid)}")
                 return float(bid)
-    except Exception: pass
+    except Exception:
+        pass
     sources = [
-        ("OKX", lambda: float(requests.get(f"https://www.okx.com/api/v5/market/ticker?instId={base}-USDT", headers=H).json()["data"][0]["last"])),
-        ("Binance-USDT", lambda: float(requests.get(f"https://api.binance.com/api/v3/ticker/price?symbol={base}USDT", headers=H).json()["price"])),
+        ("OKX",           lambda: float(_get(f"https://www.okx.com/api/v5/market/ticker?instId={base}-USDT")["data"][0]["last"])),
+        ("KuCoin",        lambda: float(_get(f"https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={base}-USDT")["data"]["price"])),
+        ("CoinGecko",     lambda: _cg_price(base)),
+        ("CryptoCompare", lambda: float(_get(f"https://min-api.cryptocompare.com/data/price?fsym={base}&tsyms=USD")["USD"])),
+        ("Binance-USDT",  lambda: float(_get(f"https://api.binance.com/api/v3/ticker/price?symbol={base}USDT")["price"])),
+        ("Binance-USDC",  lambda: float(_get(f"https://api.binance.com/api/v3/ticker/price?symbol={base}USDC")["price"])),
+        ("Bybit",         lambda: float(_get(f"https://api.bybit.com/v5/market/tickers?category=spot&symbol={base}USDT")["result"]["list"][0]["lastPrice"])),
     ]
     for name, fn in sources:
         try:
             p = fn()
             if p and p > 0:
+                print(f"[price] {base} = {p} via {name}")
                 return float(p)
-        except: pass
-    log_error(f"Crypto price failed for {symbol}")
+        except Exception as e:
+            print(f"[{name}] {base} failed: {e}")
+    log_error(f"All crypto sources failed for {symbol}")
     return None
 
 def get_price(symbol, asset_type):
@@ -297,15 +273,19 @@ def get_price(symbol, asset_type):
 
 def send_tg(token, chat_id, text):
     try:
-        r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json={"chat_id": str(chat_id), "text": text, "parse_mode": "HTML"}, timeout=10, headers=H)
+        r = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": str(chat_id), "text": text, "parse_mode": "HTML"},
+            timeout=10, headers=H)
         return r.status_code == 200
-    except: return False
+    except Exception:
+        return False
 
 def broadcast(token, chat_ids, text):
     return [send_tg(token, c, text) for c in chat_ids]
 
 def _get_token_and_cids():
-    data = load_alerts()
+    data = load_data()
     tg = data.get("telegram", {})
     token = tg.get("bot_token", "")
     cids = list(tg.get("chat_ids", []))
@@ -322,20 +302,22 @@ def poll_telegram():
             if not token:
                 time.sleep(30)
                 continue
-            r = requests.get(f"https://api.telegram.org/bot{token}/getUpdates", params={"offset": last_id+1, "timeout": 20, "limit": 100}, timeout=30, headers=H)
+            r = requests.get(
+                f"https://api.telegram.org/bot{token}/getUpdates",
+                params={"offset": last_id+1, "timeout": 20, "limit": 100},
+                timeout=30, headers=H)
             if r.status_code != 200:
                 time.sleep(10)
                 continue
             for upd in r.json().get("result", []):
                 last_id = upd["update_id"]
                 msg = upd.get("message", {})
-                raw_txt = msg.get("text", "") or ""
-                txt = raw_txt.split("@")[0] if raw_txt.startswith("/") else raw_txt
+                txt = msg.get("text", "")
                 ch = msg.get("chat", {})
                 cid = str(ch.get("id", ""))
                 uname = ch.get("username", "") or ch.get("first_name", "")
                 if txt.startswith("/start") and cid:
-                    data = load_alerts()
+                    data = load_data()
                     users = data.get("users", [])
                     if cid not in [str(u["chat_id"]) for u in users]:
                         users.append({"chat_id": cid, "username": uname, "joined_at": now_teh()})
@@ -344,10 +326,14 @@ def poll_telegram():
                         if cid not in [str(x) for x in ids]:
                             ids.append(cid)
                         data["telegram"]["chat_ids"] = ids
-                        save_alerts(data)
-                    send_tg(token, cid, f"👋 سلام <b>{uname}</b>!\n✅ در سیستم آلارم ثبت شدید. 🔔")
+                        save_data(data)
+                        send_tg(token, cid,
+                            f"👋 سلام <b>{uname}</b>!\n✅ در سیستم آلارم ثبت شدید. 🔔")
 
                 elif txt.startswith("/sos") and cid == YOUR_CHAT_ID:
+                    # فرمت: /sos SYMBOL [buy|sell] [کامنت...]
+                    # مثال: /sos GBPUSD sell سطح کلیدی
+                    # یا فقط: /sos BTCUSDT
                     parts = txt.split(maxsplit=3)
                     if len(parts) < 2:
                         send_tg(token, cid,
@@ -358,88 +344,125 @@ def poll_telegram():
                         raw_dir = parts[2].lower() if len(parts) > 2 else "sell"
                         comment = parts[3] if len(parts) > 3 else ""
                         condition = "above" if raw_dir in ("sell","s","سل","above") else "below"
-                        atype = "forex" if any(x in sym for x in ["EUR","GBP","JPY","XAU","XAG","CHF","CAD","AUD","NZD"]) else "crypto"
+                        atype = "crypto" if not any(x in sym for x in ["EUR","GBP","USD","JPY","XAU","XAG","CHF","CAD","AUD","NZD"]) else "forex"
+                        # اسم فرستنده از تلگرام (first_name + last_name یا username)
                         from_user = msg.get("from", {})
-                        fn = from_user.get("first_name","")
-                        ln = from_user.get("last_name","")
-                        un = from_user.get("username","")
-                        sender_name = (fn+" "+ln).strip() or ("@"+un if un else uname or "ناشناس")
+                        sender_first = from_user.get("first_name", "")
+                        sender_last = from_user.get("last_name", "")
+                        sender_uname = from_user.get("username", "")
+                        if sender_first or sender_last:
+                            sender_name = (sender_first + " " + sender_last).strip()
+                        elif sender_uname:
+                            sender_name = "@" + sender_uname
+                        else:
+                            sender_name = uname or "ناشناس"
+                        # دریافت قیمت
+                        send_tg(token, cid, f"⏳ دریافت قیمت {sym}...")
                         cur = None
-                        try: cur = get_price(sym, atype)
-                        except: pass
+                        try:
+                            cur = get_price(sym, atype)
+                        except Exception as ep:
+                            print(f"[sos-cmd] price error: {ep}")
+                        dist = calc_dist_str(sym, atype, cur, cur) if cur else "—"
                         arrow = "📈 ناحیه سل فعال شد!" if condition == "above" else "📉 ناحیه بای فعال شد!"
                         cmt = f"\n💬 <i>{comment}</i>" if comment else ""
                         price_text = fmt_price(cur, sym) if cur else "—"
-                        out_msg = (
+                        sos_msg = (
                             f"🚨 <b>آلارم فوری!</b>\n\n"
                             f"💰 <b>{sym}</b> {arrow}\n"
                             f"👤 ارسال‌کننده: <b>{sender_name}</b>\n\n"
                             f"📊 قیمت لحظه‌ای: <b>{price_text}</b>"
                             f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
                         )
-                        send_tg(token, YOUR_CHAT_ID, out_msg)
-                        d = load_alerts()
-                        arch = d.get("archive", [])
-                        arch.append({"id": str(int(time.time()*1000)), "symbol": sym, "type": atype,
-                            "condition": condition, "comment": comment, "created_by": sender_name,
-                            "active": False, "fired_at": now_teh(), "fired_price": cur,
-                            "instant": True, "created_at": now_teh()})
-                        d["archive"] = arch
-                        save_alerts(d)
+                        # فقط به خود شما ارسال می‌شود
+                        send_tg(token, YOUR_CHAT_ID, sos_msg)
+                        # ثبت در بایگانی
+                        data = load_data()
+                        alert_obj = {
+                            "id": str(int(time.time() * 1000)),
+                            "symbol": sym, "type": atype,
+                            "target_price": cur, "condition": condition,
+                            "comment": comment, "created_by": sender_name,
+                            "active": False, "last_price": cur,
+                            "last_checked": now_teh(), "fired_at": now_teh(),
+                            "fired_price": cur, "instant": True, "created_at": now_teh()
+                        }
+                        arch = data.get("archive", [])
+                        arch.append(alert_obj)
+                        data["archive"] = arch
+                        save_data(data)
                         send_tg(token, cid, f"✅ آلارم فوری {sym} فقط برای شما ارسال شد")
 
                 elif txt.startswith("/alarm") and cid == YOUR_CHAT_ID:
-                    print(f"[alarm-cmd] received from {cid}: {txt}")
+                    # فرمت: /alarm SYMBOL buy|sell PRICE [کامنت...]
+                    # مثال: /alarm eurusd sell 1.12345 ناحیه سل
                     parts = txt.split(maxsplit=4)
                     if len(parts) < 4:
                         send_tg(token, cid,
                             "⚠️ فرمت:\n<code>/alarm SYMBOL buy|sell PRICE [کامنت]</code>\n\n"
                             "مثال‌ها:\n"
                             "<code>/alarm eurusd sell 1.12345 ناحیه سل</code>\n"
+                            "<code>/alarm btcusdt buy 60000</code>\n"
                             "<code>/alarm xauusd sell 2350 مقاومت مهم</code>")
                     else:
                         sym = parts[1].upper().replace("/", "")
                         raw_dir = parts[2].lower()
                         raw_price = parts[3]
                         comment = parts[4] if len(parts) > 4 else ""
-                        condition = "above" if raw_dir in ("sell","s","سل","above") else "below"
-                        atype = "forex" if any(x in sym for x in ["EUR","GBP","JPY","XAU","XAG","CHF","CAD","AUD","NZD"]) else "crypto"
+                        condition = "above" if raw_dir in ("sell", "s", "سل", "above") else "below"
+                        atype = "crypto" if not any(x in sym for x in ["EUR","GBP","USD","JPY","XAU","XAG","CHF","CAD","AUD","NZD"]) else "forex"
+                        # اسم فرستنده از تلگرام
                         from_user = msg.get("from", {})
-                        fn = from_user.get("first_name","")
-                        ln = from_user.get("last_name","")
-                        un = from_user.get("username","")
-                        sender_name = (fn+" "+ln).strip() or ("@"+un if un else uname or "ناشناس")
-                        tgt_f = None
+                        sender_first = from_user.get("first_name", "")
+                        sender_last = from_user.get("last_name", "")
+                        sender_uname = from_user.get("username", "")
+                        if sender_first or sender_last:
+                            sender_name = (sender_first + " " + sender_last).strip()
+                        elif sender_uname:
+                            sender_name = "@" + sender_uname
+                        else:
+                            sender_name = uname or "ناشناس"
                         try:
                             tgt_f = float(raw_price)
                         except ValueError:
                             send_tg(token, cid, f"❌ قیمت نامعتبر: <code>{raw_price}</code>")
-                        if tgt_f is not None:
-                            cur = None
-                            try: cur = get_price(sym, atype)
-                            except: pass
-                            price_now = fmt_price(cur, sym) if cur else "—"
-                            d = load_alerts()
-                            new_alert = {
-                                "id": str(int(time.time()*1000)),
-                                "symbol": sym, "type": atype,
-                                "target_price": tgt_f, "condition": condition,
-                                "comment": comment, "created_by": sender_name,
-                                "active": True, "last_price": cur,
-                                "last_checked": now_teh() if cur else None,
-                                "created_at": now_teh(),
-                                "notify_only": YOUR_CHAT_ID
-                            }
-                            d["alerts"].append(new_alert)
-                            save_alerts(d)
-                            arrow = "سل 📈" if condition == "above" else "بای 📉"
-                            send_tg(token, cid,
-                                f"✅ <b>آلارم ثبت شد</b>\n\n"
-                                f"💰 <b>{sym}</b> — {arrow}\n"
-                                f"🎯 هدف: <b>${fmt_price(tgt_f, sym)}</b>\n"
-                                f"📊 قیمت الان: <b>{price_now}</b>"
-                                + (f"\n💬 <i>{comment}</i>" if comment else "") +
-                                f"\n\n⏰ {now_pretty()} (تهران)")
+                            continue
+                        # دریافت قیمت لحظه‌ای
+                        cur = None
+                        try:
+                            cur = get_price(sym, atype)
+                        except Exception as ep:
+                            print(f"[alarm-cmd] price error: {ep}")
+                        dist = calc_dist_str(sym, atype, cur, tgt_f) if cur else "—"
+                        # ثبت آلارم در سیستم (با notify_only برای فایر فقط به شما)
+                        alarm_data = load_data()
+                        new_alert = {
+                            "id": str(int(time.time() * 1000)),
+                            "symbol": sym,
+                            "type": atype,
+                            "target_price": tgt_f,
+                            "condition": condition,
+                            "comment": comment,
+                            "created_by": sender_name,
+                            "active": True,
+                            "last_price": cur,
+                            "last_checked": now_teh() if cur else None,
+                            "check_interval": get_check_interval(sym, atype, cur, tgt_f),
+                            "created_at": now_teh(),
+                            "notify_only": YOUR_CHAT_ID
+                        }
+                        alarm_data["alerts"].append(new_alert)
+                        save_data(alarm_data)
+                        arrow = "سل 📈" if condition == "above" else "بای 📉"
+                        price_now = f"${fmt_price(cur, sym)}" if cur else "—"
+                        send_tg(token, cid,
+                            f"✅ <b>آلارم ثبت شد</b>\n\n"
+                            f"💰 <b>{sym}</b> — {arrow}\n"
+                            f"🎯 هدف: <b>${fmt_price(tgt_f, sym)}</b>\n"
+                            f"📊 قیمت الان: <b>{price_now}</b>\n"
+                            f"📏 فاصله: <b>{dist}</b>"
+                            + (f"\n💬 <i>{comment}</i>" if comment else "") +
+                            f"\n\n⏰ {now_pretty()} (تهران)")
         except Exception as e:
             print(f"[poll] {e}")
         time.sleep(5)
@@ -452,331 +475,142 @@ def check_alerts():
     while True:
         try:
             _loop_count += 1
-            global _cache_alerts
-            _cache_alerts = None
+            global _cache
+            _cache = None
             token, cids, data = _get_token_and_cids()
             active = [a for a in data.get("alerts", []) if a.get("active")]
+
             if not active:
-                save_alerts(data)
+                save_data(data)
                 time.sleep(60)
                 continue
+
             forex_open = is_forex_market_open()
-            due_forex, due_crypto = [], []
+            due_forex = []
+            due_crypto = []
+
             for a in active:
                 sym = a["symbol"]
                 atype = a.get("type", "crypto")
+                cur = a.get("last_price")
+                tgt = float(a["target_price"])
+                iv = get_check_interval(sym, atype, cur, tgt)
+
                 if atype == "forex" and not forex_open:
                     continue
+
+                if iv > 60 and _loop_count % 2 != 0:
+                    continue
+
                 if atype == "forex":
                     due_forex.append(sym)
                 else:
                     due_crypto.append(sym)
+
             price_map = {}
+
             if due_forex:
-                batch = get_forex_prices_batch(due_forex)
+                uniq_forex = list(dict.fromkeys(due_forex))
+                batch = get_forex_prices_batch(uniq_forex)
                 for sym, p in batch.items():
                     price_map[(sym, "forex")] = p
-            for sym in due_crypto:
+                    known = _last_known.get(sym, {})
+                    if known.get("stale"):
+                        price_map[(sym, "forex", "stale")] = known.get("ts", "")
+
+            uniq_crypto = list(dict.fromkeys(due_crypto))
+            for sym in uniq_crypto:
                 p = get_crypto_price(sym)
                 price_map[(sym.upper(), "crypto")] = p
+
+            print(f"[check] loop={_loop_count} forex_open={forex_open} due_f={len(due_forex)} due_c={len(due_crypto)} prices={len(price_map)}")
+
             fired = []
             for a in active:
                 sym = a["symbol"]
                 atype = a.get("type", "crypto")
                 key = (sym.upper(), atype)
-                if key not in price_map: continue
+
+                if key not in price_map:
+                    continue
+
                 cur = price_map[key]
-                if cur is None: continue
+                if cur is None:
+                    continue
+
                 tgt = float(a["target_price"])
                 cond = a.get("condition", "above")
+
+                a["last_price"] = cur
+                a["last_checked"] = now_teh()
+                a["check_interval"] = get_check_interval(sym, atype, cur, tgt)
+                stale_ts = price_map.get((sym.upper(), atype, "stale"))
+                a["price_stale"] = stale_ts if stale_ts else None
+                data["last_update"] = now_teh()
+
                 triggered = (cond == "above" and cur >= tgt) or (cond == "below" and cur <= tgt)
+
                 if triggered and a["id"] not in notified:
                     notified.add(a["id"])
                     a["active"] = False
+                    a["fired_at"] = now_teh()
+                    a["fired_price"] = cur
                     fired.append(a["id"])
+
                     if token and cids:
-                        arrow = "📈 از هدف رد شد" if cond == "above" else "📉 به هدف رسید"
-                        msg = f"🚨 آلارم {sym} {arrow}\nهدف: {tgt}\nقیمت: {cur}"
-                        broadcast(token, cids, msg)
+                        # notify_only: آلارم‌هایی که از تلگرام /alarm ثبت شدن فقط به یه نفر می‌رن
+                        notify_only = a.get("notify_only", "")
+                        if notify_only:
+                            target_cids = [str(notify_only)]
+                            print(f"[FILTER] notify_only={notify_only} → sending only to that user")
+                        else:
+                            target_cids = cids
+                            print(f"[FILTER] Normal alert → sending to all {len(cids)} users")
+
+                        dist = calc_dist_str(sym, atype, cur, tgt)
+                        cmt = f"\n💬 <i>{a['comment']}</i>" if a.get("comment") else ""
+                        arrow = "📈 ناحیه سل فعال شد!" if cond == "above" else "📉 ناحیه بای فعال شد!"
+                        creator_text = f"\n👤 ثبت شده توسط: {a.get('created_by', 'ناشناس')}" if a.get('created_by') else ""
+                        msg = (
+                            f"🚨 <b>آلارم قیمت!</b>\n\n"
+                            f"💰 <b>{sym}</b> {arrow}\n"
+                            f"{creator_text}\n"
+                            f"🎯 آلارم: <b>{fmt_price(tgt, sym)}</b>\n"
+                            f"📊 قیمت: <b>{fmt_price(cur, sym)}</b>\n"
+                            f"📏 فاصله: <b>{dist}</b>"
+                            f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
+                        )
+                        results = broadcast(token, target_cids, msg)
+                        print(f"[FIRED] {sym} → sent={sum(results)}/{len(target_cids)}")
+
             if fired:
                 arch = data.get("archive", [])
                 for fid in fired:
                     obj = next((x for x in data["alerts"] if x["id"] == fid), None)
-                    if obj: arch.append(obj)
+                    if obj:
+                        arch.append(obj)
                 data["archive"] = arch
                 data["alerts"] = [x for x in data["alerts"] if x["id"] not in fired]
-            save_alerts(data)
+                print(f"[check] fired={len(fired)} → archived")
+
+            save_data(data)
+
         except Exception as e:
             log_error(f"check_alerts: {e}")
+
         time.sleep(60)
 
 def fmt_price(p, sym=""):
     if p is None: return "—"
     v = float(p)
     su = sym.upper()
-    if "XAU" in su or "XAG" in su:
-        return f"${v:.2f}"
-    if "JPY" in su:
-        return f"{v:.3f}"
-    return f"{v:.5f}"
+    if "XAU" in su or "XAG" in su: return f"${v:,.2f}"
+    if "JPY" in su: return f"${v:.3f}"
+    if v >= 10000: return f"${v:,.1f}"
+    if v >= 100: return f"${v:,.2f}"
+    if v >= 1: return f"${v:.5f}"
+    return f"${v:.6f}"
 
-def tehran_to_utc(tehran_str):
-    try:
-        parts = tehran_str.strip().split(" ")
-        dparts = parts[0].split("-")
-        tparts = (parts[1] if len(parts) > 1 else "00:00").split(":")
-        y, m, d = int(dparts[0]), int(dparts[1]), int(dparts[2])
-        h, mi = int(tparts[0]), int(tparts[1])
-        dt_teh = datetime(y, m, d, h, mi)
-        return dt_teh - timedelta(hours=3, minutes=30)
-    except: return None
-
-# ====================================================================
-# تابع اصلی بررسی کندل‌ها – اصلاح شده برای snapshot تا SL یا 3R
-# ====================================================================
-def check_sltp_hit_with_details(symbol, tf, entry_time_str, direction, entry_price, sl_price, tp_price, size=1.0, max_post_sl_pips=300, r3_override=None):
-    """
-    بازگشت: (hit, hit_price, last_close, pnl, mfe_pip, mae_pip, candle_lines, found_3r,
-             free_risk_was_possible, free_risk_saved, reached_1r_at, pullback_after_1r,
-             post_sl_max_profit, post_sl_reached_1r, post_sl_reached_1_5r, post_sl_reached_2r, post_sl_reached_3r,
-             mfe_before_sl, passed_1r, snapshot_bars)
-    * hit: 'sl' / 'tp' / 'tp3' (اولین رویداد)
-    * snapshot_bars: کندل‌ها تا آخرین برخورد با SL یا 3R (حتی اگر TP زودتر خورده باشد)
-    """
-    try:
-        # محاسبه limit بر اساس تایم‌فریم — پوشش کافی برای ۷ روز معامله
-        tf_limits = {"1m":5000, "5m":3000, "15m":800, "1h":200, "4h":50, "1d":30}
-        bar_limit = tf_limits.get(tf, 200)
-        print(f"[CANDLE] {symbol} tf={tf} limit={bar_limit}")
-        url = f"https://biquote.io/api/{symbol}/ohlc?interval={tf}&limit={bar_limit}"
-        r = requests.get(url, timeout=12, headers=H)
-        if r.status_code != 200:
-            return (None, None, None, None, None, None, None, False, False, False, None, False, None, None, None, None, None, 0.0, False, [])
-        data = r.json()
-        bars = data.get("bars") or data.get("data") or (data if isinstance(data, list) else [])
-        if not bars:
-            return (None, None, None, None, None, None, None, False, False, False, None, False, None, None, None, None, None, 0.0, False, [])
-
-        entry_utc = tehran_to_utc(entry_time_str)
-        if not entry_utc:
-            return (None, None, None, None, None, None, None, False, False, False, None, False, None, None, None, None, None, 0.0, False, [])
-
-        all_bars_sorted = []
-        for b in bars:
-            ts = b.get("openTime") or b.get("time") or b.get("timestamp")
-            if not ts: continue
-            if isinstance(ts, (int, float)):
-                bdt = datetime.utcfromtimestamp(ts)
-            else:
-                try:
-                    bdt = datetime.strptime(ts.replace("Z",""), "%Y-%m-%dT%H:%M:%S")
-                except: continue
-            all_bars_sorted.append((bdt, b))
-        all_bars_sorted.sort(key=lambda x: x[0])
-
-        entry_bar_idx = 0
-        for i, (bdt, b) in enumerate(all_bars_sorted):
-            if bdt >= entry_utc:
-                entry_bar_idx = i
-                break
-
-        after = all_bars_sorted[entry_bar_idx:]
-        if not after:
-            return (None, None, None, None, None, None, None, False, False, False, None, False, None, None, None, None, None, 0.0, False, [])
-
-        is_buy = (direction == "BUY")
-        hit = None
-        hit_price = None
-        hit_idx = None
-        mul = get_pip_multiplier(symbol)
-        mfe_pip = 0.0
-        mae_pip = 0.0
-        candle_lines = []
-        found_3r = False
-        risk_pips = None
-        if sl_price and entry_price:
-            if is_buy:
-                risk_pips = (entry_price - sl_price) * mul
-            else:
-                risk_pips = (sl_price - entry_price) * mul
-
-        passed_1r = False
-        reached_1r_at = None
-        free_risk_was_possible = False
-        free_risk_saved = False
-        pullback_after_1r = False
-        mae_stopped = False
-
-        sl_hit_occurred = False
-        post_sl_max_profit = 0.0
-        post_sl_reached_1r = False
-        post_sl_reached_1_5r = False
-        post_sl_reached_2r = False
-        post_sl_reached_3r = False
-        mfe_before_sl = 0.0
-
-        stop_price = None
-        if sl_price and max_post_sl_pips > 0:
-            if is_buy:
-                stop_price = sl_price + (max_post_sl_pips / mul)
-            else:
-                stop_price = sl_price - (max_post_sl_pips / mul)
-
-        # محاسبه قیمت 3R برای تعیین پایان snapshot
-        _r3_price = r3_override if r3_override else (
-            ((entry_price + 3*risk_pips/mul) if is_buy else (entry_price - 3*risk_pips/mul)) if risk_pips else None
-        )
-
-        # متغیرهای مربوط به snapshot: snap_end_idx تا جایی که SL یا 3R برخورد کند
-        snap_end_idx = len(after) - 1  # پیش‌فرض آخرین کندل
-        snap_resolved = False
-
-        for i, (bar_dt_i, b) in enumerate(after):
-            high = float(b.get("high", 0))
-            low  = float(b.get("low",  0))
-            close= float(b.get("close",0))
-            open_= float(b.get("open", 0))
-
-            if is_buy:
-                profit_now = (high - entry_price) * mul
-                if not mae_stopped and low < entry_price:
-                    d = (entry_price - low) * mul
-                    if d > mae_pip: mae_pip = d
-            else:
-                profit_now = (entry_price - low) * mul
-                if not mae_stopped and high > entry_price:
-                    d = (high - entry_price) * mul
-                    if d > mae_pip: mae_pip = d
-
-            mfe_pip = max(mfe_pip, profit_now)
-            if risk_pips and mfe_pip > risk_pips * 3.0:
-                mfe_pip = risk_pips * 3.0  # cap 3R
-
-            if hit is None:
-                mfe_before_sl = max(mfe_before_sl, profit_now)
-
-            if risk_pips and not passed_1r and profit_now >= risk_pips:
-                passed_1r = True
-                reached_1r_at = i
-                mae_stopped = True
-
-            if passed_1r and reached_1r_at is not None and i > reached_1r_at:
-                if not free_risk_was_possible:
-                    free_risk_was_possible = True
-                if not pullback_after_1r:
-                    if is_buy and low <= entry_price:
-                        pullback_after_1r = True
-                    elif not is_buy and high >= entry_price:
-                        pullback_after_1r = True
-
-            dt_teh = bar_dt_i + timedelta(hours=3, minutes=30)
-            thr = dt_teh.strftime("%m/%d %H:%M")
-            dir_c = "▲" if close >= open_ else "▼"
-            body_p = abs(close - open_) * mul
-            candle_lines.append(f"{thr}: {dir_c} {body_p:.1f}pip | H:{high:.5f} L:{low:.5f} C:{close:.5f}")
-
-            # ===== تعیین اولین رویداد (hit) برای بستن ترید =====
-            if hit is None:
-                if is_buy:
-                    if sl_price is not None and low <= sl_price:
-                        hit, hit_price, hit_idx = "sl", sl_price, i
-                        sl_hit_occurred = True
-                    elif tp_price is not None and high >= tp_price:
-                        hit, hit_price, hit_idx = "tp", tp_price, i
-                    elif _r3_price and high >= _r3_price:
-                        hit, hit_price, hit_idx = "tp3", _r3_price, i
-                        found_3r = True
-                else:
-                    if sl_price is not None and high >= sl_price:
-                        hit, hit_price, hit_idx = "sl", sl_price, i
-                        sl_hit_occurred = True
-                    elif tp_price is not None and low <= tp_price:
-                        hit, hit_price, hit_idx = "tp", tp_price, i
-                    elif _r3_price and low <= _r3_price:
-                        hit, hit_price, hit_idx = "tp3", _r3_price, i
-                        found_3r = True
-
-            # ===== تعیین پایان snapshot (فقط SL یا 3R) =====
-            if not snap_resolved:
-                if is_buy:
-                    if sl_price is not None and low <= sl_price:
-                        snap_end_idx = i
-                        snap_resolved = True
-                    elif _r3_price and high >= _r3_price:
-                        snap_end_idx = i
-                        snap_resolved = True
-                else:
-                    if sl_price is not None and high >= sl_price:
-                        snap_end_idx = i
-                        snap_resolved = True
-                    elif _r3_price and low <= _r3_price:
-                        snap_end_idx = i
-                        snap_resolved = True
-                if not snap_resolved:
-                    snap_end_idx = i  # هنوز نرسیده، آپدیت کن
-
-            # برگشت بعد SL — دستی توسط کاربر وارد میشه، محاسبه خودکار نداریم
-
-            # stop بعد از SL (max_post_sl_pips)
-            if sl_hit_occurred and stop_price is not None:
-                if is_buy and high >= stop_price:
-                    snap_end_idx = i
-                    snap_resolved = True
-                if not is_buy and low <= stop_price:
-                    snap_end_idx = i
-                    snap_resolved = True
-
-            # اگه TP/3R یا SL خورد تموم
-            if snap_resolved and hit is not None:
-                break
-
-        last_close = float(after[-1][1]["close"]) if not found_3r else (after[-1][1]["close"] if after else 0)
-        pnl = None
-        if hit:
-            diff = (hit_price - entry_price) if is_buy else (entry_price - hit_price)
-            pnl = diff * size
-
-        if hit == "sl" and free_risk_was_possible:
-            free_risk_saved = True
-
-        # ساخت snapshot بر اساس snap_end_idx
-        snap_start = max(0, entry_bar_idx - 20)
-        snap_end = entry_bar_idx + snap_end_idx + 1
-        snapshot_bars = []
-        for bar_dt_snap, b_snap in all_bars_sorted[snap_start:snap_end]:
-            dt_teh_snap = bar_dt_snap + timedelta(hours=3, minutes=30)
-            snapshot_bars.append({
-                "t": dt_teh_snap.strftime("%Y-%m-%d %H:%M"),
-                "o": float(b_snap.get("open", 0)),
-                "h": float(b_snap.get("high", 0)),
-                "l": float(b_snap.get("low", 0)),
-                "c": float(b_snap.get("close", 0)),
-            })
-
-        return (hit, hit_price, last_close, pnl, mfe_pip, mae_pip, candle_lines, found_3r,
-                free_risk_was_possible, free_risk_saved, reached_1r_at, pullback_after_1r,
-                post_sl_max_profit, post_sl_reached_1r, post_sl_reached_1_5r, post_sl_reached_2r, post_sl_reached_3r,
-                mfe_before_sl, passed_1r, snapshot_bars)
-    except Exception as e:
-        log_error(f"check_sltp_hit_with_details: {e}")
-        return (None, None, None, None, None, None, None, False, False, False, None, False, None, None, None, None, None, 0.0, False, [])
-
-def groq_analyze(prompt):
-    if not GROQ_API_KEY:
-        return "⚠️ کلید API Groq تنظیم نشده است."
-    try:
-        client = Groq(api_key=GROQ_API_KEY)
-        completion = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3, max_tokens=800
-        )
-        return completion.choices[0].message.content
-    except Exception as e:
-        log_error(f"Groq error: {e}")
-        return f"❌ خطا: {str(e)}"
-
-# ==================== Routes ====================
 @app.route("/")
 def index():
     return send_from_directory("static", "index.html")
@@ -787,7 +621,7 @@ def journal():
 
 @app.route("/api/config", methods=["GET","POST"])
 def config():
-    data = load_alerts()
+    data = load_data()
     if request.method == "POST":
         body = request.json or {}
         tg = data.get("telegram", {})
@@ -796,76 +630,91 @@ def config():
         if body.get("chat_id"):
             cid = str(body["chat_id"])
             ids = [str(x) for x in tg.get("chat_ids", [])]
-            if cid not in ids: ids.append(cid)
+            if cid not in ids:
+                ids.append(cid)
             tg["chat_ids"] = ids
             tg["chat_id"] = cid
         data["telegram"] = tg
-        save_alerts(data)
+        save_data(data)
         return jsonify({"ok": True})
     tg = data.get("telegram", {})
     return jsonify({
-        "bot_token": tg.get("bot_token",""), "chat_id": tg.get("chat_id",""),
-        "chat_ids": tg.get("chat_ids",[]), "user_count": len(data.get("users",[]))
+        "bot_token": tg.get("bot_token",""),
+        "chat_id": tg.get("chat_id",""),
+        "chat_ids": tg.get("chat_ids",[]),
+        "user_count": len(data.get("users",[]))
     })
 
 @app.route("/api/alerts", methods=["GET"])
 def get_alerts():
-    return jsonify(load_alerts().get("alerts", []))
+    return jsonify(load_data().get("alerts", []))
 
 @app.route("/api/alerts", methods=["POST"])
 def add_alert():
-    data = load_alerts()
+    data = load_data()
     body = request.json or {}
     sym = body.get("symbol","").upper().strip()
     atype = body.get("type","crypto")
     tgt = float(body.get("target_price", 0))
-    cur = get_price(sym, atype) if (atype!="forex" or is_forex_market_open()) else None
+    creator = body.get("creator", "ناشناس")
+    comment = body.get("comment", "").strip()
+
+    cur = get_price(sym, atype) if (atype != "forex" or is_forex_market_open()) else None
+
     a = {
-        "id": str(int(time.time() * 1000)), "symbol": sym, "type": atype,
-        "target_price": tgt, "condition": body.get("condition","above"),
-        "comment": body.get("comment","").strip(), "active": True,
-        "last_price": cur, "last_checked": now_teh() if cur else None,
+        "id": str(int(time.time() * 1000)),
+        "symbol": sym,
+        "type": atype,
+        "target_price": tgt,
+        "condition": body.get("condition","above"),
+        "comment": comment,
+        "created_by": creator,
+        "active": True,
+        "last_price": cur,
+        "last_checked": now_teh() if cur else None,
+        "check_interval": get_check_interval(sym, atype, cur, tgt),
         "created_at": now_teh()
     }
     data["alerts"].append(a)
-    save_alerts(data)
+    save_data(data)
     return jsonify({"ok": True, "alert": a})
 
 @app.route("/api/alerts/<aid>", methods=["DELETE"])
 def del_alert(aid):
-    data = load_alerts()
-    data["alerts"] = [a for a in data.get("alerts", []) if a["id"] != aid]
-    save_alerts(data)
+    data = load_data()
+    data["alerts"] = [a for a in data["alerts"] if a["id"] != aid]
+    save_data(data)
+    notified.discard(aid)
     return jsonify({"ok": True})
 
 @app.route("/api/archive", methods=["GET"])
 def get_archive():
-    return jsonify(load_alerts().get("archive", []))
+    return jsonify(load_data().get("archive", []))
 
 @app.route("/api/archive", methods=["DELETE"])
 def clear_archive():
-    data = load_alerts()
+    data = load_data()
     data["archive"] = []
-    save_alerts(data)
+    save_data(data)
     return jsonify({"ok": True})
 
 @app.route("/api/archive/<aid>", methods=["DELETE"])
 def del_archive(aid):
-    data = load_alerts()
+    data = load_data()
     data["archive"] = [a for a in data.get("archive",[]) if a["id"] != aid]
-    save_alerts(data)
+    save_data(data)
     return jsonify({"ok": True})
 
 @app.route("/api/users", methods=["GET"])
 def get_users():
-    return jsonify(load_alerts().get("users", []))
+    return jsonify(load_data().get("users", []))
 
 @app.route("/api/users/<cid>", methods=["DELETE"])
 def del_user(cid):
-    data = load_alerts()
+    data = load_data()
     data["users"] = [u for u in data.get("users",[]) if str(u["chat_id"]) != str(cid)]
     data["telegram"]["chat_ids"] = [x for x in data["telegram"].get("chat_ids",[]) if str(x) != str(cid)]
-    save_alerts(data)
+    save_data(data)
     return jsonify({"ok": True})
 
 @app.route("/api/price/<atype>/<symbol>")
@@ -881,18 +730,106 @@ def test_tg():
     token, cids, _ = _get_token_and_cids()
     if not token or not cids:
         return jsonify({"ok": False, "error": "توکن یا chat_id ست نشده"})
-    res = broadcast(token, cids, f"✅ تست موفق\n⏰ {now_pretty()}")
+    res = broadcast(token, cids,
+        f"✅ <b>تست موفق</b>\n🔔 اتصال برقرار است.\n⏰ {now_pretty()} (تهران)")
     return jsonify({"ok": any(res), "sent": sum(res), "total": len(cids)})
+
+@app.route("/api/instant-alert", methods=["POST"])
+def instant_alert():
+    """
+    ارسال آلارم فوری — بدون انتظار برای رسیدن قیمت.
+    پیام همان قالب آلارم اصلی را دارد و در بایگانی ثبت می‌شود.
+    در حالت تست فقط به YOUR_CHAT_ID ارسال می‌شود.
+    """
+    body = request.json or {}
+    sym = body.get("symbol", "").upper().strip()
+    atype = body.get("type", "crypto")
+    tgt = body.get("target_price")
+    condition = body.get("condition", "above")
+    comment = body.get("comment", "").strip()
+    creator = body.get("creator", "ناشناس")
+    only_me = body.get("only_me", False)  # اگر True فقط به شما ارسال می‌شود
+
+    if not sym:
+        return jsonify({"ok": False, "error": "نماد الزامی است"})
+
+    token, cids, data = _get_token_and_cids()
+    if not token:
+        return jsonify({"ok": False, "error": "توکن تلگرام ست نشده"})
+
+    # دریافت قیمت لحظه‌ای
+    cur = None
+    try:
+        cur = get_price(sym, atype)
+    except Exception as e:
+        print(f"[instant] price error: {e}")
+
+    tgt_f = float(tgt) if tgt else cur
+    dist = calc_dist_str(sym, atype, cur, tgt_f) if cur and tgt_f else "—"
+
+    arrow = "📈 ناحیه سل فعال شد!" if condition == "above" else "📉 ناحیه بای فعال شد!"
+    cmt = f"\n💬 <i>{comment}</i>" if comment else ""
+    creator_text = f"\n👤 ثبت شده توسط: {creator}" if creator else ""
+    price_text = fmt_price(cur, sym) if cur else "—"
+    target_text = fmt_price(tgt_f, sym) if tgt_f else "—"
+
+    msg = (
+        f"⚡ <b>آلارم فوری!</b>\n\n"
+        f"💰 <b>{sym}</b> {arrow}\n"
+        f"{creator_text}\n"
+        f"🎯 آلارم: <b>{target_text}</b>\n"
+        f"📊 قیمت لحظه‌ای: <b>{price_text}</b>\n"
+        f"📏 فاصله: <b>{dist}</b>"
+        f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
+    )
+
+    # در حالت تست فقط به شما ارسال می‌شود
+    if only_me:
+        target_cids = [YOUR_CHAT_ID]
+        print(f"[instant] TEST MODE → sending only to {YOUR_CHAT_ID}")
+    else:
+        target_cids = cids
+        print(f"[instant] BROADCAST → sending to {len(cids)} users")
+
+    results = broadcast(token, target_cids, msg)
+    sent = sum(results)
+    print(f"[instant] {sym} → sent={sent}/{len(target_cids)}")
+
+    # ثبت در بایگانی
+    alert_obj = {
+        "id": str(int(time.time() * 1000)),
+        "symbol": sym,
+        "type": atype,
+        "target_price": tgt_f,
+        "condition": condition,
+        "comment": comment,
+        "created_by": creator,
+        "active": False,
+        "last_price": cur,
+        "last_checked": now_teh(),
+        "fired_at": now_teh(),
+        "fired_price": cur,
+        "instant": True,
+        "created_at": now_teh()
+    }
+    arch = data.get("archive", [])
+    arch.append(alert_obj)
+    data["archive"] = arch
+    save_data(data)
+
+    return jsonify({"ok": sent > 0, "sent": sent, "total": len(target_cids), "price": cur})
 
 @app.route("/api/status")
 def status():
-    alerts = load_alerts()
-    journal = load_journal()
+    data = load_data()
     return jsonify({
-        "status": "ok", "last_update": alerts.get("last_update"),
-        "errors": alerts.get("errors", [])[-5:], "time_tehran": now_teh(),
-        "alert_count": len(alerts.get("alerts",[])), "forex_open": is_forex_market_open(),
-        "loop_count": _loop_count, "journal_count": len(journal)
+        "status": "ok",
+        "last_update": data.get("last_update"),
+        "errors": data.get("errors", [])[-5:],
+        "time_tehran": now_teh(),
+        "alert_count": len(data.get("alerts",[])),
+        "forex_open": is_forex_market_open(),
+        "loop_count": _loop_count,
     })
 
 @app.route("/api/version")
@@ -901,1036 +838,11 @@ def version():
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok"})
+    return jsonify({"status": "ok", "time": now_teh()})
 
-# ==================== ژورنال ====================
-@app.route("/api/journal", methods=["GET"])
-def get_journal():
-    trades = load_journal()
-    print(f"[GET /api/journal] {len(trades)} ترید برگشت")
-    return jsonify(trades)
-
-@app.route("/api/journal", methods=["POST"])
-def add_journal():
-    journal = load_journal()
-    body = request.json or {}
-    sym = body.get("sym", "").upper().strip()
-    if not sym:
-        return jsonify({"ok": False, "error": "sym الزامی است"}), 400
-    entry = float(body.get("entry", 0))
-    direction = body.get("direction", "BUY")
-    size = 1.0
-    is_missed_zone = bool(body.get("is_missed_zone", False))
-    sl_pips = body.get("sl_pips")
-    tp_pips = body.get("tp_pips")
-    sl_price = body.get("sl_price")
-    tp_price = body.get("tp_price")
-    print(f"[AUTO] دریافت ترید — sym={sym} direction={direction} entry={entry} missed={is_missed_zone}")
-
-    mul = get_pip_multiplier(sym)
-    if sl_price is None and sl_pips is not None:
-        sl_diff = sl_pips / mul
-        sl_price = entry - sl_diff if direction == "BUY" else entry + sl_diff
-    if tp_price is None and tp_pips is not None:
-        tp_diff = tp_pips / mul
-        tp_price = entry + tp_diff if direction == "BUY" else entry - tp_diff
-    if sl_pips is None and sl_price is not None:
-        sl_pips = abs(entry - sl_price) * mul
-    if tp_pips is None and tp_price is not None:
-        tp_pips = abs(tp_price - entry) * mul
-
-    trade = {
-        "id": str(int(time.time() * 1000)), "sym": sym, "tf": body.get("tf", "1h"),
-        "direction": direction, "entry": entry, "size": size,
-        "sl_pips": round(sl_pips, 1) if sl_pips else None,
-        "tp_pips": round(tp_pips, 1) if tp_pips else None,
-        "sl_price": sl_price, "tp_price": tp_price,
-        "note": body.get("note", "").strip(), "entryTime": body.get("entryTime", now_teh()),
-        "createdAt": now_teh(), "status": "open", "exit": None, "exitTime": None,
-        "candle_snapshot": [], "pending_check": True,
-        "exitNote": None, "pnl": None, "outcome": None,
-        "ai_analysis": None, "ai_summary": None,
-        "review_mfe": None, "review_mae": None, "review_pullback": None, "review_note": None,
-        "review_reversal_occurred": None, "review_reversal_from_sl": None, "review_reversal_target_pips": None,
-        "found_3r": False, "mae_pip": 0, "mfe_pip": 0,
-        "free_risk_was_possible": False, "free_risk_saved": False, "pullback_after_1r": False,
-        "post_sl_max_profit": 0, "post_sl_reached_1r": False, "post_sl_reached_1_5r": False,
-        "post_sl_reached_2r": False, "post_sl_reached_3r": False,
-        "mfe_before_sl_pip": 0, "passed_1r": False,
-        "is_missed_zone": is_missed_zone
-    }
-    print(f"[AUTO] ترید ساخته شد — id={trade['id']} missed={is_missed_zone}")
-    try:
-        # یک بار فراخوانی که snapshot تا SL/3R ادامه پیدا می‌کند و hit اولین رویداد است
-        res = check_sltp_hit_with_details(sym, trade["tf"], trade["entryTime"], direction, entry, sl_price, tp_price, size, r3_override=None)
-        (hit, hit_price, last_close, pnl, mfe_pip, mae_pip, candle_lines, found_3r,
-         fr_possible, fr_saved, fr_at, pullback, post_max, post_1r, post_1_5r, post_2r, post_3r,
-         mfe_before_sl, passed_1r, snapshot_bars) = res
-
-        if hit:
-            trade["exit"] = hit_price
-            trade["exitTime"] = now_teh()
-            trade["exitNote"] = f"خودکار: {'استاپ لاس' if hit=='sl' else ('تارگت' if hit=='tp' else '3R کامل')} در زمان ثبت"
-            trade["pnl"] = round(pnl, 2) if pnl is not None else 0
-            trade["outcome"] = "win" if hit in ["tp", "tp3"] else "loss"
-            trade["exit_type"] = hit
-            trade["status"] = "closed"
-            trade["pending_check"] = False
-            trade["mfe_pip"] = round(mfe_pip, 1)
-            trade["mae_pip"] = round(mae_pip, 1)
-            trade["found_3r"] = found_3r
-            trade["free_risk_was_possible"] = fr_possible
-            trade["free_risk_saved"] = fr_saved
-            trade["pullback_after_1r"] = pullback
-            trade["post_sl_max_profit"] = round(post_max, 1) if post_max else 0
-            trade["post_sl_reached_1r"] = post_1r
-            trade["post_sl_reached_1_5r"] = post_1_5r
-            trade["post_sl_reached_2r"] = post_2r
-            trade["post_sl_reached_3r"] = post_3r
-            trade["mfe_before_sl_pip"] = round(mfe_before_sl, 1) if mfe_before_sl else 0
-            trade["passed_1r"] = passed_1r
-            trade["candle_snapshot"] = snapshot_bars   # snapshot تا SL یا 3R
-            print(f"[AUTO] ✅ نتیجه: {hit} — outcome={trade['outcome']} missed={is_missed_zone}")
-        else:
-            trade["status"] = "open"
-            trade["pending_check"] = True
-            trade["candle_snapshot"] = snapshot_bars   # snapshot فعلی (تا آخرین کندل)
-            trade["last_poll"] = now_teh()
-    except Exception as e:
-        log_error(f"auto check error: {e}")
-        return jsonify({"ok": False, "error": f"خطا: {str(e)}"}), 500
-    journal.insert(0, trade)
-    print(f"[AUTO] ✅ ترید {trade['id']} ذخیره شد — sym={sym} missed={is_missed_zone}")
-    save_journal(journal)
-    return jsonify({"ok": True, "trade": trade})
-
-def calc_exit_type(outcome, risk_pips, mfe_pip, found_3r=False, exit_type_stored=None):
-    if exit_type_stored in ("sl", "tp", "tp3"):
-        return exit_type_stored
-    if outcome == "loss":
-        return "sl"
-    if found_3r:
-        return "tp3"
-    if risk_pips and risk_pips > 0 and mfe_pip:
-        mfe_r = mfe_pip / risk_pips
-        if mfe_r >= 3.0:
-            return "tp3"
-    return "tp"
-
-@app.route("/api/journal/manual", methods=["POST"])
-def add_journal_manual():
-    journal = load_journal()
-    body = request.json or {}
-    sym = body.get("sym", "").upper().strip()
-    if not sym:
-        return jsonify({"ok": False, "error": "sym الزامی است"}), 400
-    entry = float(body.get("entry", 0))
-    direction = body.get("direction", "BUY")
-    size = 1.0
-    tf = body.get("tf", "1h")
-    entryTime = body.get("entryTime", now_teh())
-    note = body.get("note", "").strip()
-    sl_price = body.get("sl_price")
-    tp_price = body.get("tp_price")
-    exit_price = body.get("exit")
-    outcome = body.get("outcome")
-    exitTime = body.get("exitTime", now_teh())
-    exitNote = body.get("exitNote", "ثبت دستی")
-    mul = get_pip_multiplier(sym)
-    sl_pips = abs(entry - sl_price) * mul if sl_price else None
-    tp_pips = abs(tp_price - entry) * mul if tp_price else None
-    pnl = None
-    if exit_price and entry:
-        diff = (exit_price - entry) if direction == "BUY" else (entry - exit_price)
-        pnl = diff * size
-    review_mfe = body.get("review_mfe")
-    review_mae = body.get("review_mae")
-    review_pullback = body.get("review_pullback", False)
-    review_note = body.get("review_note", "")
-    review_reversal_occurred = body.get("review_reversal_occurred", False)
-    review_reversal_from_sl = body.get("review_reversal_from_sl")
-    review_reversal_target_pips = body.get("review_reversal_target_pips")
-    review_free_risk_saved = body.get("review_free_risk_saved", False)
-    is_missed_zone = bool(body.get("is_missed_zone", False))
-    print(f"[MANUAL] sym={body.get('sym')} outcome={body.get('outcome')} missed={is_missed_zone}")
-    is_crypto = is_crypto_symbol(sym)
-    risk_pips = None
-    if sl_price and entry:
-        if direction == "BUY":
-            risk_pips = (entry - sl_price) * mul
-        else:
-            risk_pips = (sl_price - entry) * mul
-    if is_crypto:
-        mfe_r = body.get("review_mfe_r")
-        mae_r = body.get("review_mae_r")
-        reversal_target_r = body.get("review_reversal_target_pips_r")
-        if mfe_r is not None and risk_pips and risk_pips > 0:
-            review_mfe = mfe_r * risk_pips
-        if mae_r is not None and risk_pips and risk_pips > 0:
-            review_mae = mae_r * risk_pips
-        if reversal_target_r is not None and risk_pips and risk_pips > 0:
-            review_reversal_target_pips = reversal_target_r * risk_pips
-    trade = {
-        "id": str(int(time.time() * 1000)), "sym": sym, "tf": tf,
-        "direction": direction, "entry": entry, "size": size,
-        "sl_pips": round(sl_pips, 1) if sl_pips else None,
-        "tp_pips": round(tp_pips, 1) if tp_pips else None,
-        "sl_price": sl_price, "tp_price": tp_price,
-        "note": note, "entryTime": entryTime, "createdAt": now_teh(),
-        "status": "closed", "exit": exit_price, "exitTime": exitTime, "exitNote": exitNote,
-        "pnl": round(pnl, 2) if pnl is not None else 0, "outcome": outcome,
-        "ai_analysis": None, "ai_summary": None,
-        "review_mfe": review_mfe, "review_mae": review_mae,
-        "review_pullback": review_pullback, "review_note": review_note,
-        "review_reversal_occurred": review_reversal_occurred,
-        "review_reversal_from_sl": review_reversal_from_sl,
-        "review_reversal_target_pips": review_reversal_target_pips,
-        "review_free_risk_saved": review_free_risk_saved,
-        "found_3r": False, "mae_pip": review_mae if review_mae else 0,
-        "mfe_pip": review_mfe if review_mfe else 0,
-        "free_risk_was_possible": False, "free_risk_saved": review_free_risk_saved,
-        "pullback_after_1r": review_pullback,
-        "post_sl_max_profit": 0, "post_sl_reached_1r": False, "post_sl_reached_1_5r": False,
-        "post_sl_reached_2r": False, "post_sl_reached_3r": False,
-        "mfe_before_sl_pip": 0, "passed_1r": False, "candle_snapshot": [],
-        "is_missed_zone": is_missed_zone
-    }
-    mfe_for_calc = float(review_mfe) if review_mfe else 0
-    trade["exit_type"] = calc_exit_type(outcome, risk_pips, mfe_for_calc)
-    if trade.get("outcome") and not trade.get("candle_snapshot"):
-        try:
-            # برای ترید دستی هم snapshot در صورت امکان بگیریم (اختیاری)
-            r3_guess = None
-            if risk_pips and risk_pips > 0:
-                if direction == "BUY":
-                    r3_guess = entry + 3 * risk_pips / mul
-                else:
-                    r3_guess = entry - 3 * risk_pips / mul
-            res_snap = check_sltp_hit_with_details(
-                sym, tf, entryTime, direction, entry, sl_price,
-                tp_price if tp_price else r3_guess,
-                size, r3_override=r3_guess
-            )
-            trade["candle_snapshot"] = res_snap[19] if len(res_snap) > 19 else []
-        except Exception as e:
-            log_error(f"manual snapshot: {e}")
-            trade["candle_snapshot"] = []
-    journal.insert(0, trade)
-    save_journal(journal)
-    return jsonify({"ok": True, "trade": trade})
-
-@app.route("/api/journal/<tid>/edit", methods=["PUT"])
-def edit_trade(tid):
-    journal = load_journal()
-    trade = next((t for t in journal if t["id"] == tid), None)
-    if not trade:
-        return jsonify({"ok": False, "error": "ترید یافت نشد"}), 404
-    body = request.json or {}
-    for key in ["sym","direction","entry","exit","sl_price","tp_price","entryTime","exitTime","pnl","outcome","note","exitNote"]:
-        if key in body:
-            trade[key] = body[key] if key in ["note","exitNote","outcome","direction","sym"] else float(body[key]) if body[key] is not None else None
-    for key in ["review_mfe","review_mae","review_pullback","review_note","review_reversal_occurred","review_reversal_from_sl","review_reversal_target_pips","review_free_risk_saved"]:
-        if key in body:
-            trade[key] = body[key]
-    mul = get_pip_multiplier(trade["sym"])
-    if trade.get("sl_price") and trade.get("entry"):
-        trade["sl_pips"] = abs(trade["entry"] - trade["sl_price"]) * mul
-    if trade.get("tp_price") and trade.get("entry"):
-        trade["tp_pips"] = abs(trade["tp_price"] - trade["entry"]) * mul
-    if trade.get("exit") and trade.get("entry"):
-        diff = (trade["exit"] - trade["entry"]) if trade["direction"] == "BUY" else (trade["entry"] - trade["exit"])
-        trade["pnl"] = diff * 1.0
-    save_journal(journal)
-    return jsonify({"ok": True, "trade": trade})
-
-@app.route("/api/journal/<tid>/delete", methods=["DELETE"])
-def delete_trade(tid):
-    print(f"[DELETE] درخواست حذف ترید: {tid}")
-    journal = load_journal()
-    before = len(journal)
-    journal = [t for t in journal if str(t.get("id","")) != str(tid)]
-    after = len(journal)
-    if after == before:
-        print(f"[DELETE] ❌ ترید {tid} یافت نشد — IDs موجود: {[str(t.get('id')) for t in journal[:5]]}")
-        return jsonify({"ok": False, "error": f"ترید {tid} یافت نشد"}), 404
-    global _cache_journal
-    _cache_journal = journal
-    save_journal(journal)
-    print(f"[DELETE] ✅ ترید {tid} حذف شد — باقیمانده: {after}")
-    return jsonify({"ok": True})
-
-@app.route("/api/journal/<tid>/review", methods=["POST"])
-def review_trade(tid):
-    journal = load_journal()
-    trade = next((t for t in journal if t["id"] == tid), None)
-    if not trade:
-        return jsonify({"ok": False, "error": "ترید یافت نشد"}), 404
-    body = request.json or {}
-    sym = trade.get("sym", "")
-    mul = get_pip_multiplier(sym)
-    entry = float(trade.get("entry", 0))
-    sl_px = trade.get("sl_price")
-    risk_pips = abs(entry - float(sl_px)) * mul if sl_px and entry else None
-    if "review_mfe" in body:
-        mfe_val = body["review_mfe"]
-        if mfe_val is not None and is_crypto_symbol(sym) and risk_pips and risk_pips > 0:
-            mfe_raw = round(float(mfe_val) * risk_pips, 4)
-        else:
-            mfe_raw = mfe_val
-        # cap روی 3R — بیشتر از 3R در محاسبات تفاوتی نمیکنه
-        if mfe_raw is not None and risk_pips and risk_pips > 0:
-            cap_3r = risk_pips * 3.0
-            if float(mfe_raw) > cap_3r:
-                print(f"[REVIEW] MFE cap: {mfe_raw} → {cap_3r} (3R)")
-                mfe_raw = round(cap_3r, 4)
-        trade["review_mfe"] = mfe_raw
-    # ---- بازمحاسبه passed_1r از روی review_mfe دستی ----
-    if "review_mfe" in body and risk_pips and risk_pips > 0:
-        mfe_corrected = trade.get("review_mfe")
-        if mfe_corrected is not None:
-            mfe_f = float(mfe_corrected)
-            if mfe_f < risk_pips * 0.98:
-                old_p1r = trade.get("passed_1r")
-                old_frp = trade.get("free_risk_was_possible")
-                trade["passed_1r"] = False
-                trade["free_risk_was_possible"] = False
-                trade["mfe_before_sl_pip"] = round(mfe_f, 1)
-                print(f"[REVIEW] MFE دستی={mfe_f:.1f} < 1R={risk_pips:.1f} → passed_1r: {old_p1r}→False, fr_possible: {old_frp}→False")
-            else:
-                trade["passed_1r"] = True
-                print(f"[REVIEW] MFE دستی={mfe_f:.1f} >= 1R={risk_pips:.1f} → passed_1r=True")
-
-    if "review_mae" in body:
-        mae_val = body["review_mae"]
-        if mae_val is not None and is_crypto_symbol(sym) and risk_pips and risk_pips > 0:
-            trade["review_mae"] = round(float(mae_val) * risk_pips, 4)
-        else:
-            trade["review_mae"] = mae_val
-    if "review_reversal_target_pips" in body:
-        rt_val = body["review_reversal_target_pips"]
-        if rt_val is not None and is_crypto_symbol(sym) and risk_pips and risk_pips > 0:
-            trade["review_reversal_target_pips"] = round(float(rt_val) * risk_pips, 4)
-        else:
-            trade["review_reversal_target_pips"] = rt_val
-    for f in ["review_pullback","review_note","review_reversal_occurred","review_reversal_from_sl","review_free_risk_saved","is_missed_zone"]:
-        if f in body:
-            old_val = trade.get(f)
-            trade[f] = body[f]
-            if old_val != body[f]:
-                print(f"[REVIEW] فیلد {f}: {old_val} → {body[f]}")
-    print(f"[REVIEW] وضعیت نهایی — passed_1r={trade.get('passed_1r')} fr_possible={trade.get('free_risk_was_possible')} review_mfe={trade.get('review_mfe')} missed={trade.get('is_missed_zone')}")
-    save_journal(journal)
-    print(f"[REVIEW] ✅ ذخیره ترید {tid} انجام شد")
-    return jsonify({"ok": True})
-
-@app.route("/api/analyze/<trade_id>", methods=["GET"])
-def analyze_trade(trade_id):
-    journal = load_journal()
-    trade = next((t for t in journal if t["id"] == trade_id), None)
-    if not trade:
-        return jsonify({"ok": False, "error": "ترید یافت نشد"}), 404
-    symbol = trade["sym"]
-    entry = float(trade["entry"])
-    sl = trade.get("sl_price")
-    direction = trade.get("direction", "BUY")
-    outcome = trade.get("outcome", "")
-    exit_px = trade.get("exit")
-    mul = get_pip_multiplier(symbol)
-    risk_pips = None
-    if sl and entry:
-        if direction == "BUY":
-            risk_pips = (entry - sl) * mul
-        else:
-            risk_pips = (sl - entry) * mul
-    risk_pips_safe = risk_pips if (risk_pips and risk_pips > 0) else 1.0
-    taken_pips = abs(float(exit_px) - entry) * mul if exit_px else 0
-    taken_r = round(taken_pips / risk_pips_safe, 2)
-    mfe_raw = float(trade.get("review_mfe") or trade.get("mfe_pip") or 0)
-    # اگه win ولی MFE نداریم، از TP برآورد کن
-    if mfe_raw == 0 and outcome == "win" and trade.get("tp_price") and trade.get("entry"):
-        tp_dist = abs(float(trade["tp_price"]) - float(trade["entry"])) * get_pip_multiplier(trade.get("sym",""))
-        mfe_raw = tp_dist
-        print(f"[ANALYZE] MFE خالی — از TP fallback: {mfe_raw:.1f}")
-    mfe_pip = mfe_raw
-    if risk_pips_safe > 0 and mfe_pip > risk_pips_safe * 3.0:
-        mfe_pip = risk_pips_safe * 3.0  # cap 3R
-    mfe_r = round(mfe_pip / risk_pips_safe, 2)
-    left_pip = round(mfe_pip - taken_pips, 1) if mfe_pip > taken_pips else 0
-    left_r = round(left_pip / risk_pips_safe, 2)
-    mfe_bsl = float(trade.get("mfe_before_sl_pip") or 0)
-    mfe_bsl_r = round(mfe_bsl / risk_pips_safe, 2)
-    rev_occurred = trade.get("review_reversal_occurred", False)
-    rev_target = trade.get("review_reversal_target_pips") or trade.get("post_sl_max_profit") or 0
-    rev_target_r = round(float(rev_target) / risk_pips_safe, 2)
-    review_mfe_raw = trade.get("review_mfe")
-    if review_mfe_raw is not None and risk_pips_safe > 0:
-        passed_1r = float(review_mfe_raw) >= risk_pips_safe * 0.98
-        print(f"[ANALYZE] {trade.get('sym')} review_mfe={review_mfe_raw} risk_pips={risk_pips_safe:.1f} → passed_1r={passed_1r}")
-    else:
-        passed_1r = trade.get("review_passed_1r", trade.get("passed_1r", False))
-    fr_possible = trade.get("free_risk_was_possible", False)
-    if not passed_1r:
-        fr_possible = False
-    fr_done = trade.get("review_free_risk_saved", False)
-    pullback = trade.get("review_pullback", trade.get("pullback_after_1r", False))
-    print(f"[ANALYZE] {trade.get('sym')} passed_1r={passed_1r} fr_possible={fr_possible} fr_done={fr_done} outcome={outcome}")
-    lines = []
-    if outcome == "loss":
-        lines.append(f"استاپ خورد — ضرر {taken_r:.1f}R" if taken_r else "استاپ خورد — ضرر نامشخص")
-    else:
-        lines.append(f"تارگت زده شد — سود {taken_r:.1f}R" if taken_r else "تارگت زده شد — سود نامشخص")
-    if outcome == "loss" and mfe_bsl_r > 0.05:
-        lines.append(f"قبل از استاپ تا {mfe_bsl_r:.1f}R سود رفت")
-    if outcome == "loss":
-        if rev_occurred and rev_target_r > 0:
-            lines.append(f"بعد از استاپ تا {rev_target_r:.1f}R برگشت")
-    if outcome == "win" and left_r > 0.2:
-        lines.append(f"حداکثر سود {mfe_r:.1f}R بود — {left_r:.1f}R روی میز ماند")
-    if fr_done:
-        lines.append("🛡️ فری‌ریسک انجام شد")
-    elif passed_1r and fr_possible and outcome == "loss":
-        if pullback:
-            lines.append("بعد از 1R به ورود برگشت و دوباره رفت — فری‌ریسک نجات می‌داد")
-        else:
-            lines.append("بعد از 1R به ورود برگشت — فری‌ریسک نجات می‌داد")
-    elif not passed_1r and outcome == "loss":
-        lines.append("به 1R نرسید — فری‌ریسک ممکن نبود")
-    elif passed_1r and not fr_possible and outcome != "loss":
-        lines.append("بعد از 1R به ورود برنگشت — فری‌ریسک نمی‌خورد")
-    if mfe_r >= 1 and outcome != "win":
-        lines.append(f"قیمت تا {mfe_r:.1f}R رفت")
-    text = " | ".join(lines)
-    trade["ai_analysis"] = text
-    trade["ai_summary"] = text
-    save_journal(journal)
-    return jsonify({"ok": True, "analysis": text, "summary": text})
-
-@app.route("/api/overall-analysis", methods=["GET"])
-def overall_analysis():
-    custom_prompt = request.args.get("custom_prompt","").strip()
-    sym_filter = request.args.get("sym_filter","").strip().upper()
-    mode = request.args.get("mode","all").strip()  # all | trades_only | zones_only
-    print(f"[AI] overall_analysis — sym={sym_filter or 'همه'} mode={mode} custom={'بله' if custom_prompt else 'خیر'}")
-    trades = load_journal()
-    closed = [t for t in trades if t.get("status") == "closed" and t.get("outcome") in ("win", "loss")]
-    if sym_filter:
-        closed = [t for t in closed if t.get("sym","").upper() == sym_filter]
-        print(f"[AI] بعد از فیلتر نماد: {len(closed)} ترید")
-    if mode == "trades_only":
-        closed = [t for t in closed if not t.get("is_missed_zone")]
-        print(f"[AI] فقط تریدها: {len(closed)}")
-    elif mode == "zones_only":
-        closed = [t for t in closed if t.get("is_missed_zone")]
-        print(f"[AI] فقط نواحی جا مونده: {len(closed)}")
-    if not closed:
-        mode_label = {"trades_only":"فقط تریدها","zones_only":"فقط نواحی جا مونده"}.get(mode,"")
-        err = f"هیچ رکوردی برای {mode_label}{(' نماد '+sym_filter) if sym_filter else ''} وجود ندارد"
-        print(f"[AI] ❌ {err}")
-        return jsonify({"ok": False, "error": err}), 404
-    total = len(closed)
-    wins = sum(1 for t in closed if t.get("outcome") == "win")
-    losses = total - wins
-    wr = round(wins/total*100, 1) if total else 0
-    def _et(t):
-        mul = get_pip_multiplier(t["sym"])
-        rp = None
-        if t.get("sl_price") and t.get("entry"):
-            rp = abs(float(t["entry"]) - float(t["sl_price"])) * mul
-        mfe = float(t.get("review_mfe") or t.get("mfe_pip") or 0)
-        return t.get("exit_type") or calc_exit_type(t.get("outcome",""), rp, mfe, t.get("found_3r", False))
-    win_tp_count = sum(1 for t in closed if _et(t) == "tp")
-    win_3r_count = sum(1 for t in closed if _et(t) == "tp3")
-
-    early_exit_count = 0
-    early_exit_left_r_list = []
-    sl_reversed_count = 0
-    sl_reversed_1r = 0
-    sl_reversed_1_5r = 0
-    sl_reversed_2r = 0
-    sl_reversed_3r = 0
-    fr_missed_count = 0
-    free_risk_done_count = 0
-    reached_1r_count = 0
-    reached_1_5r_count = 0
-    reached_2r_count = 0
-    reached_3r_count = 0
-    taken_r_list = []
-    mfe_r_list = []
-    sym_stats = {}
-    hour_stats = {}
-    mae_ratio_list = []
-    trade_details = []
-    planned_rr_list, rr_gap_list = [], []
-    rr_bucket = {"<1.5":{"w":0,"l":0},"1.5-2":{"w":0,"l":0},"2-3":{"w":0,"l":0},"3+":{"w":0,"l":0}}
-    setup_stats = {}
-    detail_1r, detail_2r, detail_3r, detail_sl_rev, detail_early = [], [], [], [], []
-    detail_fr_missed, detail_fr_done = [], []
-    post_sl_pip_list = []
-
-    for idx_t, t in enumerate(closed):
-        sym = t["sym"]
-        mul = get_pip_multiplier(sym)
-        entry = float(t["entry"])
-        sl_px = t.get("sl_price")
-        exit_px = t.get("exit")
-        outcome = t["outcome"]
-        direction = t["direction"]
-        mfe_pip = float(t.get("review_mfe") or t.get("mfe_pip") or 0)
-        mae_pip = float(t.get("review_mae") or t.get("mae_pip") or 0)
-        post_sl_1r = t.get("post_sl_reached_1r", False)
-        post_sl_1_5r = t.get("post_sl_reached_1_5r", False)
-        post_sl_2r = t.get("post_sl_reached_2r", False)
-        post_sl_3r = t.get("post_sl_reached_3r", False)
-        post_sl_max = float(t.get("post_sl_max_profit", 0) or 0)
-        rev_occurred = t.get("review_reversal_occurred", False)
-        rev_target_pips = t.get("review_reversal_target_pips")
-        _rmfe = t.get("review_mfe")
-        _rp_raw = (abs(float(t.get("entry",0)) - float(t.get("sl_price",0))) * get_pip_multiplier(t.get("sym","EURUSD"))) if t.get("sl_price") and t.get("entry") else None
-        if _rmfe is not None and _rp_raw and _rp_raw > 0:
-            passed_1r = float(_rmfe) >= _rp_raw * 0.98
-            fr_possible = t.get("free_risk_was_possible", False) if passed_1r else False
-        else:
-            fr_possible = t.get("free_risk_was_possible", False)
-            passed_1r = t.get("passed_1r", False)
-        found_3r = t.get("found_3r", False)
-        entry_time = t.get("entryTime", "")
-        free_risk_done = t.get("review_free_risk_saved", False)
-
-        # ─── risk_pips: اگه SL نداره، این ترید از همه میانگین‌ها حذف می‌شه ───
-        risk_pips = None
-        if sl_px and entry:
-            risk_pips = abs(float(entry) - float(sl_px)) * mul
-        has_valid_risk = risk_pips and risk_pips > 0
-
-        # مقداردهی اولیه — برای جلوگیری از NameError در else block
-        mbe_r = 0.0
-
-        # ─── R محاسبه‌ها (فقط وقتی risk معتبر داره) ───
-        if has_valid_risk:
-            # taken_r: برد مثبت، باخت منفی
-            if exit_px:
-                raw_pips = (float(exit_px) - entry) if direction == "BUY" else (entry - float(exit_px))
-                taken_r = round(raw_pips * mul / risk_pips, 2)
-            else:
-                taken_r = 0.0
-            mfe_r  = round(mfe_pip  / risk_pips, 2)
-            mae_r  = round(mae_pip  / risk_pips, 2)
-            # left_r: فقط برای win — چقدر از MFE نگرفتیم
-            taken_abs_r = abs(taken_r)
-            left_r = round(mfe_r - taken_abs_r, 2) if (outcome == "win" and mfe_r > taken_abs_r) else 0.0
-        else:
-            # ترید بدون SL — R قابل محاسبه نیست، از همه lists حذف می‌شه
-            taken_r = 0.0
-            mfe_r = 0.0
-            mae_r = 0.0
-            left_r = 0.0
-
-        exit_type = t.get("exit_type") or calc_exit_type(
-            outcome, risk_pips,
-            float(t.get("review_mfe") or t.get("mfe_pip") or 0),
-            t.get("found_3r", False)
-        )
-        exit_type_label = {"sl": "SL", "tp": "TP(زودخروج)", "tp3": "3R(کامل)"}.get(exit_type, exit_type)
-
-        # ─── فقط تریدهای با SL معتبر وارد میانگین‌ها می‌شن ───
-        if has_valid_risk:
-            taken_r_list.append(taken_r)   # برد: مثبت | باخت: منفی
-            if mfe_pip > 0: mfe_r_list.append(mfe_r)
-            if mae_pip > 0: mae_ratio_list.append(mae_r)
-
-        # ─── R/R برنامه (planned) ───
-        tp_px = t.get("tp_price")
-        planned_rr = None
-        if has_valid_risk and tp_px and entry:
-            tp_dist = abs(float(tp_px) - entry) * mul
-            planned_rr = round(tp_dist / risk_pips, 2)
-            # فقط planned_rr های معقول (بین 0.5 و 10)
-            if 0.5 <= planned_rr <= 10:
-                planned_rr_list.append(planned_rr)
-                rr_gap_list.append(round(abs(taken_r) - planned_rr, 2))
-        if planned_rr and 0.5 <= planned_rr <= 10:
-            bkt = "<1.5" if planned_rr < 1.5 else "1.5-2" if planned_rr < 2 else "2-3" if planned_rr < 3 else "3+"
-            if outcome == "win": rr_bucket[bkt]["w"] += 1
-            else: rr_bucket[bkt]["l"] += 1
-
-        # ─── setup stats (فقط اگه setup_type وارد شده) ───
-        stype = (t.get("setup_type") or "").strip()
-        if stype:
-            setup_stats.setdefault(stype, {"w": 0, "l": 0, "r": 0.0})
-            if outcome == "win": setup_stats[stype]["w"] += 1
-            else: setup_stats[stype]["l"] += 1
-            if has_valid_risk: setup_stats[stype]["r"] += taken_r
-
-        # ─── sym stats براساس R (نه pnl خام) ───
-        sym_stats.setdefault(sym, {"wins": 0, "losses": 0, "total_r": 0.0})
-        if outcome == "win": sym_stats[sym]["wins"] += 1
-        else: sym_stats[sym]["losses"] += 1
-        if has_valid_risk: sym_stats[sym]["total_r"] += taken_r
-
-        # ─── ساعت ورود ───
-        try:
-            et = str(entry_time).replace("T", " ").strip()
-            if len(et) >= 13:
-                hour = int(et[11:13])
-                if 0 <= hour <= 23:
-                    hour_stats.setdefault(hour, {"wins": 0, "losses": 0})
-                    if outcome == "win": hour_stats[hour]["wins"] += 1
-                    else: hour_stats[hour]["losses"] += 1
-        except:
-            pass
-
-        display_num = len(closed) - idx_t
-        sl_r_show  = f"{risk_pips:.1f}p({1:.0f}R)" if has_valid_risk else "—"
-        tp_r_show  = f"{planned_rr:.2f}R" if planned_rr else "—"
-        entry_time_short = str(t.get("entryTime", ""))[:16]
-        is_manual_mfe = t.get("review_mfe") is not None
-
-        tshort = {
-            "idx": display_num, "tid": t["id"], "sym": sym, "dir": direction,
-            "tf": t.get("tf", ""), "outcome": outcome, "entry": entry,
-            "exit": float(t.get("exit") or 0), "sl_price": t.get("sl_price"),
-            "tp_price": t.get("tp_price"),
-            "sl_pips": round(risk_pips, 1) if has_valid_risk else None,
-            "tp_pips": round(abs(float(tp_px or 0) - entry) * mul, 1) if tp_px else None,
-            "taken_r": taken_r, "mfe_r": mfe_r, "left_r": left_r,
-            "entry_time": entry_time_short, "is_manual": is_manual_mfe,
-            "note": (t.get("note") or "")[:80],
-        }
-
-        # ─── reached counts — WIN و LOSS کاملاً جدا ───
-        if outcome == "win":
-            # بردها: براساس MFE یا passed_1r
-            if has_valid_risk:
-                if mfe_r >= 1.0 or passed_1r:
-                    reached_1r_count += 1
-                    detail_1r.append({**tshort, "detail": f"MFE={mfe_r:.2f}R taken={taken_r:.2f}R",
-                        "extra": {"mfe_r": mfe_r, "taken_r": taken_r, "left_r": left_r, "is_manual": is_manual_mfe}})
-                if mfe_r >= 1.5: reached_1_5r_count += 1
-                if mfe_r >= 2.0:
-                    reached_2r_count += 1
-                    detail_2r.append({**tshort, "detail": f"MFE={mfe_r:.2f}R taken={taken_r:.2f}R",
-                        "extra": {"mfe_r": mfe_r, "taken_r": taken_r}})
-                if found_3r or mfe_r >= 3.0:
-                    reached_3r_count += 1
-                    detail_3r.append({**tshort, "detail": f"MFE={mfe_r:.2f}R taken={taken_r:.2f}R",
-                        "extra": {"mfe_r": mfe_r}})
-                if left_r > 0.3:
-                    early_exit_count += 1
-                    early_exit_left_r_list.append(left_r)
-                    detail_early.append({**tshort,
-                        "detail": f"taken={taken_r:.2f}R | MFE={mfe_r:.2f}R | {left_r:.2f}R جا موند",
-                        "extra": {"taken_r": taken_r, "mfe_r": mfe_r, "left_r": left_r}})
-        else:
-            # باخت‌ها: reached از طریق برگشت بعد SL
-            mbe_pip = float(t.get("review_mfe") or t.get("mfe_before_sl_pip") or 0)
-            mbe_r = round(mbe_pip / risk_pips, 2) if has_valid_risk else 0.0
-
-            # پیدا کردن بهترین منبع برای برگشت بعد SL
-            psl_manual = t.get("review_reversal_target_pips")
-            psl_auto = post_sl_max
-            # اگه دستی ثبت شده اون رو بگیر، وگرنه سیستمی
-            psl_pips = float(psl_manual) if psl_manual is not None else psl_auto
-            psl_r = round(psl_pips / risk_pips, 2) if (has_valid_risk and psl_pips > 0) else 0.0
-
-            rev_manual = t.get("review_reversal_occurred")
-            rev_auto_1r = post_sl_1r
-
-            # ─ MFE قبل از SL (برای reached قبل از ضرر خوردن)
-            if has_valid_risk and mbe_r >= 1.0:
-                detail_1r.append({**tshort,
-                    "detail": f"MFE قبل SL={mbe_r:.2f}R",
-                    "extra": {"mbe_r": mbe_r}})
-
-            # ─ برگشت بعد SL
-            # rev_manual=False یعنی کاربر دستی گفته برنگشته — اصلاً حساب نکن
-            # rev_manual=True یعنی دستی تأیید شده
-            # rev_manual=None یعنی review نشده — از سیستم استفاده کن
-            actual_rev = (rev_manual is True) or (rev_manual is None and rev_auto_1r)
-            if actual_rev and psl_r > 0:
-                sl_reversed_count += 1
-                lvls = []
-                from_sl = t.get("review_reversal_from_sl")
-                from_sl_r = round(float(from_sl) / risk_pips, 2) if (from_sl and has_valid_risk) else None
-                from_sl_str = f" از {from_sl_r:.2f}R بعد SL" if from_sl_r else ""
-                detail_entry = {**tshort,
-                    "detail": f"SL خورد ← برگشت {psl_r:.2f}R{from_sl_str}",
-                    "extra": {"psl_r": psl_r, "is_manual": rev_manual is True, "from_sl_r": from_sl_r}}
-                if psl_r >= 1.0:
-                    sl_reversed_1r += 1; reached_1r_count += 1; lvls.append("→1R")
-                    detail_1r.append({**detail_entry, "detail": f"SL خورد ← برگشت {psl_r:.2f}R (بعد SL){from_sl_str}"})
-                if psl_r >= 1.5:
-                    sl_reversed_1_5r += 1; reached_1_5r_count += 1; lvls.append("→1.5R")
-                if psl_r >= 2.0:
-                    sl_reversed_2r += 1; reached_2r_count += 1; lvls.append("→2R")
-                    detail_2r.append({**detail_entry, "detail": f"SL خورد ← برگشت {psl_r:.2f}R{from_sl_str}"})
-                if psl_r >= 3.0:
-                    sl_reversed_3r += 1; reached_3r_count += 1; lvls.append("→3R")
-                    detail_3r.append({**detail_entry, "detail": f"SL خورد ← برگشت {psl_r:.2f}R{from_sl_str}"})
-                detail_sl_rev.append({**tshort,
-                    "detail": f"برگشت={psl_r:.2f}R {' '.join(lvls)}{from_sl_str}",
-                    "extra": {"psl_r": psl_r, "is_manual": rev_manual is True, "from_sl_r": from_sl_r}})
-                post_sl_pip_list.append(psl_r)
-
-            elif not actual_rev:
-                # سیستمی بدون review_reversal — post_sl_reached از check_sltp
-                if post_sl_1r:
-                    psl_r_auto = round(post_sl_max / risk_pips, 2) if has_valid_risk else 0
-                    sl_reversed_count += 1; sl_reversed_1r += 1; reached_1r_count += 1
-                    detail_1r.append({**tshort,
-                        "detail": f"SL خورد ← برگشت سیستمی {psl_r_auto:.2f}R",
-                        "extra": {"psl_r": psl_r_auto, "is_manual": False, "from_sl_r": None}})
-                    detail_sl_rev.append({**tshort,
-                        "detail": f"برگشت سیستمی={psl_r_auto:.2f}R",
-                        "extra": {"psl_r": psl_r_auto, "is_manual": False, "from_sl_r": None}})
-                    post_sl_pip_list.append(psl_r_auto)
-                if post_sl_1_5r: sl_reversed_1_5r += 1; reached_1_5r_count += 1
-                if post_sl_2r:
-                    sl_reversed_2r += 1; reached_2r_count += 1
-                    if post_sl_max > 0 and has_valid_risk:
-                        detail_2r.append({**tshort, "detail": f"SL خورد ← برگشت سیستمی {round(post_sl_max/risk_pips,2):.2f}R",
-                            "extra": {"psl_r": round(post_sl_max/risk_pips,2)}})
-                if post_sl_3r: sl_reversed_3r += 1; reached_3r_count += 1
-
-        # ─── فری‌ریسک ───
-        if outcome == "loss":
-            if free_risk_done:
-                free_risk_done_count += 1
-                detail_fr_done.append({**tshort, "detail": f"SL={round(risk_pips,1) if has_valid_risk else '—'}p | {entry_time_short}"})
-            elif fr_possible:
-                fr_missed_count += 1
-                detail_fr_missed.append({**tshort, "detail": f"SL={round(risk_pips,1) if has_valid_risk else '—'}p | {entry_time_short}"})
-
-        # ─── خلاصه متنی برای AI ───
-        mfe_r_str  = f"{mfe_r:.2f}R"  if (has_valid_risk and mfe_r)  else "—"
-        mae_r_str  = f"{mae_r:.2f}R"  if (has_valid_risk and mae_r)  else "—"
-        mbe_r_str  = f"{mbe_r:.2f}R"  if (outcome == "loss" and has_valid_risk and mbe_r > 0) else "—"
-        fr_str = "فری‌ریسک✓" if free_risk_done else ("فری‌ریسک✗(ممکن)" if fr_possible else "")
-        pb_str = "pullback✓" if t.get("review_pullback") else ""
-        note_short = (t.get("review_note") or t.get("note") or "")[:60]
-        risk_r_show = f"SL={round(risk_pips,1) if has_valid_risk else '?'}p(1R) TP={tp_r_show}"
-        detail_parts = [
-            f"{sym}/{t.get('tf','?')} {direction}:{outcome}({exit_type_label})",
-            risk_r_show,
-            f"taken={taken_r:+.2f}R MFE={mfe_r_str} MAE={mae_r_str}",
-        ]
-        if outcome == "loss" and mbe_r > 0:
-            detail_parts.append(f"MFEbeforeSL={mbe_r_str}")
-        if fr_str: detail_parts.append(fr_str)
-        if pb_str: detail_parts.append(pb_str)
-        if note_short: detail_parts.append(f"note:{note_short}")
-        trade_details.append(f"• {' | '.join(detail_parts)}")
-
-    avg_taken_r = round(sum(taken_r_list)/len(taken_r_list), 2) if taken_r_list else 0
-    avg_mfe_r = round(sum(mfe_r_list)/len(mfe_r_list), 2) if mfe_r_list else 0
-    avg_planned_rr = round(sum(planned_rr_list)/len(planned_rr_list),2) if planned_rr_list else 0
-    avg_rr_gap = round(sum(rr_gap_list)/len(rr_gap_list),2) if rr_gap_list else 0
-    # post_sl_pip_list حالا R هست نه پیپ
-    avg_post_sl_r = round(sum(post_sl_pip_list)/len(post_sl_pip_list),2) if post_sl_pip_list else 0
-    rr_bucket_lines = [
-        f"R/R {b}: {round(v['w']/(v['w']+v['l'])*100)}% برد ({v['w']}/{v['w']+v['l']})"
-        for b,v in rr_bucket.items() if v['w']+v['l']>0
-    ]
-    # setup_lines فقط اگه setup_type واقعی وجود داشته باشه
-    setup_lines = [
-        f"{st}: {round(v['w']/(v['w']+v['l'])*100)}% برد ({v['w']}/{v['w']+v['l']}) R:{v['r']:+.2f}R"
-        for st,v in sorted(setup_stats.items(), key=lambda x:-(x[1]['w']+x[1]['l']))
-        if v['w']+v['l']>0 and st
-    ]
-    trade_detail_data = {
-        "r1": detail_1r, "r2": detail_2r, "r3": detail_3r,
-        "sl_rev": detail_sl_rev, "early": detail_early,
-        "fr_missed": detail_fr_missed, "fr_done": detail_fr_done,
-        "avg_post_sl_r": avg_post_sl_r  # ← R نه پیپ
-    }
-    avg_early_r = round(sum(early_exit_left_r_list)/len(early_exit_left_r_list), 2) if early_exit_left_r_list else 0
-    avg_mae_r = round(sum(mae_ratio_list)/len(mae_ratio_list), 2) if mae_ratio_list else 0
-
-    # best/worst sym براساس total_r نه pnl خام
-    best_sym = max(sym_stats, key=lambda s: sym_stats[s]["total_r"]) if sym_stats else "—"
-    worst_sym = min(sym_stats, key=lambda s: sym_stats[s]["total_r"]) if sym_stats else "—"
-    best_hour = worst_hour = "—"
-    if hour_stats:
-        def hour_wr(h):
-            s = hour_stats[h]
-            tot = s["wins"] + s["losses"]
-            return s["wins"]/tot if tot else 0
-        best_hour = "%02d:00" % max(hour_stats, key=hour_wr)
-        worst_hour = "%02d:00" % min(hour_stats, key=hour_wr)
-    sym_lines = []
-    for s, v in sym_stats.items():
-        tot = v["wins"] + v["losses"]
-        wr_s = round(v["wins"]/tot*100) if tot else 0
-        sym_lines.append(f"{s}: {wr_s}% برد ({v['wins']}/{tot}) | R:{v['total_r']:+.2f}R")
-    numeric = {
-        "total": total, "wins": wins, "losses": losses, "winrate": wr,
-        "win_tp_count": win_tp_count, "win_3r_count": win_3r_count,
-        "avg_taken_r": avg_taken_r, "avg_mfe_r": avg_mfe_r,
-        "early_exit_count": early_exit_count, "early_exit_avg_pip": avg_early_r,
-        "sl_reversed_count": sl_reversed_count,
-        "sl_reversed_1r": sl_reversed_1r, "sl_reversed_1_5r": sl_reversed_1_5r,
-        "sl_reversed_2r": sl_reversed_2r, "sl_reversed_3r": sl_reversed_3r,
-        "fr_missed_count": fr_missed_count,
-        "free_risk_done_count": free_risk_done_count,
-        "reached_1r_count": reached_1r_count,
-        "reached_1_5r_count": reached_1_5r_count,
-        "reached_2r_count": reached_2r_count,
-        "reached_3r_count": reached_3r_count,
-        "avg_mae_ratio": avg_mae_r,
-        "best_sym": best_sym, "worst_sym": worst_sym,
-        "best_hour": best_hour, "worst_hour": worst_hour,
-        "avg_planned_rr": avg_planned_rr, "avg_rr_gap": avg_rr_gap,
-        "rr_bucket_lines": rr_bucket_lines, "setup_lines": setup_lines,
-        "trade_detail_data": trade_detail_data,
-    }
-    no_sl_count = total - len(taken_r_list)  # تریدهای بدون SL
-    prompt = (
-        f"تو یک تحلیلگر حرفه‌ای داده ترید هستی. فقط بر اساس اعداد زیر تحلیل کن.\n"
-        f"⚠️ همه اعداد R-based هستند (1R = ریسک هر ترید). پیپ استفاده نکن.\n\n"
-        f"=== آمار کلی ===\n"
-        f"تعداد: {total} | برد: {wins} | باخت: {losses} | نرخ برد: {wr}%\n"
-        f"{'⚠️ '+str(no_sl_count)+' ترید بدون SL (از محاسبات R حذف شدند) | ' if no_sl_count else ''}"
-        f"بردها: {win_3r_count} تا 3R کامل | {win_tp_count} تا زودخروج\n"
-        f"میانگین R گرفته (برد مثبت/باخت منفی): {avg_taken_r:+.2f}R | میانگین MFE: {avg_mfe_r:.2f}R\n"
-        f"میانگین MAE: {avg_mae_r:.2f}R\n\n"
-        f"=== رسیدن به سطوح ریوارد ===\n"
-        f"1R: {reached_1r_count}/{total} | 1.5R: {reached_1_5r_count}/{total} | 2R: {reached_2r_count}/{total} | 3R: {reached_3r_count}/{total}\n\n"
-        f"=== مدیریت معامله ===\n"
-        f"زود بستیم: {early_exit_count} تا (میانگین {avg_early_r:.2f}R روی میز موند)\n"
-        f"SL خورد و برگشت — 1R:{sl_reversed_1r} | 1.5R:{sl_reversed_1_5r} | 2R:{sl_reversed_2r} | 3R:{sl_reversed_3r}\n"
-        f"میانگین برگشت بعد SL: {avg_post_sl_r:.2f}R\n"
-        f"فری‌ریسک ممکن بود ولی SL خورد: {fr_missed_count} | فری‌ریسک انجام شد: {free_risk_done_count}\n\n"
-        f"=== نمادها (R-based) ===\n" + "\n".join(sym_lines) + f"\n\n"
-        f"=== ساعت: بهترین {best_hour} | بدترین {worst_hour} ===\n\n"
-        f"=== خلاصه تریدها ===\n" + "\n".join(trade_details[:20]) + f"\n\n"
-        f"گزارش فارسی بنویس (بدون مقدمه):\n"
-        f"1. آمار کلی یک جمله\n"
-        f"2. تحلیل سطوح ریوارد: چند درصد تریدها به 1R/2R/3R رسیدن\n"
-        f"3. مشکل استاپ: {sl_reversed_1r} ترید بعد SL به 1R رسید ({sl_reversed_2r} به 2R، {sl_reversed_3r} به 3R). میانگین برگشت {avg_post_sl_r:.2f}R. پیشنهاد دقیق بده.\n"
-        f"4. مشکل تارگت: MFE میانگین {avg_mfe_r:.2f}R ولی گرفتیم {avg_taken_r:+.2f}R. تارگت بهینه پیشنهاد بده.\n"
-        f"5. بهترین/بدترین ساعت و نماد براساس R.\n"
-        f"6. نمره کلی از 10.\n\n"
-        f"مهم: اعداد دقیق، فرضی ننویس. همه R-based."
-    )
-    if custom_prompt:
-        data_block = (
-            f"\n\n=== داده‌های آماری (همه R-based) ===\n"
-            f"تعداد:{total}|برد:{wins}|باخت:{losses}|نرخ برد:{wr}%\n"
-            f"R گرفته:{avg_taken_r:+.2f}R|MFE:{avg_mfe_r:.2f}R|MAE:{avg_mae_r:.2f}R\n"
-            f"R/R برنامه:{avg_planned_rr}|اختلاف:{avg_rr_gap:+.2f}R\n"
-            f"میانگین برگشت بعد SL:{avg_post_sl_r:.2f}R\n"
-            f"رسیدن 1R:{reached_1r_count}|2R:{reached_2r_count}|3R:{reached_3r_count}\n"
-            f"SL برگشت 1R:{sl_reversed_1r}|2R:{sl_reversed_2r}|3R:{sl_reversed_3r}\n"
-            f"فری‌ریسک ممکن:{fr_missed_count}|انجام شد:{free_risk_done_count}\n"
-            f"نرخ برد R/R:{' | '.join(rr_bucket_lines)}\n"
-            f"{'ستاپ‌ها:'+' | '.join(setup_lines[:4]) if setup_lines else 'ستاپ‌ها: وارد نشده'}\n"
-            f"بهترین:{best_sym}|بدترین:{worst_sym}|بهترین ساعت:{best_hour}|بدترین:{worst_hour}\n"
-            f"خلاصه:\n" + "\n".join(trade_details[:15])
-        )
-        final_prompt = custom_prompt + data_block
-    else:
-        final_prompt = prompt
-    analysis = groq_analyze(final_prompt)
-    return jsonify({"ok": True, "analysis": analysis, **numeric})
-
-@app.route("/api/ohlc/<symbol>/<tf>", methods=["GET"])
-def get_ohlc_proxy(symbol, tf):
-    limit = request.args.get("limit", 200)
-    url = f"https://biquote.io/api/{symbol.upper()}/ohlc?interval={tf}&limit={limit}"
-    try:
-        r = requests.get(url, timeout=12, headers=H)
-        r.raise_for_status()
-        return jsonify(r.json())
-    except Exception as e:
-        return jsonify({"error": str(e)}), 502
-
-@app.route("/api/chart/<trade_id>", methods=["GET"])
-def get_chart(trade_id):
-    journal = load_journal()
-    trade = next((t for t in journal if t["id"] == trade_id), None)
-    if not trade:
-        return jsonify({"ok": False, "error": "ترید پیدا نشد"}), 404
-    sym = trade["sym"]
-    tf = trade.get("tf", "1h")
-    entry = float(trade["entry"])
-    sl = trade.get("sl_price")
-    tp = trade.get("tp_price")
-    entry_time_str = trade.get("entryTime", "")
-    direction = trade.get("direction", "BUY")
-    outcome = trade.get("outcome", "")
-    exit_px = trade.get("exit")
-    mul = get_pip_multiplier(sym)
-    status = trade.get("status", "closed")
-    risk_pips = None
-    reward_levels = {}
-    if sl and entry:
-        if direction == "BUY":
-            risk_pips = (entry - float(sl)) * mul
-            reward_levels = {"r1": entry + risk_pips / mul, "r2": entry + 2 * risk_pips / mul, "r3": entry + 3 * risk_pips / mul}
-        else:
-            risk_pips = (float(sl) - entry) * mul
-            reward_levels = {"r1": entry - risk_pips / mul, "r2": entry - 2 * risk_pips / mul, "r3": entry - 3 * risk_pips / mul}
-    snapshot = trade.get("candle_snapshot", [])
-    candles = []
-    if snapshot:
-        entry_utc = tehran_to_utc(entry_time_str)
-        entry_idx_snap = 0
-        for i, b in enumerate(snapshot):
-            try:
-                bt = datetime.strptime(b["t"], "%Y-%m-%d %H:%M")
-                bt_utc = bt - timedelta(hours=3, minutes=30)
-                if bt_utc >= (entry_utc or datetime.utcfromtimestamp(0)):
-                    entry_idx_snap = i
-                    break
-            except: pass
-        # دیگر هیچ trimming اضافی انجام نمی‌دهیم – snapshot قبلاً تا SL/3R ذخیره شده
-        for i, b in enumerate(snapshot):
-            phase = "before" if i < entry_idx_snap else ("hit" if i == len(snapshot)-1 else "after")
-            candles.append({"t": b["t"], "o": b["o"], "h": b["h"], "l": b["l"], "c": b["c"], "phase": phase})
-    else:
-        # fallback: از API بگیریم (به ندرت)
-        try:
-            tf_chart_limits = {"1m":5000,"5m":3000,"15m":800,"1h":200,"4h":50,"1d":30}
-            chart_limit = tf_chart_limits.get(tf, 200)
-            url = f"https://biquote.io/api/{sym}/ohlc?interval={tf}&limit={chart_limit}"
-            print(f"[CHART] fallback fetch {sym} tf={tf} limit={chart_limit}")
-            r = requests.get(url, timeout=12, headers=H)
-            raw = r.json()
-            bars = raw.get("bars") or raw.get("data") or (raw if isinstance(raw, list) else [])
-        except Exception as e:
-            return jsonify({"ok": False, "error": f"خطا در دریافت کندل: {e}"}), 502
-        if not bars:
-            return jsonify({"ok": False, "error": "کندلی دریافت نشد"}), 502
-        def bar_dt(b):
-            ts = b.get("openTime") or b.get("time") or b.get("timestamp") or ""
-            try:
-                if isinstance(ts, (int, float)):
-                    return datetime.utcfromtimestamp(ts)
-                return datetime.strptime(ts.replace("Z",""), "%Y-%m-%dT%H:%M:%S")
-            except:
-                return datetime.utcfromtimestamp(0)
-        bars.sort(key=bar_dt)
-        entry_utc = tehran_to_utc(entry_time_str)
-        entry_idx = 0
-        if entry_utc:
-            for i, b in enumerate(bars):
-                if bar_dt(b) >= entry_utc:
-                    entry_idx = i
-                    break
-        end_idx = min(entry_idx + 100, len(bars) - 1)
-        r3_price = reward_levels.get("r3") if reward_levels else None
-        is_buy = direction == "BUY"
-        for i in range(entry_idx, len(bars)):
-            b = bars[i]
-            high = float(b.get("high", 0))
-            low  = float(b.get("low", 0))
-            if is_buy:
-                if sl and low <= float(sl):  end_idx = i; break
-                if r3_price and high >= r3_price: end_idx = i; break
-            else:
-                if sl and high >= float(sl): end_idx = i; break
-                if r3_price and low <= r3_price: end_idx = i; break
-            end_idx = i
-        start_idx = max(0, entry_idx - 20)
-        visible = bars[start_idx:end_idx+1]
-        rel_entry = entry_idx - start_idx
-        for i, b in enumerate(visible):
-            dt_teh = bar_dt(b) + timedelta(hours=3, minutes=30)
-            phase = "before" if i < rel_entry else ("hit" if i == len(visible)-1 else "after")
-            candles.append({"t": dt_teh.strftime("%Y-%m-%d %H:%M"), "o": float(b.get("open",0)), "h": float(b.get("high",0)), "l": float(b.get("low",0)), "c": float(b.get("close",0)), "phase": phase})
-    return jsonify({
-        "ok": True, "sym": sym, "tf": tf, "direction": direction, "outcome": outcome, "status": status,
-        "entry": entry, "sl": float(sl) if sl else None, "tp": float(tp) if tp else None,
-        "exit_px": float(exit_px) if exit_px else None, "risk_pips": round(risk_pips, 1) if risk_pips else None,
-        "reward_levels": reward_levels, "candles": candles,
-        "entry_candle_idx": next((i for i,c in enumerate(candles) if c["phase"] != "before"), 0),
-    })
-
-def poll_open_trades():
-    time.sleep(30)
-    while True:
-        try:
-            journal = load_journal()
-            open_trades = [t for t in journal if t.get("status") == "open" and t.get("pending_check")]
-            changed = False
-            for trade in open_trades:
-                sym = trade["sym"]
-                tf = trade.get("tf", "1h")
-                entry = float(trade["entry"])
-                direction = trade.get("direction", "BUY")
-                sl_price = trade.get("sl_price")
-                mul = get_pip_multiplier(sym)
-                if sl_price:
-                    risk = abs(entry - float(sl_price)) * mul
-                    if direction == "BUY":
-                        tp3 = entry + 3 * risk / mul
-                    else:
-                        tp3 = entry - 3 * risk / mul
-                else:
-                    tp3 = trade.get("tp_price")
-                try:
-                    # در polling هم snapshot را تا SL/3R می‌گیریم (تابع قبلاً اصلاح شده)
-                    res = check_sltp_hit_with_details(sym, tf, trade["entryTime"], direction, entry, sl_price, None, 1.0, r3_override=tp3)
-                    (hit, hit_price, last_close, pnl, mfe_pip, mae_pip, candle_lines,
-                     found_3r, fr_possible, fr_saved, fr_at, pullback,
-                     post_max, post_1r, post_1_5r, post_2r, post_3r,
-                     mfe_before_sl, passed_1r, snapshot_bars) = res
-                    if hit:
-                        trade["exit"] = hit_price
-                        trade["exitTime"] = now_teh()
-                        trade["outcome"] = "win" if hit in ["tp", "tp3"] else "loss"
-                        trade["exit_type"] = hit
-                        trade["status"] = "closed"
-                        trade["pending_check"] = False
-                        trade["mfe_pip"] = round(mfe_pip, 1)
-                        trade["mae_pip"] = round(mae_pip, 1)
-                        trade["found_3r"] = found_3r
-                        trade["free_risk_was_possible"] = fr_possible
-                        trade["free_risk_saved"] = fr_saved
-                        trade["pullback_after_1r"] = pullback
-                        trade["post_sl_max_profit"] = round(post_max, 1) if post_max else 0
-                        trade["post_sl_reached_1r"] = post_1r
-                        trade["post_sl_reached_1_5r"] = post_1_5r
-                        trade["post_sl_reached_2r"] = post_2r
-                        trade["post_sl_reached_3r"] = post_3r
-                        trade["mfe_before_sl_pip"] = round(mfe_before_sl, 1) if mfe_before_sl else 0
-                        trade["passed_1r"] = passed_1r
-                        trade["exitNote"] = f"خودکار polling: {'3R' if hit=='tp3' else ('TP' if hit=='tp' else 'SL')}"
-                        diff = (hit_price - entry) if direction == "BUY" else (entry - hit_price)
-                        trade["pnl"] = round(diff, 4)
-                        trade["candle_snapshot"] = snapshot_bars
-                        trade["snapshot_locked"] = True
-                        changed = True
-                        log_error(f"[poll_open] {sym} resolved: {hit} at {hit_price}")
-                    else:
-                        if not trade.get("snapshot_locked"):
-                            trade["candle_snapshot"] = snapshot_bars
-                        trade["last_poll"] = now_teh()
-                        changed = True
-                except Exception as e:
-                    log_error(f"[poll_open] {sym}: {e}")
-            if changed:
-                save_journal(journal)
-        except Exception as e:
-            log_error(f"poll_open_trades: {e}")
-        time.sleep(7200)
-
-print("=" * 60)
-print(f"[STARTUP] 🚀 سرور در حال راه‌اندازی...")
-print(f"[STARTUP] GIST_TOKEN: {'✅ موجود' if GIST_TOKEN else '❌ ندارد'}")
-print(f"[STARTUP] GIST_ID_JOURNAL: {'✅ ' + GIST_ID_JOURNAL[:8] + '...' if GIST_ID_JOURNAL else '❌ ندارد'}")
-print(f"[STARTUP] GIST_ID_ALERTS: {'✅ موجود' if GIST_ID_ALERTS else '❌ ندارد'}")
-print(f"[STARTUP] GROQ_API_KEY: {'✅ موجود' if GROQ_API_KEY else '❌ ندارد'}")
-_init_journal = load_journal()
-print(f"[STARTUP] ✅ journal لود شد — {len(_init_journal)} ترید")
-print("=" * 60)
 threading.Thread(target=check_alerts, daemon=True).start()
-print("[STARTUP] thread check_alerts شروع شد")
 threading.Thread(target=poll_telegram, daemon=True).start()
-print("[STARTUP] thread poll_telegram شروع شد")
-threading.Thread(target=poll_open_trades, daemon=True).start()
-print("[STARTUP] thread poll_open_trades شروع شد")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    print(f"[STARTUP] Flask روی پورت {port} اجرا میشه")
     app.run(host="0.0.0.0", port=port, debug=False)
