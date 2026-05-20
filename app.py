@@ -438,8 +438,6 @@ def poll_telegram():
                                 print(f"[alarm-cmd] price error: {ep}")
                             dist = calc_dist_str(sym, atype, cur, tgt_f) if cur else "—"
                             # ثبت آلارم در سیستم (با notify_only برای فایر فقط به شما)
-                            global _cache
-                            _cache = None
                             alarm_data = load_data()
                             new_alert = {
                                 "id": str(int(time.time() * 1000)),
