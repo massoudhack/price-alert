@@ -647,7 +647,7 @@ def check_alerts():
                         if a.get("notify_only"):
                             notify_cids = [str(a["notify_only"])]
                         fired_msg = (
-                            f"🚨 <b>آلارم فوری!</b>\n\n"
+                            f"🚨 <b>آلارم قیمت!</b>\n\n"
                             f"💰 <b>{sym}</b> — {arrow}\n"
                             f"👤 ارسال‌کننده: <b>{creator}</b>\n\n"
                             f"🎯 هدف: <b>{tgt_text}</b>\n"
@@ -1046,7 +1046,7 @@ def instant_alert():
     if not token:
         return jsonify({"ok": False, "error": "توکن تلگرام تنظیم نشده"}), 400
 
-    targets = [YOUR_CHAT_ID] if only_me else all_cids
+    targets = [YOUR_CHAT_ID] if only_me else (all_cids if BROADCAST_MODE else [YOUR_CHAT_ID])
     if not targets:
         return jsonify({"ok": False, "error": "هیچ chat_id‌ای ثبت نشده"}), 400
 
@@ -1061,12 +1061,13 @@ def instant_alert():
     cmt = f"\n💬 <i>{comment}</i>" if comment else ""
     price_text = fmt_price(cur, sym) if cur else "—"
     tp_text = f"\n🎯 قیمت هدف: <b>{fmt_price(target_price, sym)}</b>" if target_price else ""
+    alert_title = "آلارم قیمت" if target_price else "آلارم فوری"
     out_msg = (
-        f"⚡ <b>آلارم فوری!</b>\n\n"
-        f"💰 <b>{sym}</b> — {arrow}"
-        f"{tp_text}\n"
+        f"🚨 <b>{alert_title}!</b>\n\n"
+        f"💰 <b>{sym}</b> — {arrow}\n"
         f"👤 ارسال‌کننده: <b>{creator or 'سیستم'}</b>\n\n"
-        f"📊 قیمت لحظه‌ای: <b>{price_text}</b>"
+        + (f"🎯 هدف: <b>{fmt_price(target_price, sym)}</b>\n" if target_price else "")
+        + f"📊 قیمت لحظه‌ای: <b>{price_text}</b>"
         f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
     )
 
