@@ -558,7 +558,7 @@ def poll_telegram():
                                 "active": True, "last_price": cur,
                                 "last_checked": now_teh() if cur else None,
                                 "created_at": now_teh(),
-                                "notify_only": None if BROADCAST_MODE else YOUR_CHAT_ID
+                                "notify_only": YOUR_CHAT_ID if not BROADCAST_MODE else None
                             }
                             d["alerts"].append(new_alert)
                             save_alerts(d)
@@ -637,9 +637,24 @@ def check_alerts():
                     a["active"] = False
                     fired.append(a["id"])
                     if token and cids:
-                        arrow = "📈 از هدف رد شد" if cond == "above" else "📉 به هدف رسید"
-                        msg = f"🚨 آلارم {sym} {arrow}\nهدف: {tgt}\nقیمت: {cur}"
-                        broadcast(token, cids, msg)
+                        arrow = "📈 ناحیه سل" if cond == "above" else "📉 ناحیه بای"
+                        creator = a.get("created_by") or "سیستم"
+                        comment = a.get("comment", "")
+                        cmt = f"\n💬 <i>{comment}</i>" if comment else ""
+                        price_text = fmt_price(cur, sym) if cur else "—"
+                        tgt_text = fmt_price(tgt, sym)
+                        notify_cids = cids
+                        if a.get("notify_only"):
+                            notify_cids = [str(a["notify_only"])]
+                        fired_msg = (
+                            f"🚨 <b>آلارم فوری!</b>\n\n"
+                            f"💰 <b>{sym}</b> — {arrow}\n"
+                            f"👤 ارسال‌کننده: <b>{creator}</b>\n\n"
+                            f"🎯 هدف: <b>{tgt_text}</b>\n"
+                            f"📊 قیمت لحظه‌ای: <b>{price_text}</b>"
+                            f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
+                        )
+                        broadcast(token, notify_cids, fired_msg)
             if fired:
                 arch = data.get("archive", [])
                 for fid in fired:
@@ -955,7 +970,7 @@ def add_alert():
     data = load_alerts()
     body = request.json or {}
     sym = body.get("symbol","").upper().strip()
-    atype = body.get("type","crypto")
+    atype = body.get("type","forex")
     tgt = float(body.get("target_price", 0))
     cur = get_price(sym, atype) if (atype!="forex" or is_forex_market_open()) else None
     a = {
