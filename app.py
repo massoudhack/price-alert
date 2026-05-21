@@ -1306,10 +1306,7 @@ def add_journal_manual():
     is_crypto = is_crypto_symbol(sym)
     risk_pips = None
     if sl_price and entry:
-        if direction == "BUY":
-            risk_pips = (entry - sl_price) * mul
-        else:
-            risk_pips = (sl_price - entry) * mul
+        risk_pips = abs(entry - float(sl_price)) * mul
     if is_crypto:
         mfe_r = body.get("review_mfe_r")
         mae_r = body.get("review_mae_r")
@@ -1487,10 +1484,7 @@ def analyze_trade(trade_id):
     mul = get_pip_multiplier(symbol)
     risk_pips = None
     if sl and entry:
-        if direction == "BUY":
-            risk_pips = (entry - sl) * mul
-        else:
-            risk_pips = (sl - entry) * mul
+        risk_pips = abs(entry - float(sl)) * mul
     risk_pips_safe = risk_pips if (risk_pips and risk_pips > 0) else 1.0
     # exit fallback: اگه exit نداریم از tp_price (win) یا sl_price (loss) استفاده کن
     exit_for_analyze = exit_px or (trade.get("tp_price") if outcome == "win" else (sl if outcome == "loss" else None))
@@ -1629,6 +1623,9 @@ def overall_analysis():
         outcome = t["outcome"]
         direction = t["direction"]
         mfe_pip = float(t.get("review_mfe") or t.get("mfe_pip") or 0)
+        # fallback: اگه WIN و MFE=0، از TP تخمین بزن (همانند analyze_trade)
+        if mfe_pip == 0 and t.get("outcome") == "win" and t.get("tp_price") and t.get("entry"):
+            mfe_pip = abs(float(t["tp_price"]) - float(t["entry"])) * get_pip_multiplier(t.get("sym","EURUSD"))
         mae_pip = float(t.get("review_mae") or t.get("mae_pip") or 0)
         rev_occurred = t.get("review_reversal_occurred", False)
         rev_target_pips = t.get("review_reversal_target_pips")
