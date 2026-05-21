@@ -43,6 +43,9 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .brand-name em{color:var(--green);font-style:normal}
 .brand-sub{font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:2px}
 .hdr-right{display:flex;align-items:center;gap:8px}
+.journal-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid rgba(160,112,255,.3);background:linear-gradient(135deg,rgba(160,112,255,.12),rgba(77,168,255,.08));color:var(--purple);font-family:var(--sans);transition:.2s;text-decoration:none;letter-spacing:.3px}
+.journal-btn:hover{background:linear-gradient(135deg,rgba(160,112,255,.22),rgba(77,168,255,.15));border-color:var(--purple);transform:translateY(-1px);box-shadow:0 4px 14px rgba(160,112,255,.2)}
+.journal-btn svg{opacity:.85}
 .live-pill{display:flex;align-items:center;gap:6px;padding:7px 13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;font-size:11px;font-family:var(--mono);color:var(--text2)}
 .ldot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);animation:blink 2s ease-in-out infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
@@ -232,6 +235,10 @@ select option{background:var(--bg3)}
     </div>
     <div class="hdr-right">
       <div class="live-pill"><span class="ldot"></span><span id="clk">--:--</span></div>
+      <a href="static/journal.html" class="journal-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        ژورنال
+      </a>
       <button class="theme-btn" id="theme-toggle" onclick="toggleTheme()">🌙</button>
     </div>
   </div>
