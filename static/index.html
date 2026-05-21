@@ -267,8 +267,8 @@ select option{background:var(--bg3)}
       <div class="sec-hd"><div class="sec-ttl"><span class="sec-dot green"></span>آلارم جدید</div></div>
       <div class="sec-bd">
         <div class="fgrid">
-          <div class="fld"><label>نوع بازار</label><select id="mkt" onchange="onMktChange()"><option value="crypto">🪙 کریپتو</option><option value="forex">💱 فارکس / طلا</option></select></div>
-          <div class="fld"><label>نماد <span id="sym-hint" style="color:var(--blue);font-size:10px">(BTC, ETH...)</span></label><input type="text" id="sym" placeholder="BTC" dir="ltr" oninput="this.value=this.value.toUpperCase()"></div>
+          <div class="fld"><label>نوع بازار</label><select id="mkt" onchange="onMktChange()"><option value="forex">💱 فارکس / طلا</option><option value="crypto">🪙 کریپتو</option></select></div>
+          <div class="fld"><label>نماد <span id="sym-hint" style="color:var(--blue);font-size:10px">(EURUSD, XAUUSD...)</span></label><input type="text" id="sym" placeholder="EURUSD" dir="ltr" oninput="this.value=this.value.toUpperCase()"></div>
           <div class="fld"><label>قیمت هدف (USD)</label><input type="number" id="tprice" placeholder="0.00000" step="any" dir="ltr"></div>
           <div class="fld"><label>جهت آلارم</label><select id="adir"><option value="above">↑ بالاتر از هدف</option><option value="below">↓ پایین‌تر از هدف</option></select></div>
           <div class="fld"><label>یادداشت (اختیاری)</label><input type="text" id="acmt" placeholder="سطح کلیدی..."></div>
