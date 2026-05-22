@@ -1211,8 +1211,14 @@ def add_journal():
     }
     print(f"[AUTO] ترید ساخته شد — id={trade['id']} missed={is_missed_zone}")
     try:
+        # محاسبه 3R override
+        _mul = get_pip_multiplier(sym)
+        _r3 = None
+        if sl_price and entry:
+            _risk = abs(entry - float(sl_price)) * _mul
+            _r3 = (entry + 3*_risk/_mul) if direction == "BUY" else (entry - 3*_risk/_mul)
         # یک بار فراخوانی که snapshot تا SL/3R ادامه پیدا می‌کند و hit اولین رویداد است
-        res = check_sltp_hit_with_details(sym, trade["tf"], trade["entryTime"], direction, entry, sl_price, tp_price, size, r3_override=None)
+        res = check_sltp_hit_with_details(sym, trade["tf"], trade["entryTime"], direction, entry, sl_price, tp_price, size, r3_override=_r3)
         (hit, hit_price, hit_time, last_close, pnl, mfe_pip, mae_pip, candle_lines, found_3r,
          fr_possible, fr_saved, fr_at, pullback, post_max, post_1r, post_1_5r, post_2r, post_3r,
          mfe_before_sl, passed_1r, snapshot_bars) = res
@@ -1373,10 +1379,23 @@ def add_journal_manual():
         "is_missed_zone": is_missed_zone
     }
     mfe_for_calc = float(review_mfe) if review_mfe else 0
-    trade["exit_type"] = calc_exit_type(outcome, risk_pips, mfe_for_calc)
+    mae_for_calc = float(review_mae) if review_mae else 0
+    # محاسبه passed_1r از review_mfe
+    _passed_1r = False
+    _fr_possible = False
+    if risk_pips and risk_pips > 0 and mfe_for_calc > 0:
+        _passed_1r = mfe_for_calc >= risk_pips * 0.98
+        _fr_possible = _passed_1r  # conservative — review میتونه override کنه
+    trade["passed_1r"] = _passed_1r
+    trade["free_risk_was_possible"] = _fr_possible
+    trade["free_risk_saved"] = review_free_risk_saved
+    trade["pullback_after_1r"] = review_pullback
+    # found_3r از review_mfe
+    _found_3r = bool(risk_pips and risk_pips > 0 and mfe_for_calc >= risk_pips * 3.0)
+    trade["found_3r"] = _found_3r
+    trade["exit_type"] = calc_exit_type(outcome, risk_pips, mfe_for_calc, _found_3r)
     if trade.get("outcome") and not trade.get("candle_snapshot"):
         try:
-            # برای ترید دستی هم snapshot در صورت امکان بگیریم (اختیاری)
             r3_guess = None
             if risk_pips and risk_pips > 0:
                 if direction == "BUY":
@@ -1388,7 +1407,8 @@ def add_journal_manual():
                 tp_price if tp_price else r3_guess,
                 size, r3_override=r3_guess
             )
-            trade["candle_snapshot"] = res_snap[19] if len(res_snap) > 19 else []
+            # snapshot_bars آخرین عنصر tuple است
+            trade["candle_snapshot"] = res_snap[-1] if res_snap else []
         except Exception as e:
             log_error(f"manual snapshot: {e}")
             trade["candle_snapshot"] = []
@@ -1562,29 +1582,58 @@ def analyze_trade(trade_id):
         lines.append(f"تارگت زده شد — سود {taken_r:.1f}R" if taken_r else "تارگت زده شد — سود نامشخص")
     if outcome == "loss" and mfe_bsl_r > 0.05:
         lines.append(f"قبل از استاپ تا {mfe_bsl_r:.1f}R سود رفت")
-    if outcome == "loss":
-        if rev_occurred and rev_target_r > 0:
-            lines.append(f"بعد از استاپ تا {rev_target_r:.1f}R برگشت")
+    if outcome == "loss" and rev_occurred and rev_target_r > 0:
+        lines.append(f"بعد از استاپ تا {rev_target_r:.1f}R برگشت")
     if outcome == "win" and left_r > 0.2:
         lines.append(f"حداکثر سود {mfe_r:.1f}R بود — {left_r:.1f}R روی میز ماند")
     if fr_done:
-        lines.append("🛡️ فری‌ریسک انجام شد")
+        lines.append("فری‌ریسک انجام شد")
     elif passed_1r and fr_possible and outcome == "loss":
-        if pullback:
-            lines.append("بعد از 1R به ورود برگشت و دوباره رفت — فری‌ریسک نجات می‌داد")
-        else:
-            lines.append("بعد از 1R به ورود برگشت — فری‌ریسک نجات می‌داد")
+        lines.append("فری‌ریسک ممکن بود ولی انجام نشد")
     elif not passed_1r and outcome == "loss":
-        lines.append("به 1R نرسید — فری‌ریسک ممکن نبود")
-    elif passed_1r and not fr_possible and outcome != "loss":
-        lines.append("بعد از 1R به ورود برنگشت — فری‌ریسک نمی‌خورد")
+        lines.append("به 1R نرسید")
     if mfe_r >= 1 and outcome != "win":
         lines.append(f"قیمت تا {mfe_r:.1f}R رفت")
-    text = " | ".join(lines)
-    trade["ai_analysis"] = text
-    trade["ai_summary"] = text
+    summary_text = " | ".join(lines)
+
+    # ─── پرامپت کامل برای AI ───
+    mae_r_val = round(float(trade.get("review_mae") or trade.get("mae_pip") or 0) / risk_pips_safe, 2)
+    entry_quality = "عالی (MAE<0.3R)" if mae_r_val < 0.3 else "متوسط (MAE 0.3-0.7R)" if mae_r_val < 0.7 else "ضعیف (MAE>0.7R)"
+    note_text = (trade.get("review_note") or trade.get("note") or "ندارد")[:200]
+    tf_val = trade.get("tf", "؟")
+    sym_val = trade.get("sym", "؟")
+    dir_val = trade.get("direction", "؟")
+
+    ai_prompt = (
+        f"یک ترید خاص رو تحلیل کن. فقط بر اساس این داده‌ها.\n\n"
+        f"=== مشخصات ترید ===\n"
+        f"نماد: {sym_val} | تایم‌فریم: {tf_val} | جهت: {dir_val} | نتیجه: {outcome}\n"
+        f"ریسک (1R): {round(risk_pips_safe,1)} pip\n"
+        f"R/R برنامه: {round(abs(float(trade.get('tp_price') or trade.get('entry') or 0) - float(trade.get('entry',0))) * get_pip_multiplier(symbol) / risk_pips_safe, 2) if trade.get('tp_price') else '؟'}\n\n"
+        f"=== نتایج ===\n"
+        f"R گرفته: {taken_r:+.2f}R\n"
+        f"MFE (بیشترین سود بالقوه): {mfe_r:.2f}R\n"
+        f"MAE (بیشترین برگشت منفی): {mae_r_val:.2f}R → کیفیت ورود: {entry_quality}\n"
+        + (f"MFE قبل از SL: {mfe_bsl_r:.2f}R\n" if outcome == "loss" and mfe_bsl_r > 0.05 else "")
+        + (f"برگشت بعد از SL: {rev_target_r:.2f}R\n" if outcome == "loss" and rev_occurred and rev_target_r > 0 else "")
+        + (f"R روی میز موند: {left_r:.2f}R\n" if outcome == "win" and left_r > 0.1 else "")
+        + f"\n=== مدیریت ===\n"
+        f"به 1R رسید: {'بله' if passed_1r else 'خیر'}\n"
+        f"فری‌ریسک ممکن بود: {'بله' if fr_possible else 'خیر'} | انجام شد: {'بله' if fr_done else 'خیر'}\n"
+        f"Pullback به ورود: {'بله' if pullback else 'خیر'}\n\n"
+        f"=== یادداشت تریدر ===\n{note_text}\n\n"
+        f"تحلیل فارسی بنویس (۳-۵ جمله، بدون مقدمه):\n"
+        f"1. این ترید چطور مدیریت شد؟ (زود بستی / دیر بستی / درست بستی)\n"
+        f"2. کیفیت ورود چطور بود؟ MAE چه می‌گوید؟\n"
+        f"3. اگه بهتر مدیریت می‌شد چقدر R بیشتر/کمتر ضرر داشتی؟\n"
+        f"4. یک چیز مشخص که دفعه بعد باید فرق کنه.\n"
+        f"اعداد دقیق بزن، کلی‌گویی نکن."
+    )
+    ai_result = groq_analyze(ai_prompt)
+    trade["ai_analysis"] = ai_result or summary_text
+    trade["ai_summary"] = summary_text
     save_journal(journal)
-    return jsonify({"ok": True, "analysis": text, "summary": text})
+    return jsonify({"ok": True, "analysis": ai_result or summary_text, "summary": summary_text})
 
 @app.route("/api/overall-analysis", methods=["GET"])
 def overall_analysis():
@@ -1644,6 +1693,12 @@ def overall_analysis():
     detail_1r, detail_2r, detail_3r, detail_sl_rev, detail_early = [], [], [], [], []
     detail_fr_missed, detail_fr_done = [], []
     reversal_r_list = []
+
+    # ─── محاسبات جدید ───
+    hypothetical_3r_list = []   # اگه همه تریدها تا 3R نگه میداشتیم
+    entry_quality_list = []     # MAE/risk — هرچی کمتر entry بهتر
+    streak_results = []         # ترتیب نتایج برای streak analysis
+    day_stats = {}              # آمار روز هفته
 
     for idx_t, t in enumerate(closed):
         sym = t["sym"]
@@ -1708,6 +1763,36 @@ def overall_analysis():
             t.get("found_3r", False)
         )
         exit_type_label = {"sl": "SL", "tp": "TP(زودخروج)", "tp3": "3R(کامل)"}.get(exit_type, exit_type)
+
+        # ─── محاسبات جدید ───
+        if has_valid_risk:
+            # ۱. hypothetical 3R: اگه این ترید رو تا 3R نگه می‌داشتیم چی می‌شد؟
+            if outcome == "win":
+                h3r = 3.0 if mfe_r >= 3.0 else taken_r  # اگه MFE به 3R رسید، 3R بگیر
+            else:
+                h3r = -1.0  # باخت همیشه -1R
+            hypothetical_3r_list.append(h3r)
+
+            # ۲. entry quality: MAE/risk (0=عالی، 1=یه ریسک کامل برگشت)
+            if mae_pip > 0:
+                eq = round(mae_r, 2)  # کمتر = ورود بهتر
+                entry_quality_list.append(eq)
+
+        # ۳. streak tracking (ترتیب نتایج)
+        streak_results.append("W" if outcome == "win" else "L")
+
+        # ۴. روز هفته
+        try:
+            et_str = str(entry_time).replace("T", " ").strip()
+            if len(et_str) >= 10:
+                from datetime import datetime as _dt
+                day_num = _dt.strptime(et_str[:10], "%Y-%m-%d").weekday()  # 0=Mon
+                day_name = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][day_num]
+                day_stats.setdefault(day_name, {"wins": 0, "losses": 0, "r": 0.0})
+                if outcome == "win": day_stats[day_name]["wins"] += 1
+                else: day_stats[day_name]["losses"] += 1
+                if has_valid_risk: day_stats[day_name]["r"] += taken_r
+        except: pass
 
         # ─── فقط تریدهای با SL معتبر وارد میانگین‌ها می‌شن ───
         if has_valid_risk:
@@ -1883,8 +1968,48 @@ def overall_analysis():
     avg_mfe_r = round(sum(mfe_r_list)/len(mfe_r_list), 2) if mfe_r_list else 0
     avg_planned_rr = round(sum(planned_rr_list)/len(planned_rr_list),2) if planned_rr_list else 0
     avg_rr_gap = round(sum(rr_gap_list)/len(rr_gap_list),2) if rr_gap_list else 0
-    # reversal_r_list حالا R هست نه پیپ
     avg_reversal_r = round(sum(reversal_r_list)/len(reversal_r_list),2) if reversal_r_list else 0
+
+    # ─── محاسبات جدید ───
+    # ۱. hypothetical 3R
+    total_actual_r = round(sum(taken_r_list), 2) if taken_r_list else 0
+    total_hypothetical_3r = round(sum(hypothetical_3r_list), 2) if hypothetical_3r_list else 0
+    gain_if_held = round(total_hypothetical_3r - total_actual_r, 2)
+
+    # ۲. entry quality
+    avg_entry_quality = round(sum(entry_quality_list)/len(entry_quality_list), 2) if entry_quality_list else 0
+    # درصد تریدها با MAE < 0.3R (ورود عالی)
+    clean_entries = sum(1 for q in entry_quality_list if q < 0.3)
+    clean_entry_pct = round(clean_entries / len(entry_quality_list) * 100) if entry_quality_list else 0
+
+    # ۳. streak analysis
+    max_win_streak = max_loss_streak = cur_win = cur_loss = 0
+    after_loss_results = []  # نتیجه ترید بعد از باخت
+    after_2loss_results = [] # نتیجه ترید بعد از ۲ باخت پشت سر هم
+    for i, r in enumerate(streak_results):
+        if r == "W":
+            cur_win += 1; cur_loss = 0
+            max_win_streak = max(max_win_streak, cur_win)
+        else:
+            cur_loss += 1; cur_win = 0
+            max_loss_streak = max(max_loss_streak, cur_loss)
+        if i > 0 and streak_results[i-1] == "L":
+            after_loss_results.append(r)
+        if i > 1 and streak_results[i-2] == "L" and streak_results[i-1] == "L":
+            after_2loss_results.append(r)
+    wr_after_loss = round(after_loss_results.count("W")/len(after_loss_results)*100) if after_loss_results else None
+    wr_after_2loss = round(after_2loss_results.count("W")/len(after_2loss_results)*100) if after_2loss_results else None
+
+    # ۴. بهترین/بدترین روز هفته
+    best_day = worst_day = "—"
+    day_lines = []
+    if day_stats:
+        def day_wr(d): s=day_stats[d]; t=s["wins"]+s["losses"]; return s["wins"]/t if t else 0
+        best_day = max(day_stats, key=day_wr)
+        worst_day = min(day_stats, key=day_wr)
+        for d, v in day_stats.items():
+            tot = v["wins"]+v["losses"]
+            if tot: day_lines.append(f"{d}: {round(v['wins']/tot*100)}% ({v['wins']}/{tot}) R:{v['r']:+.2f}R")
     rr_bucket_lines = [
         f"R/R {b}: {round(v['w']/(v['w']+v['l'])*100)}% برد ({v['w']}/{v['w']+v['l']})"
         for b,v in rr_bucket.items() if v['w']+v['l']>0
@@ -1925,7 +2050,6 @@ def overall_analysis():
         "win_tp_count": win_tp_count, "win_3r_count": win_3r_count,
         "avg_taken_r": avg_taken_r, "avg_mfe_r": avg_mfe_r,
         "early_exit_count": early_exit_count, "early_exit_avg_pip": avg_early_r,
-
         "fr_missed_count": fr_missed_count,
         "free_risk_done_count": free_risk_done_count,
         "reached_1r_count": reached_1r_count,
@@ -1938,33 +2062,59 @@ def overall_analysis():
         "avg_planned_rr": avg_planned_rr, "avg_rr_gap": avg_rr_gap,
         "rr_bucket_lines": rr_bucket_lines, "setup_lines": setup_lines,
         "trade_detail_data": trade_detail_data,
+        # جدید
+        "total_actual_r": total_actual_r,
+        "total_hypothetical_3r": total_hypothetical_3r,
+        "gain_if_held": gain_if_held,
+        "avg_entry_quality": avg_entry_quality,
+        "clean_entry_pct": clean_entry_pct,
+        "max_win_streak": max_win_streak,
+        "max_loss_streak": max_loss_streak,
+        "wr_after_loss": wr_after_loss,
+        "wr_after_2loss": wr_after_2loss,
+        "best_day": best_day, "worst_day": worst_day,
+        "day_lines": day_lines,
     }
     no_sl_count = total - len(taken_r_list)  # تریدهای بدون SL
+    streak_str = "".join(streak_results[-20:])  # ۲۰ ترید آخر
     prompt = (
         f"تو یک تحلیلگر حرفه‌ای داده ترید هستی. فقط بر اساس اعداد زیر تحلیل کن.\n"
         f"⚠️ همه اعداد R-based هستند (1R = ریسک هر ترید). پیپ استفاده نکن.\n\n"
         f"=== آمار کلی ===\n"
         f"تعداد: {total} | برد: {wins} | باخت: {losses} | نرخ برد: {wr}%\n"
-        f"{'⚠️ '+str(no_sl_count)+' ترید بدون SL (از محاسبات R حذف شدند) | ' if no_sl_count else ''}"
+        f"{'⚠️ '+str(no_sl_count)+' ترید بدون SL (از محاسبات R حذف شدند)\n' if no_sl_count else ''}"
         f"بردها: {win_3r_count} تا 3R کامل | {win_tp_count} تا زودخروج\n"
-        f"میانگین R گرفته (برد مثبت/باخت منفی): {avg_taken_r:+.2f}R | میانگین MFE: {avg_mfe_r:.2f}R\n"
-        f"میانگین MAE: {avg_mae_r:.2f}R\n\n"
+        f"R واقعی گرفته شده: {total_actual_r:+.2f}R | اگه همه تا 3R نگه می‌داشتیم: {total_hypothetical_3r:+.2f}R\n"
+        f"→ با نگه داشتن تا 3R، {gain_if_held:+.2f}R بیشتر/کمتر می‌گرفتیم\n"
+        f"میانگین R گرفته: {avg_taken_r:+.2f}R | میانگین MFE: {avg_mfe_r:.2f}R | میانگین MAE: {avg_mae_r:.2f}R\n\n"
+        f"=== کیفیت ورود (Entry Quality) ===\n"
+        f"میانگین MAE/R: {avg_entry_quality:.2f}R (هرچی کمتر ورود بهتر)\n"
+        f"ورودهای تمیز (MAE<0.3R): {clean_entry_pct}% از تریدها\n\n"
         f"=== رسیدن به سطوح ریوارد ===\n"
         f"1R: {reached_1r_count}/{total} | 1.5R: {reached_1_5r_count}/{total} | 2R: {reached_2r_count}/{total} | 3R: {reached_3r_count}/{total}\n\n"
         f"=== مدیریت معامله ===\n"
         f"زود بستیم: {early_exit_count} تا (میانگین {avg_early_r:.2f}R روی میز موند)\n"
         f"میانگین برگشت بعد SL: {avg_reversal_r:.2f}R\n"
         f"فری‌ریسک ممکن بود ولی SL خورد: {fr_missed_count} | فری‌ریسک انجام شد: {free_risk_done_count}\n\n"
-        f"=== نمادها (R-based) ===\n" + "\n".join(sym_lines) + f"\n\n"
+        f"=== Streak Analysis ===\n"
+        f"بیشترین برد پشت سر هم: {max_win_streak} | بیشترین باخت: {max_loss_streak}\n"
+        f"نرخ برد بعد از ۱ باخت: {wr_after_loss}%" + (f" ({len(after_loss_results)} نمونه)" if after_loss_results else " (کافی نیست)") + "\n"
+        f"نرخ برد بعد از ۲ باخت پشت سر هم: {wr_after_2loss}%" + (f" ({len(after_2loss_results)} نمونه)" if after_2loss_results else " (کافی نیست)") + "\n"
+        f"ترتیب ۲۰ ترید آخر: {streak_str}\n\n"
+        f"=== بهترین/بدترین روز هفته ===\n"
+        + ("\n".join(day_lines) if day_lines else "داده کافی نیست") + "\n\n"
+        f"=== نمادها ===\n" + "\n".join(sym_lines) + "\n\n"
         f"=== ساعت: بهترین {best_hour} | بدترین {worst_hour} ===\n\n"
-        f"=== خلاصه تریدها ===\n" + "\n".join(trade_details[:20]) + f"\n\n"
+        f"=== خلاصه تریدها ===\n" + "\n".join(trade_details[:20]) + "\n\n"
         f"گزارش فارسی بنویس (بدون مقدمه):\n"
         f"1. آمار کلی یک جمله\n"
-        f"2. تحلیل سطوح ریوارد: چند درصد تریدها به 1R/2R/3R رسیدن\n"
-        f"3. مدیریت ریسک: فری‌ریسک ({fr_missed_count} بار ممکن بود، {free_risk_done_count} بار انجام شد)، زودخروج ({early_exit_count} بار)\n"
-        f"4. مشکل تارگت: MFE میانگین {avg_mfe_r:.2f}R ولی گرفتیم {avg_taken_r:+.2f}R. تارگت بهینه پیشنهاد بده.\n"
-        f"5. بهترین/بدترین ساعت و نماد براساس R.\n"
-        f"6. نمره کلی از 10.\n\n"
+        f"2. تحلیل «اگه تا 3R نگه می‌داشتی»: آیا ارزش داشت؟ چرا؟\n"
+        f"3. کیفیت ورود: MAE میانگین {avg_entry_quality:.2f}R چه می‌گوید؟\n"
+        f"4. سطوح ریوارد: چند درصد به 1R/2R/3R رسیدند — تارگت بهینه کجاست؟\n"
+        f"5. مدیریت ریسک: فری‌ریسک و زودخروج\n"
+        f"6. Streak: بعد از باخت چه اتفاقی می‌افتد؟ آیا overtrading یا revenge trading وجود دارد؟\n"
+        f"7. بهترین روز/ساعت/نماد — بدترین کدام است؟\n"
+        f"8. نمره کلی از 10 با دلیل.\n\n"
         f"مهم: اعداد دقیق، فرضی ننویس. همه R-based."
     )
     if custom_prompt:
