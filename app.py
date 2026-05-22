@@ -700,10 +700,21 @@ def check_sltp_hit_with_details(symbol, tf, entry_time_str, direction, entry_pri
     * snapshot_bars: کندل‌ها تا آخرین برخورد با SL یا 3R (حتی اگر TP زودتر خورده باشد)
     """
     try:
-        # محاسبه limit بر اساس تایم‌فریم — پوشش کافی برای ۷ روز معامله
-        tf_limits = {"1m":5000, "5m":3000, "15m":800, "1h":200, "4h":50, "1d":30}
-        bar_limit = tf_limits.get(tf, 200)
-        print(f"[CANDLE] {symbol} tf={tf} limit={bar_limit}")
+        # محاسبه limit هوشمند بر اساس فاصله زمانی واقعی
+        tf_minutes = {"1m": 1, "5m": 5, "15m": 15, "1h": 60, "4h": 240, "1d": 1440}
+        tf_min = tf_minutes.get(tf, 60)
+        if from_time_str:
+            try:
+                from_utc = tehran_to_utc(from_time_str)
+                elapsed_minutes = (datetime.utcnow() - from_utc).total_seconds() / 60
+                # تعداد کندل‌های تشکیل‌شده + ۳ بافر اضافه
+                bar_limit = max(5, int(elapsed_minutes / tf_min) + 3)
+            except:
+                bar_limit = 20  # fallback امن
+        else:
+            tf_limits = {"1m": 5000, "5m": 3000, "15m": 800, "1h": 200, "4h": 50, "1d": 30}
+            bar_limit = tf_limits.get(tf, 200)
+        print(f"[CANDLE] {symbol} tf={tf} limit={bar_limit} from={'incremental' if from_time_str else 'full'}")
         url = f"https://biquote.io/api/{symbol}/ohlc?interval={tf}&limit={bar_limit}"
         r = requests.get(url, timeout=12, headers=H)
         if r.status_code != 200:
