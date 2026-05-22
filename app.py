@@ -1416,7 +1416,88 @@ def add_journal_manual():
     save_journal(journal)
     return jsonify({"ok": True, "trade": trade})
 
-@app.route("/api/journal/<tid>/edit", methods=["PUT"])
+@app.route("/api/journal/recalculate", methods=["POST"])
+def recalculate_all():
+    """همه تریدهای بسته رو با منطق جدید recalc کن — فیلدهای review دست نخورد"""
+    journal = load_journal()
+    fixed = 0
+    errors = 0
+    report = []
+
+    for trade in journal:
+        if trade.get("status") not in ("closed", "watching"):
+            continue
+        tid = trade.get("id", "?")
+        sym = trade.get("sym", "")
+        direction = trade.get("direction", "BUY")
+        entry = trade.get("entry")
+        sl_price = trade.get("sl_price")
+        outcome = trade.get("outcome")
+        if not entry or not sl_price or not outcome:
+            report.append(f"{tid} {sym}: رد شد (entry/sl/outcome ناقص)")
+            continue
+
+        try:
+            mul = get_pip_multiplier(sym)
+            risk_pips = abs(float(entry) - float(sl_price)) * mul
+            if risk_pips <= 0:
+                report.append(f"{tid} {sym}: رد شد (risk_pips=0)")
+                continue
+
+            # مقادیر review دست نخورد — فقط از اونا استفاده کن
+            mfe_for_calc = float(trade.get("review_mfe") or trade.get("mfe_pip") or 0)
+            mae_for_calc = float(trade.get("review_mae") or trade.get("mae_pip") or 0)
+
+            # fallback MFE از TP برای win بدون review
+            if mfe_for_calc == 0 and outcome == "win" and trade.get("tp_price"):
+                mfe_for_calc = abs(float(trade["tp_price"]) - float(entry)) * mul
+
+            # recalc passed_1r
+            passed_1r = mfe_for_calc >= risk_pips * 0.98 if mfe_for_calc > 0 else False
+
+            # recalc found_3r
+            found_3r = mfe_for_calc >= risk_pips * 3.0 if mfe_for_calc > 0 else False
+
+            # recalc free_risk_was_possible
+            fr_possible = passed_1r  # conservative baseline
+
+            # recalc exit_type
+            exit_type = calc_exit_type(outcome, risk_pips, mfe_for_calc, found_3r)
+
+            # recalc pnl اگه exit داره
+            exit_price = trade.get("exit")
+            if exit_price and entry:
+                diff = (float(exit_price) - float(entry)) if direction == "BUY" else (float(entry) - float(exit_price))
+                trade["pnl"] = round(diff, 5)
+
+            # فقط فیلدهای محاسباتی رو آپدیت کن
+            old = {k: trade.get(k) for k in ["passed_1r","found_3r","free_risk_was_possible","exit_type","mfe_pip","mae_pip"]}
+            trade["passed_1r"] = passed_1r
+            trade["found_3r"] = found_3r
+            trade["free_risk_was_possible"] = trade.get("review_free_risk_saved") or fr_possible
+            trade["exit_type"] = exit_type
+            # mae_pip/mfe_pip فقط اگه review نداشت و عدد قدیمی صفر بود
+            if trade.get("review_mfe") is None and float(trade.get("mfe_pip") or 0) == 0 and mfe_for_calc > 0:
+                trade["mfe_pip"] = round(mfe_for_calc, 1)
+            if trade.get("review_mae") is None and float(trade.get("mae_pip") or 0) == 0 and mae_for_calc > 0:
+                trade["mae_pip"] = round(mae_for_calc, 1)
+
+            new = {k: trade.get(k) for k in ["passed_1r","found_3r","free_risk_was_possible","exit_type","mfe_pip","mae_pip"]}
+            changed_fields = [k for k in old if old[k] != new[k]]
+            if changed_fields:
+                report.append(f"{sym} #{tid[-4:]}: {', '.join(changed_fields)} آپدیت شد")
+                fixed += 1
+
+        except Exception as e:
+            log_error(f"recalc {tid}: {e}")
+            report.append(f"{tid} {sym}: خطا — {e}")
+            errors += 1
+
+    save_journal(journal)
+    print(f"[RECALC] تمام — {fixed} ترید آپدیت، {errors} خطا")
+    return jsonify({"ok": True, "fixed": fixed, "errors": errors, "report": report})
+
+
 def edit_trade(tid):
     journal = load_journal()
     trade = next((t for t in journal if t["id"] == tid), None)
