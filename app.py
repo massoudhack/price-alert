@@ -691,7 +691,7 @@ def tehran_to_utc(tehran_str):
 # ====================================================================
 # تابع اصلی بررسی کندل‌ها – اصلاح شده برای snapshot تا SL یا 3R
 # ====================================================================
-def check_sltp_hit_with_details(symbol, tf, entry_time_str, direction, entry_price, sl_price, tp_price, size=1.0, max_post_sl_pips=300, r3_override=None):
+def check_sltp_hit_with_details(symbol, tf, entry_time_str, direction, entry_price, sl_price, tp_price, size=1.0, max_post_sl_pips=300, r3_override=None, from_time_str=None):
     """
     بازگشت: (hit, hit_price, last_close, pnl, mfe_pip, mae_pip, candle_lines, found_3r,
              free_risk_was_possible, free_risk_saved, reached_1r_at, pullback_after_1r,
@@ -736,7 +736,20 @@ def check_sltp_hit_with_details(symbol, tf, entry_time_str, direction, entry_pri
                 entry_bar_idx = i
                 break
 
-        after = all_bars_sorted[entry_bar_idx:]
+        # اگه from_time داریم، فقط کندل‌های جدید (بعد از آخرین چک) رو بررسی کن
+        if from_time_str:
+            from_utc = tehran_to_utc(from_time_str)
+            if from_utc:
+                from_idx = entry_bar_idx
+                for i, (bdt, b) in enumerate(all_bars_sorted):
+                    if bdt >= from_utc:
+                        from_idx = i
+                        break
+                after = all_bars_sorted[from_idx:]
+            else:
+                after = all_bars_sorted[entry_bar_idx:]
+        else:
+            after = all_bars_sorted[entry_bar_idx:]
         if not after:
             return (None, None, None, None, None, None, None, False, False, False, None, False, None, None, None, None, None, 0.0, False, [])
 
@@ -2094,9 +2107,12 @@ def poll_open_trades():
                 else:
                     tp3 = trade.get("tp_price")
                 try:
+                    tp_for_check = None if is_watching else trade.get("tp_price")
+                    last_poll = trade.get("last_poll")  # آخرین چک — فقط کندل‌های جدیدتر بررسی میشن
                     res = check_sltp_hit_with_details(
                         sym, tf, trade["entryTime"], direction, entry,
-                        sl_price, None, 1.0, r3_override=tp3
+                        sl_price, tp_for_check, 1.0, r3_override=tp3,
+                        from_time_str=last_poll
                     )
                     (hit, hit_price, last_close, pnl, mfe_pip, mae_pip, candle_lines,
                      found_3r, fr_possible, fr_saved, fr_at, pullback,
@@ -2226,7 +2242,7 @@ def poll_open_trades():
                 save_journal(journal)
         except Exception as e:
             log_error(f"poll_open_trades: {e}")
-        time.sleep(7200)
+        time.sleep(900)
 
 print("=" * 60)
 print(f"[STARTUP] 🚀 سرور در حال راه‌اندازی...")
