@@ -1498,7 +1498,26 @@ def recalculate_all():
                             exit_time_fixed = True
                 except Exception as ex:
                     log_error(f"exitTime fix {tid}: {ex}")
-            # فقط فیلدهای محاسباتی رو آپدیت کن
+            # repair snapshot اگه locked ولی خراب (کمتر از ۵ کندل)
+            existing_snap = trade.get("candle_snapshot", [])
+            if trade.get("snapshot_locked") and len(existing_snap) < 5 and sl_price:
+                try:
+                    r3_guess = None
+                    if risk_pips > 0:
+                        r3_guess = (float(entry) + 3*risk_pips/mul) if direction=="BUY" else (float(entry) - 3*risk_pips/mul)
+                    res_snap = check_sltp_hit_with_details(
+                        sym, trade.get("tf","1h"), trade.get("entryTime"), direction,
+                        float(entry), float(sl_price),
+                        float(tp_price) if tp_price else r3_guess,
+                        1.0, r3_override=r3_guess
+                    )
+                    new_snap = res_snap[-1] if res_snap else []
+                    if len(new_snap) >= 5:
+                        trade["candle_snapshot"] = new_snap
+                        report.append(f"{sym} #{tid[-4:]}: snapshot repair ({len(existing_snap)}→{len(new_snap)} کندل) ✓")
+                        exit_time_fixed = True
+                except Exception as ex:
+                    log_error(f"snapshot repair {tid}: {ex}")
             old = {k: trade.get(k) for k in ["passed_1r","found_3r","free_risk_was_possible","exit_type","mfe_pip","mae_pip"]}
             trade["passed_1r"] = passed_1r
             trade["found_3r"] = found_3r
@@ -2476,7 +2495,7 @@ def poll_open_trades():
                             trade["exitNote"] = "خودکار polling: SL"
                             diff = (hit_price - entry) if direction == "BUY" else (entry - hit_price)
                             trade["pnl"] = round(diff, 4)
-                            trade["candle_snapshot"] = snapshot_bars
+                            trade["candle_snapshot"] = merge_snapshot(trade.get("candle_snapshot", []), snapshot_bars)
                             trade["snapshot_locked"] = True
                             changed = True
                             print(f"[poll_open] {sym} SL خورد")
@@ -2499,7 +2518,7 @@ def poll_open_trades():
                             trade["exitNote"] = "خودکار polling: 3R"
                             diff = (hit_price - entry) if direction == "BUY" else (entry - hit_price)
                             trade["pnl"] = round(diff, 4)
-                            trade["candle_snapshot"] = snapshot_bars
+                            trade["candle_snapshot"] = merge_snapshot(trade.get("candle_snapshot", []), snapshot_bars)
                             trade["snapshot_locked"] = True
                             changed = True
                             print(f"[poll_open] {sym} 3R کامل")
