@@ -1464,8 +1464,34 @@ def recalculate_all():
             # recalc exit_type
             exit_type = calc_exit_type(outcome, risk_pips, mfe_for_calc, found_3r)
 
-            # recalc pnl اگه exit داره
-            exit_price = trade.get("exit")
+            # recalc exitTime — اگه exitTime مشکوک باشه (بعد از poll)، از کندل‌ها پیدا کن
+            exit_time_fixed = False
+            tp_price = trade.get("tp_price")
+            entry_time = trade.get("entryTime")
+            exit_time = trade.get("exitTime")
+            if outcome == "win" and tp_price and entry_time and exit_time:
+                try:
+                    # اگه exitTime خیلی بعد از entryTime باشه (بیشتر از ۴ ساعت)، شک داریم
+                    from datetime import datetime as _dt
+                    et = _dt.strptime(str(entry_time)[:16], "%Y-%m-%d %H:%M")
+                    xt = _dt.strptime(str(exit_time)[:16], "%Y-%m-%d %H:%M")
+                    hours_diff = (xt - et).total_seconds() / 3600
+                    tf = trade.get("tf", "1h")
+                    # برای 15m اگه بیشتر از ۸ ساعت گذشته، احتمالاً exitTime از poll اومده
+                    threshold = {"15m": 8, "1h": 24, "4h": 48}.get(tf, 12)
+                    if hours_diff > threshold:
+                        res_fix = check_sltp_hit_with_details(
+                            sym, tf, entry_time, direction, float(entry),
+                            float(sl_price), float(tp_price), 1.0
+                        )
+                        real_hit, _, real_hit_time, *_ = res_fix
+                        if real_hit in ("tp", "tp3") and real_hit_time:
+                            old_exit = trade["exitTime"]
+                            trade["exitTime"] = real_hit_time
+                            report.append(f"{sym} #{tid[-4:]}: exitTime {old_exit} → {real_hit_time} ✓")
+                            exit_time_fixed = True
+                except Exception as ex:
+                    log_error(f"exitTime fix {tid}: {ex}")
             if exit_price and entry:
                 diff = (float(exit_price) - float(entry)) if direction == "BUY" else (float(entry) - float(exit_price))
                 trade["pnl"] = round(diff, 5)
@@ -1486,6 +1512,7 @@ def recalculate_all():
             changed_fields = [k for k in old if old[k] != new[k]]
             if changed_fields:
                 report.append(f"{sym} #{tid[-4:]}: {', '.join(changed_fields)} آپدیت شد")
+            if changed_fields or exit_time_fixed:
                 fixed += 1
 
         except Exception as e:
