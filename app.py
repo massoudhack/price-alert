@@ -757,6 +757,7 @@ def check_sltp_hit_with_details(symbol, tf, entry_time_str, direction, entry_pri
         hit = None
         hit_price = None
         hit_idx = None
+        hit_time = None
         mul = get_pip_multiplier(symbol)
         mfe_pip = 0.0
         mae_pip = 0.0
@@ -845,20 +846,26 @@ def check_sltp_hit_with_details(symbol, tf, entry_time_str, direction, entry_pri
                 if is_buy:
                     if sl_price is not None and low <= sl_price:
                         hit, hit_price, hit_idx = "sl", sl_price, i
+                        hit_time = (bar_dt_i + timedelta(hours=3, minutes=30)).strftime("%Y-%m-%d %H:%M")
                         sl_hit_occurred = True
                     elif tp_price is not None and high >= tp_price:
                         hit, hit_price, hit_idx = "tp", tp_price, i
+                        hit_time = (bar_dt_i + timedelta(hours=3, minutes=30)).strftime("%Y-%m-%d %H:%M")
                     elif _r3_price and high >= _r3_price:
                         hit, hit_price, hit_idx = "tp3", _r3_price, i
+                        hit_time = (bar_dt_i + timedelta(hours=3, minutes=30)).strftime("%Y-%m-%d %H:%M")
                         found_3r = True
                 else:
                     if sl_price is not None and high >= sl_price:
                         hit, hit_price, hit_idx = "sl", sl_price, i
+                        hit_time = (bar_dt_i + timedelta(hours=3, minutes=30)).strftime("%Y-%m-%d %H:%M")
                         sl_hit_occurred = True
                     elif tp_price is not None and low <= tp_price:
                         hit, hit_price, hit_idx = "tp", tp_price, i
+                        hit_time = (bar_dt_i + timedelta(hours=3, minutes=30)).strftime("%Y-%m-%d %H:%M")
                     elif _r3_price and low <= _r3_price:
                         hit, hit_price, hit_idx = "tp3", _r3_price, i
+                        hit_time = (bar_dt_i + timedelta(hours=3, minutes=30)).strftime("%Y-%m-%d %H:%M")
                         found_3r = True
 
             # ===== تعیین پایان snapshot (فقط SL یا 3R) =====
@@ -919,7 +926,7 @@ def check_sltp_hit_with_details(symbol, tf, entry_time_str, direction, entry_pri
                 "c": float(b_snap.get("close", 0)),
             })
 
-        return (hit, hit_price, last_close, pnl, mfe_pip, mae_pip, candle_lines, found_3r,
+        return (hit, hit_price, hit_time, last_close, pnl, mfe_pip, mae_pip, candle_lines, found_3r,
                 free_risk_was_possible, free_risk_saved, reached_1r_at, pullback_after_1r,
                 None, None, None, None, None,
                 mfe_before_sl, passed_1r, snapshot_bars)
@@ -1195,14 +1202,14 @@ def add_journal():
     try:
         # یک بار فراخوانی که snapshot تا SL/3R ادامه پیدا می‌کند و hit اولین رویداد است
         res = check_sltp_hit_with_details(sym, trade["tf"], trade["entryTime"], direction, entry, sl_price, tp_price, size, r3_override=None)
-        (hit, hit_price, last_close, pnl, mfe_pip, mae_pip, candle_lines, found_3r,
+        (hit, hit_price, hit_time, last_close, pnl, mfe_pip, mae_pip, candle_lines, found_3r,
          fr_possible, fr_saved, fr_at, pullback, post_max, post_1r, post_1_5r, post_2r, post_3r,
          mfe_before_sl, passed_1r, snapshot_bars) = res
 
         if hit == "sl":
             # استاپ خورد → بسته شو
             trade["exit"] = hit_price
-            trade["exitTime"] = now_teh()
+            trade["exitTime"] = hit_time or now_teh()
             trade["exitNote"] = "خودکار: استاپ لاس در زمان ثبت"
             trade["pnl"] = round(pnl, 2) if pnl is not None else 0
             trade["outcome"] = "loss"
@@ -1222,7 +1229,7 @@ def add_journal():
         elif hit in ("tp", "tp3"):
             # TP یا 3R خورد → ثبت برد ولی watching برای چارت کامل تا SL/3R
             trade["exit"] = hit_price
-            trade["exitTime"] = now_teh()
+            trade["exitTime"] = hit_time or now_teh()
             trade["pnl"] = round(pnl, 2) if pnl is not None else 0
             trade["outcome"] = "win"
             trade["exit_type"] = hit
@@ -2082,6 +2089,17 @@ def get_chart(trade_id):
         "entry_candle_idx": next((i for i,c in enumerate(candles) if c["phase"] != "before"), 0),
     })
 
+def merge_snapshot(existing, new_bars):
+    """کندل‌های جدید رو به snapshot موجود اضافه کن — بدون تکرار، مرتب‌شده"""
+    if not new_bars:
+        return existing or []
+    if not existing:
+        return new_bars
+    existing_times = {b.get("t") for b in existing}
+    merged = list(existing) + [b for b in new_bars if b.get("t") not in existing_times]
+    merged.sort(key=lambda b: b.get("t", ""))
+    return merged
+
 def poll_open_trades():
     time.sleep(30)
     while True:
@@ -2114,7 +2132,7 @@ def poll_open_trades():
                         sl_price, tp_for_check, 1.0, r3_override=tp3,
                         from_time_str=last_poll
                     )
-                    (hit, hit_price, last_close, pnl, mfe_pip, mae_pip, candle_lines,
+                    (hit, hit_price, hit_time, last_close, pnl, mfe_pip, mae_pip, candle_lines,
                      found_3r, fr_possible, fr_saved, fr_at, pullback,
                      post_max, post_1r, post_1_5r, post_2r, post_3r,
                      mfe_before_sl, passed_1r, snapshot_bars) = res
@@ -2156,16 +2174,22 @@ def poll_open_trades():
                             changed = True
                             print(f"[poll_watching] {sym} 3R زده شد بعد از TP — tp3")
                         else:
-                            # هنوز تعیین تکلیف نشده
+                            # هنوز تعیین تکلیف نشده — snapshot و آمار رو آپدیت کن
                             if not trade.get("snapshot_locked"):
-                                trade["candle_snapshot"] = snapshot_bars
+                                trade["candle_snapshot"] = merge_snapshot(trade.get("candle_snapshot", []), snapshot_bars)
+                            # آمارهای تجمعی رو با کندل‌های جدید آپدیت کن
+                            if mfe_pip > float(trade.get("mfe_pip") or 0):
+                                trade["mfe_pip"] = round(mfe_pip, 1)
+                            trade["passed_1r"] = passed_1r or trade.get("passed_1r", False)
+                            trade["free_risk_was_possible"] = fr_possible or trade.get("free_risk_was_possible", False)
+                            trade["pullback_after_1r"] = pullback or trade.get("pullback_after_1r", False)
                             trade["last_poll"] = now_teh()
                             changed = True
                     else:
                         # ====== حالت open: هنوز هیچ چیز نخورده ======
                         if hit == "sl":
                             trade["exit"] = hit_price
-                            trade["exitTime"] = now_teh()
+                            trade["exitTime"] = hit_time or now_teh()
                             trade["outcome"] = "loss"
                             trade["exit_type"] = "sl"
                             trade["status"] = "closed"
@@ -2188,7 +2212,7 @@ def poll_open_trades():
                         elif hit == "tp3":
                             # 3R مستقیم → بسته
                             trade["exit"] = hit_price
-                            trade["exitTime"] = now_teh()
+                            trade["exitTime"] = hit_time or now_teh()
                             trade["outcome"] = "win"
                             trade["exit_type"] = "tp3"
                             trade["status"] = "closed"
@@ -2211,7 +2235,7 @@ def poll_open_trades():
                         elif hit == "tp":
                             # TP خورد → برد ثبت، watching
                             trade["exit"] = hit_price
-                            trade["exitTime"] = now_teh()
+                            trade["exitTime"] = hit_time or now_teh()
                             trade["outcome"] = "win"
                             trade["exit_type"] = "tp"
                             trade["status"] = "watching"
@@ -2227,13 +2251,18 @@ def poll_open_trades():
                             trade["exitNote"] = "خودکار polling: تارگت (watching برای SL/3R)"
                             diff = (hit_price - entry) if direction == "BUY" else (entry - hit_price)
                             trade["pnl"] = round(diff, 4)
-                            trade["candle_snapshot"] = snapshot_bars
+                            trade["candle_snapshot"] = merge_snapshot(trade.get("candle_snapshot", []), snapshot_bars)
                             trade["last_poll"] = now_teh()
                             changed = True
                             print(f"[poll_open] {sym} TP خورد → watching")
                         else:
                             if not trade.get("snapshot_locked"):
-                                trade["candle_snapshot"] = snapshot_bars
+                                trade["candle_snapshot"] = merge_snapshot(trade.get("candle_snapshot", []), snapshot_bars)
+                            if mfe_pip > float(trade.get("mfe_pip") or 0):
+                                trade["mfe_pip"] = round(mfe_pip, 1)
+                            trade["passed_1r"] = passed_1r or trade.get("passed_1r", False)
+                            trade["free_risk_was_possible"] = fr_possible or trade.get("free_risk_was_possible", False)
+                            trade["pullback_after_1r"] = pullback or trade.get("pullback_after_1r", False)
                             trade["last_poll"] = now_teh()
                             changed = True
                 except Exception as e:
