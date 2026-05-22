@@ -1416,7 +1416,7 @@ def add_journal_manual():
     save_journal(journal)
     return jsonify({"ok": True, "trade": trade})
 
-@app.route("/api/journal/recalculate", methods=["POST"])
+@app.route("/api/journal/recalculate", methods=["POST", "GET"])
 def recalculate_all():
     """همه تریدهای بسته رو با منطق جدید recalc کن — فیلدهای review دست نخورد"""
     journal = load_journal()
@@ -2431,7 +2431,7 @@ def poll_open_trades():
                         # ====== حالت open: هنوز هیچ چیز نخورده ======
                         if hit == "sl":
                             trade["exit"] = hit_price
-                            trade["exitTime"] = hit_time or now_teh()
+                            trade["exitTime"] = trade.get("exitTime") or hit_time or now_teh()
                             trade["outcome"] = "loss"
                             trade["exit_type"] = "sl"
                             trade["status"] = "closed"
@@ -2454,7 +2454,7 @@ def poll_open_trades():
                         elif hit == "tp3":
                             # 3R مستقیم → بسته
                             trade["exit"] = hit_price
-                            trade["exitTime"] = hit_time or now_teh()
+                            trade["exitTime"] = trade.get("exitTime") or hit_time or now_teh()
                             trade["outcome"] = "win"
                             trade["exit_type"] = "tp3"
                             trade["status"] = "closed"
@@ -2477,7 +2477,7 @@ def poll_open_trades():
                         elif hit == "tp":
                             # TP خورد → برد ثبت، watching
                             trade["exit"] = hit_price
-                            trade["exitTime"] = hit_time or now_teh()
+                            trade["exitTime"] = trade.get("exitTime") or hit_time or now_teh()
                             trade["outcome"] = "win"
                             trade["exit_type"] = "tp"
                             trade["status"] = "watching"
