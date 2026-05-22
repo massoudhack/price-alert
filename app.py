@@ -1498,23 +1498,40 @@ def recalculate_all():
                             exit_time_fixed = True
                 except Exception as ex:
                     log_error(f"exitTime fix {tid}: {ex}")
-            # repair snapshot اگه locked ولی خراب (کمتر از ۵ کندل)
+            # repair snapshot — همه تریدها (نه فقط locked)، با fallback به tf بزرگتر
             existing_snap = trade.get("candle_snapshot", [])
-            if trade.get("snapshot_locked") and len(existing_snap) < 5 and sl_price:
+            if len(existing_snap) < 10 and sl_price and trade.get("entryTime"):
                 try:
+                    tf_orig = trade.get("tf", "1h")
+                    tf_fallbacks = {
+                        "1m": ["1m","5m","15m"], "5m": ["5m","15m","1h"],
+                        "15m": ["15m","1h"], "1h": ["1h","4h"],
+                        "4h": ["4h","1d"], "1d": ["1d"]
+                    }
+                    tfs_to_try = tf_fallbacks.get(tf_orig, [tf_orig])
                     r3_guess = None
                     if risk_pips > 0:
                         r3_guess = (float(entry) + 3*risk_pips/mul) if direction=="BUY" else (float(entry) - 3*risk_pips/mul)
-                    res_snap = check_sltp_hit_with_details(
-                        sym, trade.get("tf","1h"), trade.get("entryTime"), direction,
-                        float(entry), float(sl_price),
-                        float(tp_price) if tp_price else r3_guess,
-                        1.0, r3_override=r3_guess
-                    )
-                    new_snap = res_snap[-1] if res_snap else []
-                    if len(new_snap) >= 5:
-                        trade["candle_snapshot"] = new_snap
-                        report.append(f"{sym} #{tid[-4:]}: snapshot repair ({len(existing_snap)}→{len(new_snap)} کندل) ✓")
+                    best_snap = existing_snap
+                    used_tf = tf_orig
+                    for try_tf in tfs_to_try:
+                        res_snap = check_sltp_hit_with_details(
+                            sym, try_tf, trade.get("entryTime"), direction,
+                            float(entry), float(sl_price),
+                            float(tp_price) if tp_price else r3_guess,
+                            1.0, r3_override=r3_guess
+                        )
+                        new_snap = res_snap[-1] if res_snap else []
+                        if len(new_snap) > len(best_snap):
+                            best_snap = new_snap
+                            used_tf = try_tf
+                        if len(best_snap) >= 10:
+                            break
+                    if len(best_snap) > len(existing_snap):
+                        tf_note = f" (tf:{used_tf})" if used_tf != tf_orig else ""
+                        trade["candle_snapshot"] = best_snap
+                        trade["snapshot_locked"] = True
+                        report.append(f"{sym} #{tid[-4:]}: snapshot {len(existing_snap)}→{len(best_snap)} کندل{tf_note} ✓")
                         exit_time_fixed = True
                 except Exception as ex:
                     log_error(f"snapshot repair {tid}: {ex}")
