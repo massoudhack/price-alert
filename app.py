@@ -1464,6 +1464,12 @@ def recalculate_all():
             # recalc exit_type
             exit_type = calc_exit_type(outcome, risk_pips, mfe_for_calc, found_3r)
 
+            # recalc pnl
+            exit_price = trade.get("exit")
+            if exit_price and entry:
+                diff = (float(exit_price) - float(entry)) if direction == "BUY" else (float(entry) - float(exit_price))
+                trade["pnl"] = round(diff, 5)
+
             # recalc exitTime — اگه exitTime مشکوک باشه (بعد از poll)، از کندل‌ها پیدا کن
             exit_time_fixed = False
             tp_price = trade.get("tp_price")
@@ -1492,10 +1498,6 @@ def recalculate_all():
                             exit_time_fixed = True
                 except Exception as ex:
                     log_error(f"exitTime fix {tid}: {ex}")
-            if exit_price and entry:
-                diff = (float(exit_price) - float(entry)) if direction == "BUY" else (float(entry) - float(exit_price))
-                trade["pnl"] = round(diff, 5)
-
             # فقط فیلدهای محاسباتی رو آپدیت کن
             old = {k: trade.get(k) for k in ["passed_1r","found_3r","free_risk_was_possible","exit_type","mfe_pip","mae_pip"]}
             trade["passed_1r"] = passed_1r
