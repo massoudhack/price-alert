@@ -493,7 +493,26 @@
 </div>
 
 <div id="toast"></div>
-<div id="ver-bar"><span>PriceAlert · <span style="color:var(--purple)">Journal + Manual Review + AI Overall</span></span><span id="ver-time"></span></div>
+<div id="ver-bar"><span>PriceAlert · <span style="color:var(--purple)">Journal + Manual Review + AI Overall</span></span><span id="ver-time"></span><button onclick="openAdminRecalc()" style="margin-right:10px;background:#c0392b;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;font-weight:700;letter-spacing:.5px">⚙️ ادمین</button></div>
+
+<!-- Admin Recalc Modal -->
+<div id="admin-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--card);border:2px solid #c0392b;border-radius:14px;padding:28px 24px;width:320px;max-width:92vw;text-align:center;direction:rtl">
+    <div style="font-size:18px;font-weight:700;color:#e74c3c;margin-bottom:6px">⚙️ ادمین — Fix داده‌ها</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">تریدهای قدیمی رو با منطق جدید recalculate میکنه.<br>فیلدهای review دست نخورد.</div>
+    <div id="admin-progress-wrap" style="display:none;margin-bottom:14px">
+      <div style="background:var(--bg);border-radius:8px;height:10px;overflow:hidden;margin-bottom:6px">
+        <div id="admin-progress-bar" style="height:100%;background:#c0392b;width:0%;transition:width .3s"></div>
+      </div>
+      <div id="admin-progress-text" style="font-size:12px;color:var(--muted)">در حال پردازش...</div>
+    </div>
+    <div id="admin-result" style="display:none;margin-bottom:14px;font-size:13px;max-height:180px;overflow-y:auto;text-align:right;background:var(--bg);border-radius:8px;padding:10px;line-height:1.8"></div>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button id="admin-run-btn" onclick="runRecalculate()" style="background:#c0392b;color:#fff;border:none;border-radius:8px;padding:9px 22px;font-size:14px;font-weight:700;cursor:pointer">اجرا کن</button>
+      <button onclick="closeAdminRecalc()" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:9px 18px;font-size:14px;cursor:pointer">بستن</button>
+    </div>
+  </div>
+</div>
 
 <script>
     (function(){applyTheme(localStorage.getItem('pa_theme')||'dark')})();
@@ -502,8 +521,53 @@
     setInterval(()=>{document.getElementById('ver-time').textContent=new Date().toLocaleTimeString('fa-IR',{timeZone:'Asia/Tehran',hour:'2-digit',minute:'2-digit',second:'2-digit'})+' تهران'},1000);
     (function(){const now=new Date();document.getElementById('f-date').value=now.toLocaleDateString('en-CA',{timeZone:'Asia/Tehran'});document.getElementById('f-time').value=now.toLocaleTimeString('en-GB',{timeZone:'Asia/Tehran',hour:'2-digit',minute:'2-digit'})})();
 
-    let _tt;
-    function toast(msg,dur=2700){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(_tt);_tt=setTimeout(()=>el.classList.remove('show'),dur)}
+    function openAdminRecalc(){
+        document.getElementById('admin-overlay').style.display='flex';
+        document.getElementById('admin-progress-wrap').style.display='none';
+        document.getElementById('admin-result').style.display='none';
+        document.getElementById('admin-run-btn').disabled=false;
+        document.getElementById('admin-run-btn').textContent='اجرا کن';
+    }
+    function closeAdminRecalc(){document.getElementById('admin-overlay').style.display='none';}
+    async function runRecalculate(){
+        const btn=document.getElementById('admin-run-btn');
+        const wrap=document.getElementById('admin-progress-wrap');
+        const bar=document.getElementById('admin-progress-bar');
+        const txt=document.getElementById('admin-progress-text');
+        const res=document.getElementById('admin-result');
+        btn.disabled=true; btn.textContent='در حال اجرا...';
+        wrap.style.display='block'; res.style.display='none';
+        bar.style.width='0%'; txt.textContent='در حال پردازش...';
+        // انیمیشن progress تا جواب بیاد
+        let pct=0;
+        const fakeProgress=setInterval(()=>{
+            pct=Math.min(pct+Math.random()*8,88);
+            bar.style.width=pct+'%';
+            txt.textContent=`پردازش... ${Math.round(pct)}%`;
+        },300);
+        try{
+            const r=await fetch('/api/journal/recalculate',{method:'POST'});
+            const d=await r.json();
+            clearInterval(fakeProgress);
+            bar.style.width='100%';
+            txt.textContent='تمام شد ✓';
+            res.style.display='block';
+            if(d.ok){
+                const lines=d.report&&d.report.length?d.report.map(l=>`• ${l}`).join('<br>'):'همه تریدها قبلاً درست بودن';
+                res.innerHTML=`<b style="color:#2ecc71">✓ ${d.fixed} ترید fix شد</b><br><br>${lines}`;
+                if(d.fixed>0) setTimeout(()=>loadTrades(),1500);
+            } else {
+                res.innerHTML=`<b style="color:#e74c3c">خطا: ${d.error||'نامشخص'}</b>`;
+            }
+        }catch(e){
+            clearInterval(fakeProgress);
+            bar.style.width='100%'; bar.style.background='#e74c3c';
+            txt.textContent='خطا در اتصال';
+            res.style.display='block';
+            res.innerHTML=`<b style="color:#e74c3c">خطای شبکه: ${e.message}</b>`;
+        }
+        btn.textContent='اجرا شد ✓';
+    }const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(_tt);_tt=setTimeout(()=>el.classList.remove('show'),dur)}
 
     let _trades=[],_dir='BUY',_tab='all',_autoMissed=false;
     const CRYPTO_LIST = ['BTC','ETH','SOL','BNB','XRP','ADA','DOGE','TRX','TON','AVAX','MATIC','DOT','LINK','UNI','ATOM','LTC','SHIB','OP','ARB','NEAR','FTM','SAND','MANA'];
