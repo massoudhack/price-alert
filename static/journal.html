@@ -493,6 +493,19 @@
 </div>
 
 <div id="toast"></div>
+<!-- Weekly Review Modal -->
+<div id="weekly-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--card);border:2px solid #8e44ad;border-radius:14px;padding:24px 20px;width:360px;max-width:94vw;direction:rtl;max-height:88vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="font-size:17px;font-weight:700;color:#a855f7">📊 مرور هفتگی</div>
+      <button onclick="document.getElementById('weekly-overlay').style.display='none'" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">×</button>
+    </div>
+    <div id="weekly-stats" style="display:none;background:var(--bg);border-radius:10px;padding:12px;margin-bottom:12px;font-size:13px;line-height:2"></div>
+    <div id="weekly-loading" style="text-align:center;padding:30px;color:var(--muted);font-size:13px">در حال بارگذاری...</div>
+    <div id="weekly-analysis" style="display:none;font-size:13px;line-height:1.9;color:var(--text);white-space:pre-wrap"></div>
+  </div>
+</div>
+
 <!-- Admin Recalc Modal -->
 <div id="admin-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;align-items:center;justify-content:center">
   <div style="background:var(--card);border:2px solid #c0392b;border-radius:14px;padding:28px 24px;width:320px;max-width:92vw;text-align:center;direction:rtl">
@@ -511,7 +524,8 @@
     </div>
   </div>
 </div>
-<div id="ver-bar"><span>PriceAlert · <span style="color:var(--purple)">Journal + Manual Review + AI Overall</span></span><span id="ver-time"></span><button onclick="openAdminRecalc()" style="margin-right:10px;background:#c0392b;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;font-weight:700;letter-spacing:.5px">⚙️ ادمین</button></div>
+<div id="ver-bar"><span>PriceAlert · <span style="color:var(--purple)">Journal + Manual Review + AI Overall</span></span><span id="ver-time"></span><button onclick="openAdminRecalc()" style="margin-right:10px;background:#c0392b;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;font-weight:700;letter-spacing:.5px">⚙️ ادمین</button>
+<button onclick="openWeeklyReview()" style="margin-right:6px;background:#8e44ad;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;font-weight:700">📊 هفتگی</button></div>
 
 <script>
     (function(){applyTheme(localStorage.getItem('pa_theme')||'dark')})();
@@ -520,6 +534,35 @@
     setInterval(()=>{document.getElementById('ver-time').textContent=new Date().toLocaleTimeString('fa-IR',{timeZone:'Asia/Tehran',hour:'2-digit',minute:'2-digit',second:'2-digit'})+' تهران'},1000);
     (function(){const now=new Date();document.getElementById('f-date').value=now.toLocaleDateString('en-CA',{timeZone:'Asia/Tehran'});document.getElementById('f-time').value=now.toLocaleTimeString('en-GB',{timeZone:'Asia/Tehran',hour:'2-digit',minute:'2-digit'})})();
 
+
+    async function openWeeklyReview(){
+        const overlay=document.getElementById('weekly-overlay');
+        const loading=document.getElementById('weekly-loading');
+        const stats=document.getElementById('weekly-stats');
+        const analysis=document.getElementById('weekly-analysis');
+        overlay.style.display='flex';
+        loading.style.display='block';
+        stats.style.display='none';
+        analysis.style.display='none';
+        try{
+            const r=await fetch('/api/weekly_review');
+            const d=await r.json();
+            loading.style.display='none';
+            if(d.ok){
+                stats.style.display='block';
+                const emo=d.total_r>=0?'📈':'📉';
+                stats.innerHTML=
+                    `<b>${d.week_start} تا ${d.week_end}</b><br>`+
+                    `تریدها: ${d.count} | برد: ${d.wins} | باخت: ${d.losses} | نرخ برد: ${d.winrate}%<br>`+
+                    `مجموع R: <b style="color:${d.total_r>=0?'#2ecc71':'#e74c3c'}">${d.total_r>=0?'+':''}${d.total_r}R</b> ${emo}<br>`+
+                    (d.sym_lines?`نمادها: ${d.sym_lines}`:'');
+                analysis.style.display='block';
+                analysis.textContent=d.analysis;
+            }
+        }catch(e){
+            loading.textContent='خطا در بارگذاری';
+        }
+    }
 
     function openAdminRecalc(){
         document.getElementById('admin-overlay').style.display='flex';
