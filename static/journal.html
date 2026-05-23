@@ -241,7 +241,7 @@
                 </div></div>
             </div>
             <div class="list-col">
-                <div class="tabs" style="margin-bottom:1rem;"><button class="tab on" onclick="setTab('all',this)">همه</button><button class="tab" onclick="setTab('closed',this)">✓ بسته شده</button></div>
+                <div class="tabs" style="margin-bottom:1rem;flex-wrap:wrap;gap:6px;align-items:center"><button class="tab on" onclick="setTab('all',this)">همه</button><button class="tab" onclick="setTab('closed',this)">✓ بسته شده</button><select id="week-filter" onchange="setWeekFilter(this.value)" style="margin-right:auto;font-size:11px;padding:4px 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);cursor:pointer"><option value="">📅 همه تاریخ‌ها</option></select></div>
                 <div id="trades-wrap"><div class="empty"><div class="spin" style="width:20px;height:20px;margin:0 auto;"></div><p>در حال بارگذاری...</p></div></div>
                 <div id="pagination-wrap" style="display:none;margin-top:10px;display:flex;justify-content:center;align-items:center;gap:8px;padding:8px 0"></div>
             </div>
@@ -554,7 +554,10 @@
                 stats.innerHTML=
                     `<b>${d.week_start} تا ${d.week_end}</b><br>`+
                     `تریدها: ${d.count} | برد: ${d.wins} | باخت: ${d.losses} | نرخ برد: ${d.winrate}%<br>`+
-                    `مجموع R: <b style="color:${d.total_r>=0?'#2ecc71':'#e74c3c'}">${d.total_r>=0?'+':''}${d.total_r}R</b> ${emo}<br>`+
+                    `مجموع R: <b style="color:${d.total_r>=0?'#2ecc71':'#e74c3c'}">${d.total_r>=0?'+':''}${d.total_r}R</b> ${emo} | میانگین MFE: ${d.avg_mfe_r||'?'}R<br>`+
+                    (d.beyond_tp?`⚠️ ${d.beyond_tp} برد — MFE از TP گذشت (${d.avg_left}R روی میز موند)<br>`:'✅ زودخروج نداشتی<br>')+
+                    (d.loss_passed_1r?`⚠️ ${d.loss_passed_1r} باخت بعد از 1R — فری‌ریسک میشد<br>`:'')+
+                    `بهترین: ${d.best||'—'} | بدترین: ${d.worst||'—'}<br>`+
                     (d.sym_lines?`نمادها: ${d.sym_lines}`:'');
                 analysis.style.display='block';
                 analysis.textContent=d.analysis;
@@ -614,7 +617,7 @@
     let _tt;
     function toast(msg,dur=2700){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(_tt);_tt=setTimeout(()=>el.classList.remove('show'),dur)}
 
-    let _trades=[],_dir='BUY',_tab='all',_autoMissed=false;
+    let _trades=[],_dir='BUY',_tab='all',_autoMissed=false,_weekFilter='';
     const CRYPTO_LIST = ['BTC','ETH','SOL','BNB','XRP','ADA','DOGE','TRX','TON','AVAX','MATIC','DOT','LINK','UNI','ATOM','LTC','SHIB','OP','ARB','NEAR','FTM','SAND','MANA'];
     function isCrypto(sym){let s=sym.toUpperCase();for(let c of CRYPTO_LIST) if(s.includes(c)) return true;return false;}
     function getPipMultiplier(sym){let s=sym.toUpperCase();if(s.includes('XAU')||s.includes('XAG')) return 10;if(s.includes('JPY')) return 100;return 10000;}
@@ -1644,6 +1647,27 @@
         }
     }
     function setTab(f,el){_tab=f;document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));el.classList.add('on');render(true);}
+    function setWeekFilter(v){_weekFilter=v;_currentPage=1;render();}
+    function populateWeekFilter(trades){
+        const sel=document.getElementById('week-filter');if(!sel)return;
+        const weeks={};
+        trades.forEach(t=>{
+            const et=t.entryTime||t.createdAt||'';if(!et)return;
+            try{
+                const d=new Date(et.replace(' ','T'));
+                const day=d.getDay();
+                const diff=d.getDate()-(day===0?6:day-1);
+                const mon=new Date(new Date(d).setDate(diff));
+                const key=mon.toISOString().slice(0,10);
+                const sun=new Date(mon);sun.setDate(sun.getDate()+6);
+                weeks[key]=key+' تا '+sun.toISOString().slice(0,10);
+            }catch(e){}
+        });
+        const sorted=Object.keys(weeks).sort().reverse();
+        const cur=sel.value;
+        sel.innerHTML='<option value="">📅 همه تاریخ‌ها</option>';
+        sorted.forEach(k=>sel.innerHTML+=`<option value="${k}"${cur===k?' selected':''}>${weeks[k]}</option>`);
+    }
     function goPage(p){const closed=_trades.filter(t=>t.status==='closed');const list=_tab==='closed'?closed:_trades;const total=Math.ceil(list.length/TRADES_PER_PAGE);if(p<1||p>total)return;_currentPage=p;render();}
     function showTab(tab){if(tab==='trades'){document.getElementById('trades-panel').style.display='block';document.getElementById('overall-panel').style.display='none';document.getElementById('tab-trades').classList.add('on');document.getElementById('tab-overall').classList.remove('on');}else{document.getElementById('trades-panel').style.display='none';document.getElementById('overall-panel').style.display='block';document.getElementById('tab-trades').classList.remove('on');document.getElementById('tab-overall').classList.add('on');}}
     // ===== فیلتر حالت AI =====
@@ -1953,8 +1977,17 @@ ${st_rows?`<div class="sec" style="margin-bottom:1rem"><div class="sec-hd"><div 
             let res = sortFn(arr);
             if(_sort==='win') res=res.filter(t=>t.outcome==='win');
             if(_sort==='loss') res=res.filter(t=>t.outcome==='loss');
+            if(_weekFilter){
+                const monStart=new Date(_weekFilter+'T00:00:00');
+                const sunEnd=new Date(monStart);sunEnd.setDate(sunEnd.getDate()+7);
+                res=res.filter(t=>{
+                    const et=t.entryTime||t.createdAt||'';if(!et)return false;
+                    try{const d=new Date(et.replace(' ','T'));return d>=monStart&&d<sunEnd;}catch(e){return false;}
+                });
+            }
             return res;
         };
+        populateWeekFilter(_trades);
         let list = filterFn(_trades);
         if(_tab==='closed') list = filterFn(closed);
         const wrap=document.getElementById('trades-wrap');
