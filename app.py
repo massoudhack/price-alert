@@ -1191,7 +1191,7 @@ def add_journal():
         tp_pips = abs(tp_price - entry) * mul
 
     trade = {
-        "id": str(int(time.time() * 1000)), "sym": sym, "tf": body.get("tf", "1h"),
+        "id": generate_id(), "sym": sym, "tf": body.get("tf", "1h"),
         "direction": direction, "entry": entry, "size": size,
         "sl_pips": round(sl_pips, 1) if sl_pips else None,
         "tp_pips": round(tp_pips, 1) if tp_pips else None,
@@ -1286,7 +1286,11 @@ def add_journal():
     save_journal(journal)
     return jsonify({"ok": True, "trade": trade})
 
-def calc_exit_type(outcome, risk_pips, mfe_pip, found_3r=False, exit_type_stored=None):
+import uuid as _uuid
+
+def generate_id():
+    """ID یکتا حتی برای تریدهای همزمان"""
+    return str(int(time.time() * 1000)) + str(_uuid.uuid4().hex[:4])
     if exit_type_stored in ("sl", "tp", "tp3"):
         return exit_type_stored
     if outcome == "loss":
@@ -1355,7 +1359,7 @@ def add_journal_manual():
         if reversal_target_r is not None and risk_pips and risk_pips > 0:
             review_reversal_target_pips = reversal_target_r * risk_pips
     trade = {
-        "id": str(int(time.time() * 1000)), "sym": sym, "tf": tf,
+        "id": generate_id(), "sym": sym, "tf": tf,
         "direction": direction, "entry": entry, "size": size,
         "sl_pips": round(sl_pips, 1) if sl_pips else None,
         "tp_pips": round(tp_pips, 1) if tp_pips else None,
@@ -1407,8 +1411,9 @@ def add_journal_manual():
                 tp_price if tp_price else r3_guess,
                 size, r3_override=r3_guess
             )
-            # snapshot_bars آخرین عنصر tuple است
             trade["candle_snapshot"] = res_snap[-1] if res_snap else []
+            if trade["candle_snapshot"]:
+                trade["snapshot_locked"] = True
         except Exception as e:
             log_error(f"manual snapshot: {e}")
             trade["candle_snapshot"] = []
@@ -1416,7 +1421,111 @@ def add_journal_manual():
     save_journal(journal)
     return jsonify({"ok": True, "trade": trade})
 
-@app.route("/api/journal/recalculate", methods=["POST", "GET"])
+@app.route("/api/weekly_review", methods=["GET"])
+def weekly_review():
+    from datetime import datetime as _dt, timedelta as _td
+    # پیدا کردن دوشنبه این هفته
+    now = _dt.now()
+    days_since_monday = now.weekday()  # 0=Mon
+    week_start = (now - _td(days=days_since_monday)).replace(hour=0, minute=0, second=0, microsecond=0)
+    week_end = week_start + _td(days=6, hours=23, minutes=59)
+
+    journal = load_journal()
+    week_trades = []
+    for t in journal:
+        et = str(t.get("entryTime",""))[:16]
+        try:
+            dt = _dt.strptime(et, "%Y-%m-%d %H:%M")
+            if week_start <= dt <= week_end:
+                week_trades.append(t)
+        except: pass
+
+    if not week_trades:
+        return jsonify({"ok": True, "analysis": "این هفته هیچ تریدی ثبت نشده.", "count": 0,
+                        "week_start": week_start.strftime("%Y-%m-%d"), "week_end": week_end.strftime("%Y-%m-%d")})
+
+    wins = [t for t in week_trades if t.get("outcome")=="win"]
+    losses = [t for t in week_trades if t.get("outcome")=="loss"]
+    total = len(week_trades)
+    wr = round(len(wins)/total*100) if total else 0
+
+    mul = lambda s: get_pip_multiplier(s)
+    def taken_r(t):
+        rp = abs(float(t.get("entry",0)) - float(t.get("sl_price",0))) * mul(t.get("sym","EURUSD")) if t.get("sl_price") and t.get("entry") else None
+        if not rp or rp <= 0: return None
+        mfe = float(t.get("review_mfe") or t.get("mfe_pip") or 0)
+        if t.get("outcome")=="win":
+            ep = float(t.get("exit") or t.get("tp_price") or 0)
+            diff = abs(float(t.get("entry",0)) - ep) * mul(t.get("sym","EURUSD")) if ep else mfe
+            return round(diff/rp, 2)
+        return -1.0
+
+    r_list = [r for t in week_trades if (r:=taken_r(t)) is not None]
+    total_r = round(sum(r_list), 2) if r_list else 0
+    avg_r = round(sum(r_list)/len(r_list), 2) if r_list else 0
+
+    # بهترین و بدترین
+    best = max(week_trades, key=lambda t: taken_r(t) or -99)
+    worst = min(week_trades, key=lambda t: taken_r(t) or 99)
+
+    # نمادها
+    sym_r = {}
+    for t in week_trades:
+        s = t.get("sym","?")
+        r = taken_r(t)
+        if r is not None:
+            sym_r[s] = sym_r.get(s, 0) + r
+    sym_lines = " | ".join(f"{s}:{v:+.1f}R" for s,v in sorted(sym_r.items(), key=lambda x:-x[1]))
+
+    # ساختار روزانه
+    day_lines = []
+    for i in range(7):
+        d = week_start + _td(days=i)
+        d_trades = [t for t in week_trades if str(t.get("entryTime",""))[:10] == d.strftime("%Y-%m-%d")]
+        if d_trades:
+            dw = sum(1 for t in d_trades if t.get("outcome")=="win")
+            dl = sum(1 for t in d_trades if t.get("outcome")=="loss")
+            dr = sum(r for t in d_trades if (r:=taken_r(t)) is not None)
+            day_lines.append(f"{d.strftime('%A')} {d.strftime('%m/%d')}: {dw}W {dl}L {dr:+.1f}R")
+
+    trade_lines = []
+    for t in week_trades:
+        r = taken_r(t)
+        r_str = f"{r:+.1f}R" if r is not None else "?"
+        trade_lines.append(f"#{t.get('sym')} {t.get('tf')} {t.get('direction')} {r_str} ({t.get('outcome','?')})")
+
+    prompt = (
+        f"هفته {week_start.strftime('%Y/%m/%d')} تا {week_end.strftime('%Y/%m/%d')} رو تحلیل کن.\n\n"
+        f"=== خلاصه ===\n"
+        f"تریدها: {total} | برد: {len(wins)} | باخت: {len(losses)} | نرخ برد: {wr}%\n"
+        f"مجموع R: {total_r:+.2f}R | میانگین: {avg_r:+.2f}R\n\n"
+        f"=== روزانه ===\n" + "\n".join(day_lines) + "\n\n"
+        f"=== نمادها ===\n{sym_lines}\n\n"
+        f"=== تریدها ===\n" + "\n".join(trade_lines) + "\n\n"
+        f"گزارش هفتگی فارسی بنویس (بدون مقدمه، ۵-۷ جمله):\n"
+        f"1. یه جمله خلاصه هفته\n"
+        f"2. بهترین و بدترین ترید\n"
+        f"3. الگوی تکراری خوب یا بد\n"
+        f"4. یه توصیه مشخص برای هفته بعد\n"
+        f"اعداد دقیق بزن."
+    )
+
+    analysis = groq_analyze(prompt)
+    return jsonify({
+        "ok": True,
+        "analysis": analysis,
+        "count": total,
+        "wins": len(wins),
+        "losses": len(losses),
+        "winrate": wr,
+        "total_r": total_r,
+        "week_start": week_start.strftime("%Y-%m-%d"),
+        "week_end": week_end.strftime("%Y-%m-%d"),
+        "day_lines": day_lines,
+        "sym_lines": sym_lines,
+    })
+
+
 def recalculate_all():
     """همه تریدهای بسته رو با منطق جدید recalc کن — فیلدهای review دست نخورد"""
     journal = load_journal()
