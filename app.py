@@ -1424,9 +1424,8 @@ def add_journal_manual():
 @app.route("/api/weekly_review", methods=["GET"])
 def weekly_review():
     from datetime import datetime as _dt, timedelta as _td
-    # پیدا کردن دوشنبه این هفته
     now = _dt.now()
-    days_since_monday = now.weekday()  # 0=Mon
+    days_since_monday = now.weekday()
     week_start = (now - _td(days=days_since_monday)).replace(hour=0, minute=0, second=0, microsecond=0)
     week_end = week_start + _td(days=6, hours=23, minutes=59)
 
@@ -1449,35 +1448,69 @@ def weekly_review():
     total = len(week_trades)
     wr = round(len(wins)/total*100) if total else 0
 
-    mul = lambda s: get_pip_multiplier(s)
+    def get_mul(s): return get_pip_multiplier(s)
+    def get_risk_pips(t):
+        if t.get("sl_price") and t.get("entry"):
+            return abs(float(t["entry"]) - float(t["sl_price"])) * get_mul(t.get("sym","EURUSD"))
+        return None
+
     def taken_r(t):
-        rp = abs(float(t.get("entry",0)) - float(t.get("sl_price",0))) * mul(t.get("sym","EURUSD")) if t.get("sl_price") and t.get("entry") else None
+        rp = get_risk_pips(t)
+        if not rp or rp <= 0: return None
+        if t.get("outcome") == "win":
+            ep = float(t.get("exit") or t.get("tp_price") or 0)
+            diff = abs(float(t.get("entry",0)) - ep) * get_mul(t.get("sym","EURUSD")) if ep else 0
+            return round(diff/rp, 2)
+        if t.get("outcome") == "loss":
+            return -1.0
+        return None
+
+    def get_mfe_r(t):
+        rp = get_risk_pips(t)
         if not rp or rp <= 0: return None
         mfe = float(t.get("review_mfe") or t.get("mfe_pip") or 0)
-        if t.get("outcome")=="win":
-            ep = float(t.get("exit") or t.get("tp_price") or 0)
-            diff = abs(float(t.get("entry",0)) - ep) * mul(t.get("sym","EURUSD")) if ep else mfe
-            return round(diff/rp, 2)
-        return -1.0
+        return round(mfe/rp, 2) if mfe else None
 
     r_list = [r for t in week_trades if (r:=taken_r(t)) is not None]
+    mfe_r_list = [m for t in week_trades if (m:=get_mfe_r(t)) is not None]
     total_r = round(sum(r_list), 2) if r_list else 0
     avg_r = round(sum(r_list)/len(r_list), 2) if r_list else 0
+    avg_mfe_r = round(sum(mfe_r_list)/len(mfe_r_list), 2) if mfe_r_list else 0
 
-    # بهترین و بدترین
-    best = max(week_trades, key=lambda t: taken_r(t) or -99)
-    worst = min(week_trades, key=lambda t: taken_r(t) or 99)
+    # چند ترید از تارگت گذشتن (mfe > tp)
+    beyond_tp = 0
+    early_exit_r_left = []
+    for t in week_trades:
+        if t.get("outcome") != "win": continue
+        rp = get_risk_pips(t)
+        if not rp: continue
+        mfe = float(t.get("review_mfe") or t.get("mfe_pip") or 0)
+        ep = float(t.get("exit") or t.get("tp_price") or 0)
+        if not ep: continue
+        taken = abs(float(t.get("entry",0)) - ep) * get_mul(t.get("sym","EURUSD"))
+        if mfe > taken * 1.1:  # MFE بیشتر از TP
+            beyond_tp += 1
+            early_exit_r_left.append(round((mfe - taken)/rp, 2))
+    avg_left = round(sum(early_exit_r_left)/len(early_exit_r_left), 2) if early_exit_r_left else 0
+
+    # passed_1r در باخت‌ها
+    loss_passed_1r = sum(1 for t in losses if t.get("passed_1r"))
+    fr_missed = sum(1 for t in week_trades if t.get("free_risk_was_possible") and not t.get("free_risk_saved") and t.get("outcome")=="loss")
 
     # نمادها
     sym_r = {}
     for t in week_trades:
-        s = t.get("sym","?")
-        r = taken_r(t)
-        if r is not None:
-            sym_r[s] = sym_r.get(s, 0) + r
+        s = t.get("sym","?"); r = taken_r(t)
+        if r is not None: sym_r[s] = round(sym_r.get(s,0) + r, 2)
     sym_lines = " | ".join(f"{s}:{v:+.1f}R" for s,v in sorted(sym_r.items(), key=lambda x:-x[1]))
 
-    # ساختار روزانه
+    # بهترین/بدترین
+    best = max(week_trades, key=lambda t: taken_r(t) or -99)
+    worst = min(week_trades, key=lambda t: taken_r(t) or 99)
+    best_str = f"{best.get('sym')} {taken_r(best):+.1f}R" if taken_r(best) else "—"
+    worst_str = f"{worst.get('sym')} {taken_r(worst):+.1f}R" if taken_r(worst) else "—"
+
+    # روزانه
     day_lines = []
     for i in range(7):
         d = week_start + _td(days=i)
@@ -1485,44 +1518,52 @@ def weekly_review():
         if d_trades:
             dw = sum(1 for t in d_trades if t.get("outcome")=="win")
             dl = sum(1 for t in d_trades if t.get("outcome")=="loss")
-            dr = sum(r for t in d_trades if (r:=taken_r(t)) is not None)
+            dr = round(sum(r for t in d_trades if (r:=taken_r(t)) is not None), 2)
             day_lines.append(f"{d.strftime('%A')} {d.strftime('%m/%d')}: {dw}W {dl}L {dr:+.1f}R")
 
+    # لیست تریدها با جزئیات
     trade_lines = []
     for t in week_trades:
-        r = taken_r(t)
+        r = taken_r(t); mfe = get_mfe_r(t)
         r_str = f"{r:+.1f}R" if r is not None else "?"
-        trade_lines.append(f"#{t.get('sym')} {t.get('tf')} {t.get('direction')} {r_str} ({t.get('outcome','?')})")
+        mfe_str = f"MFE:{mfe:.1f}R" if mfe else ""
+        passed = "✓1R" if t.get("passed_1r") else ""
+        trade_lines.append(f"{t.get('sym')} {t.get('tf')} {t.get('direction')} → {r_str} {mfe_str} {passed} ({t.get('outcome','?')})")
 
     prompt = (
-        f"هفته {week_start.strftime('%Y/%m/%d')} تا {week_end.strftime('%Y/%m/%d')} رو تحلیل کن.\n\n"
-        f"=== خلاصه ===\n"
+        f"هفته {week_start.strftime('%Y/%m/%d')} تا {week_end.strftime('%Y/%m/%d')}\n\n"
+        f"=== آمار کلی ===\n"
         f"تریدها: {total} | برد: {len(wins)} | باخت: {len(losses)} | نرخ برد: {wr}%\n"
-        f"مجموع R: {total_r:+.2f}R | میانگین: {avg_r:+.2f}R\n\n"
+        f"مجموع R: {total_r:+.2f}R | میانگین: {avg_r:+.2f}R | میانگین MFE: {avg_mfe_r:.2f}R\n\n"
+        f"=== تارگت و MFE ===\n"
+        f"تریدهایی که بعد از TP هنوز MFE داشتن (زود بستی): {beyond_tp} از {len(wins)} برد\n"
+        f"{'→ میانگین R که روی میز موند: '+str(avg_left)+'R' if beyond_tp else ''}\n"
+        f"باخت‌هایی که به 1R رسیده بودن: {loss_passed_1r} از {len(losses)}\n"
+        f"فری‌ریسک ممکن بود ولی SL خورد: {fr_missed}\n\n"
         f"=== روزانه ===\n" + "\n".join(day_lines) + "\n\n"
         f"=== نمادها ===\n{sym_lines}\n\n"
+        f"=== بهترین: {best_str} | بدترین: {worst_str} ===\n\n"
         f"=== تریدها ===\n" + "\n".join(trade_lines) + "\n\n"
-        f"گزارش هفتگی فارسی بنویس (بدون مقدمه، ۵-۷ جمله):\n"
-        f"1. یه جمله خلاصه هفته\n"
-        f"2. بهترین و بدترین ترید\n"
-        f"3. الگوی تکراری خوب یا بد\n"
-        f"4. یه توصیه مشخص برای هفته بعد\n"
-        f"اعداد دقیق بزن."
+        f"گزارش هفتگی فارسی بنویس (بدون مقدمه):\n"
+        f"1. خلاصه یه جمله\n"
+        f"2. تارگت‌گذاری: {beyond_tp} ترید MFE از TP گذشته — زود بستی یا درست؟\n"
+        f"3. باخت‌ها: {loss_passed_1r} باخت بعد از 1R — فری‌ریسک بزن\n"
+        f"4. بهترین/بدترین نماد این هفته\n"
+        f"5. یه توصیه مشخص برای هفته بعد\n"
+        f"اعداد دقیق، کوتاه و مفید."
     )
 
     analysis = groq_analyze(prompt)
     return jsonify({
-        "ok": True,
-        "analysis": analysis,
-        "count": total,
-        "wins": len(wins),
-        "losses": len(losses),
-        "winrate": wr,
-        "total_r": total_r,
+        "ok": True, "analysis": analysis,
+        "count": total, "wins": len(wins), "losses": len(losses),
+        "winrate": wr, "total_r": total_r, "avg_mfe_r": avg_mfe_r,
+        "beyond_tp": beyond_tp, "avg_left": avg_left,
+        "loss_passed_1r": loss_passed_1r, "fr_missed": fr_missed,
         "week_start": week_start.strftime("%Y-%m-%d"),
         "week_end": week_end.strftime("%Y-%m-%d"),
-        "day_lines": day_lines,
-        "sym_lines": sym_lines,
+        "day_lines": day_lines, "sym_lines": sym_lines,
+        "best": best_str, "worst": worst_str,
     })
 
 
