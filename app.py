@@ -2730,6 +2730,27 @@ def poll_open_trades():
             log_error(f"poll_open_trades: {e}")
         time.sleep(900)
 
+# =====================================================================
+# MT4/MT5 TEST ENDPOINT — فقط لاگ، بدون ذخیره
+# =====================================================================
+@app.route("/api/mt4/test", methods=["POST"])
+def mt4_test():
+    body = request.json or {}
+    candle_count = len(body.get("candle_snapshot", []))
+    print("=" * 50)
+    print("[MT4 TEST] دریافت شد")
+    print(f"  sym      = {body.get('sym')}")
+    print(f"  direction= {body.get('direction')}")
+    print(f"  outcome  = {body.get('outcome')}")
+    print(f"  entry    = {body.get('entry')}")
+    print(f"  exit     = {body.get('exit')}")
+    print(f"  ticket   = {body.get('mt4_ticket')}")
+    print(f"  candles  = {candle_count}")
+    print("=" * 50)
+    return jsonify({"ok": True, "received": True, "candles": candle_count})
+
+# =====================================================================
+
 print("=" * 60)
 print(f"[STARTUP] 🚀 سرور در حال راه‌اندازی...")
 print(f"[STARTUP] GIST_TOKEN: {'✅ موجود' if GIST_TOKEN else '❌ ندارد'}")
