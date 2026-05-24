@@ -2750,6 +2750,97 @@ def mt4_test():
     return jsonify({"ok": True, "received": True, "candles": candle_count})
 
 # =====================================================================
+# MT4/MT5 LIVE ENDPOINT — ذخیره واقعی در Gist
+# =====================================================================
+@app.route("/api/journal/mt4", methods=["POST"])
+def add_journal_mt4():
+    body = request.json or {}
+    sym = body.get("sym", "").upper().strip()
+    if not sym:
+        return jsonify({"ok": False, "error": "sym الزامی است"}), 400
+
+    mt4_ticket    = body.get("mt4_ticket")
+    position_id   = body.get("mt4_position_id")
+    check_id      = position_id or mt4_ticket
+
+    # جلوگیری از duplicate
+    journal = load_journal()
+    if check_id:
+        for t in journal:
+            if t.get("mt4_position_id") == check_id or t.get("mt4_ticket") == check_id:
+                return jsonify({"ok": True, "skipped": True, "id": t["id"]})
+
+    direction  = body.get("direction", "BUY")
+    entry      = float(body.get("entry", 0))
+    exit_price = body.get("exit")
+    sl_price   = body.get("sl_price")
+    tp_price   = body.get("tp_price")
+    lots       = float(body.get("size", 1.0))
+    outcome    = body.get("outcome", "")
+    pnl_money  = body.get("pnl")
+    entry_time = body.get("entryTime", now_teh())
+    exit_time  = body.get("exitTime",  now_teh())
+    comment    = body.get("note", "").strip()
+    candles    = body.get("candle_snapshot", [])
+
+    mul        = get_pip_multiplier(sym)
+    sl_pips    = round(abs(entry - float(sl_price)) * mul, 1) if sl_price else None
+    tp_pips    = round(abs(float(tp_price) - entry) * mul, 1) if tp_price else None
+    exit_type  = body.get("exit_type") or ("sl" if outcome == "loss" else "tp" if outcome == "win" else None)
+
+    trade = {
+        "id":           generate_id(),
+        "sym":          sym,
+        "tf":           body.get("tf", "15m"),
+        "direction":    direction,
+        "entry":        entry,
+        "size":         lots,
+        "sl_price":     float(sl_price)    if sl_price    else None,
+        "tp_price":     float(tp_price)    if tp_price    else None,
+        "sl_pips":      sl_pips,
+        "tp_pips":      tp_pips,
+        "entryTime":    entry_time,
+        "exitTime":     exit_time,
+        "exit":         float(exit_price)  if exit_price  else None,
+        "exit_type":    exit_type,
+        "outcome":      outcome or None,
+        "pnl":          float(pnl_money)   if pnl_money   else None,
+        "note":         comment,
+        "exitNote":     f"MT5 pos #{position_id}" if position_id else f"MT5 ticket #{mt4_ticket}",
+        "createdAt":    now_teh(),
+        "status":       "closed" if outcome else "open",
+        "pending_check": False,
+        "mt4_ticket":   mt4_ticket,
+        "mt4_position_id": position_id,
+        "mt4_profit":   float(pnl_money)   if pnl_money   else None,
+        "source":       "mt5_ea",
+        # فیلدهای آماری (بعداً از review پر میشن)
+        "mfe_pip": 0, "mae_pip": 0,
+        "found_3r": False, "free_risk_was_possible": False,
+        "free_risk_saved": False, "pullback_after_1r": False,
+        "mfe_before_sl_pip": 0, "passed_1r": False,
+        "is_missed_zone": False, "ai_analysis": None, "ai_summary": None,
+        "review_mfe": None, "review_mae": None, "review_pullback": None,
+        "review_note": None, "review_reversal_occurred": None,
+        "review_reversal_from_sl": None, "review_reversal_target_pips": None,
+        # کندل‌ها
+        "candle_snapshot":  candles,
+        "snapshot_locked":  len(candles) > 0,
+    }
+
+    journal.insert(0, trade)
+    save_journal(journal)
+    print(f"[MT5] ✅ {sym} {direction} {outcome} candles={len(candles)} pos={position_id}")
+    return jsonify({"ok": True, "id": trade["id"]})
+
+
+@app.route("/api/journal/mt4/status", methods=["GET"])
+def mt4_status():
+    journal = load_journal()
+    ids = [t.get("mt4_position_id") or t.get("mt4_ticket") for t in journal if t.get("source") == "mt5_ea"]
+    return jsonify({"sent": ids, "total": len(ids)})
+
+# =====================================================================
 
 print("=" * 60)
 print(f"[STARTUP] 🚀 سرور در حال راه‌اندازی...")
