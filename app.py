@@ -584,21 +584,19 @@ def poll_telegram():
 
                 # ── /text ────────────────────────────────────────────
                 elif txt.startswith("/text") and cid == YOUR_CHAT_ID:
-                    # /text متن پیام
                     body_text = txt[5:].strip()
                     if not body_text:
-                        send_tg(token, cid, "⚠️ فرمت:
-<code>/text متن پیامت اینجا</code>")
+                        send_tg(token, cid, "\u26a0\ufe0f \u0641\u0631\u0645\u062a:\n<code>/text \u0645\u062a\u0646 \u067e\u06cc\u0627\u0645\u062a \u0627\u06cc\u0646\u062c\u0627</code>")
                     else:
                         _, all_cids, _ = _get_token_and_cids()
                         if not all_cids:
-                            send_tg(token, cid, "❌ هیچ کاربری ثبت نشده")
+                            send_tg(token, cid, "\u274c \u0647\u06cc\u0686 \u06a9\u0627\u0631\u0628\u0631\u06cc \u062b\u0628\u062a \u0646\u0634\u062f\u0647")
                         else:
                             ok_count = 0
                             for tc in all_cids:
                                 r = send_tg(token, tc, body_text)
                                 if r: ok_count += 1
-                            send_tg(token, cid, f"✅ پیام به {ok_count} نفر ارسال شد")
+                            send_tg(token, cid, f"\u2705 \u067e\u06cc\u0627\u0645 \u0628\u0647 {ok_count} \u0646\u0641\u0631 \u0627\u0631\u0633\u0627\u0644 \u0634\u062f")
 
         except Exception as e:
             print(f"[poll] {e}")
