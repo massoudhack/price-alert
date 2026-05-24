@@ -2781,12 +2781,75 @@ def add_journal_mt4():
     entry_time = body.get("entryTime", now_teh())
     exit_time  = body.get("exitTime",  now_teh())
     comment    = body.get("note", "").strip()
-    candles    = body.get("candle_snapshot", [])
+    raw_candles = body.get("candle_snapshot", [])
 
     mul        = get_pip_multiplier(sym)
     sl_pips    = round(abs(entry - float(sl_price)) * mul, 1) if sl_price else None
     tp_pips    = round(abs(float(tp_price) - entry) * mul, 1) if tp_price else None
     exit_type  = body.get("exit_type") or ("sl" if outcome == "loss" else "tp" if outcome == "win" else None)
+
+    # ── Fix 1: normalize کندل‌ها ─────────────────────────────────────────────
+    # EA مقدار "t" رو به صورت Unix timestamp (int) می‌فرسته
+    # همه جای کد انتظار string "%Y-%m-%d %H:%M" (تهران) داره
+    candles = []
+    for c in raw_candles:
+        t_val = c.get("t")
+        if isinstance(t_val, (int, float)):
+            # Unix UTC → تهران (UTC+3:30)
+            dt = datetime.utcfromtimestamp(t_val) + timedelta(hours=3, minutes=30)
+            t_val = dt.strftime("%Y-%m-%d %H:%M")
+        candles.append({
+            "t": t_val,
+            "o": float(c.get("o") or 0),
+            "h": float(c.get("h") or 0),
+            "l": float(c.get("l") or 0),
+            "c": float(c.get("c") or 0),
+        })
+
+    # ── Fix 2: محاسبه MFE / MAE / passed_1r / found_3r از snapshot ──────────
+    mfe_pip       = 0.0
+    mae_pip       = 0.0
+    mfe_before_sl = 0.0
+    passed_1r     = False
+    found_3r      = False
+
+    if candles and entry:
+        is_buy    = direction == "BUY"
+        risk_pips = None
+        if sl_price:
+            risk_pips = abs(entry - float(sl_price)) * mul
+
+        for c in candles:
+            high  = c["h"]
+            low   = c["l"]
+            # MFE: بیشترین سود در جهت ترید (pip)
+            profit_now = (high - entry) * mul if is_buy else (entry - low) * mul
+            if profit_now > mfe_pip:
+                mfe_pip = profit_now
+            # MAE: بیشترین ضرر در جهت خلاف ترید (pip)
+            drawdown = (entry - low) * mul if is_buy else (high - entry) * mul
+            if drawdown > mae_pip:
+                mae_pip = drawdown
+
+        # cap MFE at 3R
+        if risk_pips and risk_pips > 0:
+            if mfe_pip > risk_pips * 3.0:
+                mfe_pip = risk_pips * 3.0
+            passed_1r = mfe_pip >= risk_pips
+            found_3r  = mfe_pip >= risk_pips * 3.0
+            mfe_before_sl = mfe_pip  # برای ترید بسته‌شده همه MFE قبل از SL حساب میشه
+
+    # ── Fix 3: reward_r محاسبه ───────────────────────────────────────────────
+    # sl_price=0 از EA به معنای نداشتن SL است، نه عدد صفر
+    sl_price_clean = float(sl_price) if sl_price and float(sl_price) != 0 else None
+    tp_price_clean = float(tp_price) if tp_price and float(tp_price) != 0 else None
+
+    if sl_price_clean is None:
+        sl_pips = None
+    if tp_price_clean is None:
+        tp_pips = None
+    else:
+        tp_pips = round(abs(tp_price_clean - entry) * mul, 1)
 
     trade = {
         "id":           generate_id(),
@@ -2795,8 +2858,8 @@ def add_journal_mt4():
         "direction":    direction,
         "entry":        entry,
         "size":         lots,
-        "sl_price":     float(sl_price)    if sl_price    else None,
-        "tp_price":     float(tp_price)    if tp_price    else None,
+        "sl_price":     sl_price_clean,
+        "tp_price":     tp_price_clean,
         "sl_pips":      sl_pips,
         "tp_pips":      tp_pips,
         "entryTime":    entry_time,
@@ -2814,23 +2877,29 @@ def add_journal_mt4():
         "mt4_position_id": position_id,
         "mt4_profit":   float(pnl_money)   if pnl_money   else None,
         "source":       "mt5_ea",
-        # فیلدهای آماری (بعداً از review پر میشن)
-        "mfe_pip": 0, "mae_pip": 0,
-        "found_3r": False, "free_risk_was_possible": False,
-        "free_risk_saved": False, "pullback_after_1r": False,
-        "mfe_before_sl_pip": 0, "passed_1r": False,
-        "is_missed_zone": False, "ai_analysis": None, "ai_summary": None,
+        # فیلدهای آماری — حساب‌شده از snapshot
+        "mfe_pip":              round(mfe_pip, 1),
+        "mae_pip":              round(mae_pip, 1),
+        "mfe_before_sl_pip":    round(mfe_before_sl, 1),
+        "passed_1r":            passed_1r,
+        "found_3r":             found_3r,
+        "free_risk_was_possible": False,
+        "free_risk_saved":      False,
+        "pullback_after_1r":    False,
+        "is_missed_zone":       False,
+        "ai_analysis": None, "ai_summary": None,
         "review_mfe": None, "review_mae": None, "review_pullback": None,
         "review_note": None, "review_reversal_occurred": None,
         "review_reversal_from_sl": None, "review_reversal_target_pips": None,
-        # کندل‌ها
+        # کندل‌ها — normalize‌شده
         "candle_snapshot":  candles,
         "snapshot_locked":  len(candles) > 0,
     }
 
     journal.insert(0, trade)
     save_journal(journal)
-    print(f"[MT5] ✅ {sym} {direction} {outcome} candles={len(candles)} pos={position_id}")
+    print(f"[MT5] ✅ {sym} {direction} {outcome} candles={len(candles)} "
+          f"mfe={trade['mfe_pip']}pip passed_1r={passed_1r} found_3r={found_3r} pos={position_id}")
     return jsonify({"ok": True, "id": trade["id"]})
 
 
@@ -2839,6 +2908,94 @@ def mt4_status():
     journal = load_journal()
     ids = [t.get("mt4_position_id") or t.get("mt4_ticket") for t in journal if t.get("source") == "mt5_ea"]
     return jsonify({"sent": ids, "total": len(ids)})
+
+
+@app.route("/api/journal/mt4/migrate-candles", methods=["POST"])
+def mt4_migrate_candles():
+    """
+    یه‌بار اجرا کن تا ترید‌های قدیمی که 't' عددی (Unix) دارن رو fix کنه.
+    همچنین mfe_pip / mae_pip / passed_1r / found_3r رو از snapshot محاسبه می‌کنه.
+    """
+    journal = load_journal()
+    fixed_trades   = 0
+    fixed_candles  = 0
+
+    for trade in journal:
+        snap = trade.get("candle_snapshot", [])
+        if not snap:
+            continue
+
+        needs_fix = any(isinstance(c.get("t"), (int, float)) for c in snap)
+        if not needs_fix:
+            # بررسی کن mfe_pip هم نیاز به recalc داره
+            if trade.get("mfe_pip", 0) == 0 and trade.get("source") == "mt5_ea":
+                needs_fix = True  # candles string هستن ولی mfe حساب نشده
+
+        if not needs_fix:
+            continue
+
+        # ── normalize t ────────────────────────────────────────────
+        normalized = []
+        for c in snap:
+            t_val = c.get("t")
+            if isinstance(t_val, (int, float)):
+                dt = datetime.utcfromtimestamp(t_val) + timedelta(hours=3, minutes=30)
+                t_val = dt.strftime("%Y-%m-%d %H:%M")
+                fixed_candles += 1
+            normalized.append({
+                "t": t_val,
+                "o": float(c.get("o") or 0),
+                "h": float(c.get("h") or 0),
+                "l": float(c.get("l") or 0),
+                "c": float(c.get("c") or 0),
+            })
+        trade["candle_snapshot"] = normalized
+
+        # ── recalc mfe / mae / passed_1r / found_3r ────────────────
+        entry     = float(trade.get("entry") or 0)
+        direction = trade.get("direction", "BUY")
+        sl_price  = trade.get("sl_price")
+        mul       = get_pip_multiplier(trade.get("sym", ""))
+        is_buy    = direction == "BUY"
+        risk_pips = abs(entry - float(sl_price)) * mul if sl_price and entry else None
+
+        mfe_pip = 0.0
+        mae_pip = 0.0
+        for c in normalized:
+            high = c["h"]; low = c["l"]
+            profit_now = (high - entry) * mul if is_buy else (entry - low) * mul
+            drawdown   = (entry - low)  * mul if is_buy else (high - entry) * mul
+            if profit_now > mfe_pip: mfe_pip = profit_now
+            if drawdown   > mae_pip: mae_pip = drawdown
+
+        if risk_pips and risk_pips > 0:
+            if mfe_pip > risk_pips * 3.0:
+                mfe_pip = risk_pips * 3.0
+            trade["passed_1r"] = mfe_pip >= risk_pips
+            trade["found_3r"]  = mfe_pip >= risk_pips * 3.0
+        trade["mfe_pip"]            = round(mfe_pip, 1)
+        trade["mae_pip"]            = round(mae_pip, 1)
+        trade["mfe_before_sl_pip"]  = round(mfe_pip, 1)
+
+        # sl_price=0 رو هم fix کن
+        if trade.get("sl_price") == 0:
+            trade["sl_price"] = None
+            trade["sl_pips"]  = None
+        if trade.get("tp_price") == 0:
+            trade["tp_price"] = None
+            trade["tp_pips"]  = None
+
+        fixed_trades += 1
+
+    if fixed_trades:
+        save_journal(journal)
+
+    return jsonify({
+        "ok": True,
+        "fixed_trades":  fixed_trades,
+        "fixed_candles": fixed_candles,
+        "message": f"{fixed_trades} ترید و {fixed_candles} کندل fix شدند"
+    })
 
 # =====================================================================
 
