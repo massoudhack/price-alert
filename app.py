@@ -582,6 +582,24 @@ def poll_telegram():
                         msg = format_ff_message(events) if events else "📭 امروز رویداد مهم فارکس نداریم."
                         send_tg(token, cid, msg)
 
+                # ── /text ────────────────────────────────────────────
+                elif txt.startswith("/text") and cid == YOUR_CHAT_ID:
+                    # /text متن پیام
+                    body_text = txt[5:].strip()
+                    if not body_text:
+                        send_tg(token, cid, "⚠️ فرمت:
+<code>/text متن پیامت اینجا</code>")
+                    else:
+                        _, all_cids, _ = _get_token_and_cids()
+                        if not all_cids:
+                            send_tg(token, cid, "❌ هیچ کاربری ثبت نشده")
+                        else:
+                            ok_count = 0
+                            for tc in all_cids:
+                                r = send_tg(token, tc, body_text)
+                                if r: ok_count += 1
+                            send_tg(token, cid, f"✅ پیام به {ok_count} نفر ارسال شد")
+
         except Exception as e:
             print(f"[poll] {e}")
         time.sleep(5)
@@ -2473,35 +2491,20 @@ def get_chart(trade_id):
     snapshot = trade.get("candle_snapshot", [])
     candles = []
     if snapshot:
-        def candle_dt(b):
-            t = b.get("t")
-            if isinstance(t, (int, float)):
-                return datetime.utcfromtimestamp(t)
-            try: return datetime.strptime(str(t), "%Y-%m-%d %H:%M")
-            except:
-                try: return datetime.strptime(str(t), "%Y-%m-%d %H:%M:%S")
-                except: return datetime.utcfromtimestamp(0)
-
-        def candle_t_str(b):
-            t = b.get("t")
-            if isinstance(t, (int, float)):
-                dt_teh = datetime.utcfromtimestamp(t) + timedelta(hours=3, minutes=30)
-                return dt_teh.strftime("%Y-%m-%d %H:%M")
-            return str(t)
-
         entry_utc = tehran_to_utc(entry_time_str)
         entry_idx_snap = 0
         for i, b in enumerate(snapshot):
             try:
-                bt_utc = candle_dt(b)
+                bt = datetime.strptime(b["t"], "%Y-%m-%d %H:%M")
+                bt_utc = bt - timedelta(hours=3, minutes=30)
                 if bt_utc >= (entry_utc or datetime.utcfromtimestamp(0)):
                     entry_idx_snap = i
                     break
             except: pass
-
+        # دیگر هیچ trimming اضافی انجام نمی‌دهیم – snapshot قبلاً تا SL/3R ذخیره شده
         for i, b in enumerate(snapshot):
             phase = "before" if i < entry_idx_snap else ("hit" if i == len(snapshot)-1 else "after")
-            candles.append({"t": candle_t_str(b), "o": b["o"], "h": b["h"], "l": b["l"], "c": b["c"], "phase": phase})
+            candles.append({"t": b["t"], "o": b["o"], "h": b["h"], "l": b["l"], "c": b["c"], "phase": phase})
     else:
         # fallback: از API بگیریم (به ندرت)
         try:
@@ -2744,210 +2747,6 @@ def poll_open_trades():
         except Exception as e:
             log_error(f"poll_open_trades: {e}")
         time.sleep(900)
-
-# =====================================================================
-# MT4/MT5 TEST ENDPOINT — فقط لاگ، بدون ذخیره
-# =====================================================================
-@app.route("/api/mt4/test", methods=["POST"])
-def mt4_test():
-    body = request.json or {}
-    candle_count = len(body.get("candle_snapshot", []))
-    print("=" * 50)
-    print("[MT4 TEST] دریافت شد")
-    print(f"  sym      = {body.get('sym')}")
-    print(f"  direction= {body.get('direction')}")
-    print(f"  outcome  = {body.get('outcome')}")
-    print(f"  entry    = {body.get('entry')}")
-    print(f"  exit     = {body.get('exit')}")
-    print(f"  ticket   = {body.get('mt4_ticket')}")
-    print(f"  candles  = {candle_count}")
-    print("=" * 50)
-    return jsonify({"ok": True, "received": True, "candles": candle_count})
-
-# =====================================================================
-# MT4/MT5 LIVE ENDPOINT — ذخیره واقعی در Gist
-# =====================================================================
-@app.route("/api/journal/mt4", methods=["POST"])
-def add_journal_mt4():
-    body = request.json or {}
-    sym = body.get("sym", "").upper().strip()
-    if not sym:
-        return jsonify({"ok": False, "error": "sym الزامی است"}), 400
-
-    mt4_ticket    = body.get("mt4_ticket")
-    position_id   = body.get("mt4_position_id")
-    check_id      = position_id or mt4_ticket
-
-    # جلوگیری از duplicate
-    journal = load_journal()
-    if check_id:
-        for t in journal:
-            if t.get("mt4_position_id") == check_id or t.get("mt4_ticket") == check_id:
-                return jsonify({"ok": True, "skipped": True, "id": t["id"]})
-
-    direction  = body.get("direction", "BUY")
-    entry      = float(body.get("entry", 0))
-    exit_price = body.get("exit")
-    sl_price   = body.get("sl_price")
-    tp_price   = body.get("tp_price")
-    lots       = float(body.get("size", 1.0))
-    outcome    = body.get("outcome", "")
-    pnl_money  = body.get("pnl")
-    entry_time = body.get("entryTime", now_teh())
-    exit_time  = body.get("exitTime",  now_teh())
-    comment    = body.get("note", "").strip()
-    candles    = body.get("candle_snapshot", [])
-
-    mul        = get_pip_multiplier(sym)
-    sl_pips    = round(abs(entry - float(sl_price)) * mul, 1) if sl_price else None
-    tp_pips    = round(abs(float(tp_price) - entry) * mul, 1) if tp_price else None
-    exit_type  = body.get("exit_type") or ("sl" if outcome == "loss" else "tp" if outcome == "win" else None)
-
-    trade = {
-        "id":           generate_id(),
-        "sym":          sym,
-        "tf":           body.get("tf", "15m"),
-        "direction":    direction,
-        "entry":        entry,
-        "size":         lots,
-        "sl_price":     float(sl_price)    if sl_price    else None,
-        "tp_price":     float(tp_price)    if tp_price    else None,
-        "sl_pips":      sl_pips,
-        "tp_pips":      tp_pips,
-        "entryTime":    entry_time,
-        "exitTime":     exit_time,
-        "exit":         float(exit_price)  if exit_price  else None,
-        "exit_type":    exit_type,
-        "outcome":      outcome or None,
-        "pnl":          float(pnl_money)   if pnl_money   else None,
-        "note":         comment,
-        "exitNote":     f"MT5 pos #{position_id}" if position_id else f"MT5 ticket #{mt4_ticket}",
-        "createdAt":    now_teh(),
-        "status":       "closed" if outcome else "open",
-        "pending_check": False,
-        "mt4_ticket":   mt4_ticket,
-        "mt4_position_id": position_id,
-        "mt4_profit":   float(pnl_money)   if pnl_money   else None,
-        "source":       "mt5_ea",
-        # فیلدهای آماری (بعداً از review پر میشن)
-        "mfe_pip": 0, "mae_pip": 0,
-        "found_3r": False, "free_risk_was_possible": False,
-        "free_risk_saved": False, "pullback_after_1r": False,
-        "mfe_before_sl_pip": 0, "passed_1r": False,
-        "is_missed_zone": False, "ai_analysis": None, "ai_summary": None,
-        "review_mfe": None, "review_mae": None, "review_pullback": None,
-        "review_note": None, "review_reversal_occurred": None,
-        "review_reversal_from_sl": None, "review_reversal_target_pips": None,
-        # کندل‌ها
-        "candle_snapshot":  candles,
-        "snapshot_locked":  len(candles) > 0,
-    }
-
-    # =====================================================================
-    # محاسبه MFE / MAE / passed_1r / free_risk از candle_snapshot MT5
-    # کندل‌های MT5 فرمت: {"t": epoch, "o": ..., "h": ..., "l": ..., "c": ...}
-    # =====================================================================
-    if candles and sl_price and entry:
-        try:
-            sl_f  = float(sl_price)
-            is_buy = (direction == "BUY")
-            risk_pips = abs(entry - sl_f) * mul
-
-            mfe_pip = 0.0
-            mae_pip = 0.0
-            mfe_before_sl = 0.0
-            passed_1r = False
-            reached_1r_at = None
-            free_risk_was_possible = False
-            pullback_after_1r = False
-            found_3r = False
-            mae_stopped = False
-
-            # پیدا کردن ایندکس ورود در snapshot
-            entry_ts = None
-            entry_time_str = trade["entryTime"]  # "2026-05-22 10:30:00"
-            try:
-                from datetime import datetime as _dt
-                et = _dt.strptime(entry_time_str[:16], "%Y-%m-%d %H:%M")
-                # تهران → UTC
-                import datetime as _dtt
-                et_utc = et - _dtt.timedelta(hours=3, minutes=30)
-                entry_ts = int(et_utc.timestamp())
-            except: pass
-
-            entry_idx = 0
-            if entry_ts:
-                for i, c in enumerate(candles):
-                    ct = c.get("t", 0)
-                    if isinstance(ct, str):
-                        try: ct = int(_dt.strptime(ct[:16], "%Y-%m-%d %H:%M").timestamp())
-                        except: ct = 0
-                    if ct >= entry_ts:
-                        entry_idx = i
-                        break
-
-            for i, c in enumerate(candles):
-                if i < entry_idx:
-                    continue
-                high  = float(c.get("h", 0))
-                low   = float(c.get("l", 0))
-
-                if is_buy:
-                    profit_now = (high - entry) * mul
-                    if not mae_stopped and low < entry:
-                        d = (entry - low) * mul
-                        if d > mae_pip: mae_pip = d
-                else:
-                    profit_now = (entry - low) * mul
-                    if not mae_stopped and high > entry:
-                        d = (high - entry) * mul
-                        if d > mae_pip: mae_pip = d
-
-                mfe_pip = max(mfe_pip, profit_now)
-                if risk_pips and mfe_pip >= risk_pips * 3.0:
-                    found_3r = True
-
-                if not passed_1r:
-                    mfe_before_sl = max(mfe_before_sl, profit_now)
-
-                if risk_pips and not passed_1r and profit_now >= risk_pips:
-                    passed_1r = True
-                    reached_1r_at = i
-                    mae_stopped = True
-
-                if passed_1r and reached_1r_at is not None and i > reached_1r_at:
-                    if not free_risk_was_possible:
-                        free_risk_was_possible = True
-                    if not pullback_after_1r:
-                        if is_buy and low <= entry:
-                            pullback_after_1r = True
-                        elif not is_buy and high >= entry:
-                            pullback_after_1r = True
-
-            trade["mfe_pip"]               = round(mfe_pip, 1)
-            trade["mae_pip"]               = round(mae_pip, 1)
-            trade["mfe_before_sl_pip"]     = round(mfe_before_sl, 1)
-            trade["passed_1r"]             = passed_1r
-            trade["found_3r"]              = found_3r
-            trade["free_risk_was_possible"]= free_risk_was_possible
-            trade["pullback_after_1r"]     = pullback_after_1r
-            print(f"[MT5] MFE={mfe_pip:.1f} MAE={mae_pip:.1f} 1R={passed_1r} 3R={found_3r} freeRisk={free_risk_was_possible}")
-        except Exception as e:
-            print(f"[MT5] MFE calc error: {e}")
-
-    journal.insert(0, trade)
-    save_journal(journal)
-    print(f"[MT5] ✅ {sym} {direction} {outcome} candles={len(candles)} pos={position_id}")
-    return jsonify({"ok": True, "id": trade["id"]})
-
-
-@app.route("/api/journal/mt4/status", methods=["GET"])
-def mt4_status():
-    journal = load_journal()
-    ids = [t.get("mt4_position_id") or t.get("mt4_ticket") for t in journal if t.get("source") == "mt5_ea"]
-    return jsonify({"sent": ids, "total": len(ids)})
-
-# =====================================================================
 
 print("=" * 60)
 print(f"[STARTUP] 🚀 سرور در حال راه‌اندازی...")
