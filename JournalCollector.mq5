@@ -140,7 +140,12 @@ bool PostJSON(string endpoint, string body, string &resp)
    if(sz>0 && pd[sz-1]==0) ArrayResize(pd,sz-1);
 
    ResetLastError();
-   int res = WebRequest("POST", url, hdrs, 20000, pd, rd, rh);
+   int res = -1;
+   for(int attempt=0; attempt<2 && res==-1; attempt++)
+     {
+      if(attempt>0) Sleep(2000);
+      res = WebRequest("POST", url, hdrs, 30000, pd, rd, rh);
+     }
    if(res==-1)
      {
       int e=GetLastError();
@@ -238,19 +243,32 @@ bool SendPosition(long pos_id, int total_deals)
 
    // SL/TP از order اول این position
    double sl_price=0, tp_price=0;
-   int total_orders = HistoryOrdersTotal();
-   for(int k=0;k<total_orders;k++)
+   // Lightfinance: SL/TP توی DEAL_ENTRY_IN ذخیره میشه — اول از اونجا بخون
+   for(int k=0;k<total_deals;k++)
      {
-      ulong ord = HistoryOrderGetTicket(k);
-      if((long)HistoryOrderGetInteger(ord,ORDER_POSITION_ID)!=pos_id) continue;
-      ENUM_ORDER_TYPE ot=(ENUM_ORDER_TYPE)HistoryOrderGetInteger(ord,ORDER_TYPE);
-      if(ot==ORDER_TYPE_BUY||ot==ORDER_TYPE_SELL)
+      ulong d2=HistoryDealGetTicket(k);
+      if((long)HistoryDealGetInteger(d2,DEAL_POSITION_ID)!=pos_id) continue;
+      double d_sl=HistoryDealGetDouble(d2,DEAL_SL);
+      double d_tp=HistoryDealGetDouble(d2,DEAL_TP);
+      if(d_sl>0 && sl_price==0) sl_price=d_sl;
+      if(d_tp>0 && tp_price==0) tp_price=d_tp;
+      if(sl_price>0 && tp_price>0) break;
+     }
+   // fallback: از orders
+   if(sl_price==0 || tp_price==0)
+     {
+      int total_orders=HistoryOrdersTotal();
+      for(int k=0;k<total_orders;k++)
         {
-         sl_price = HistoryOrderGetDouble(ord,ORDER_SL);
-         tp_price = HistoryOrderGetDouble(ord,ORDER_TP);
-         break;
+         ulong ord=HistoryOrderGetTicket(k);
+         if((long)HistoryOrderGetInteger(ord,ORDER_POSITION_ID)!=pos_id) continue;
+         double o_sl=HistoryOrderGetDouble(ord,ORDER_SL);
+         double o_tp=HistoryOrderGetDouble(ord,ORDER_TP);
+         if(o_sl>0 && sl_price==0) sl_price=o_sl;
+         if(o_tp>0 && tp_price==0) tp_price=o_tp;
         }
      }
+   Print("[EA] pos=",pos_id," SL=",sl_price," TP=",tp_price);
 
    string outcome  = GetOutcome(total_profit);
    string exit_type= (outcome=="loss")?"sl":"tp";
