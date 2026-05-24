@@ -2843,6 +2843,98 @@ def add_journal_mt4():
         "snapshot_locked":  len(candles) > 0,
     }
 
+    # =====================================================================
+    # محاسبه MFE / MAE / passed_1r / free_risk از candle_snapshot MT5
+    # کندل‌های MT5 فرمت: {"t": epoch, "o": ..., "h": ..., "l": ..., "c": ...}
+    # =====================================================================
+    if candles and sl_price and entry:
+        try:
+            sl_f  = float(sl_price)
+            is_buy = (direction == "BUY")
+            risk_pips = abs(entry - sl_f) * mul
+
+            mfe_pip = 0.0
+            mae_pip = 0.0
+            mfe_before_sl = 0.0
+            passed_1r = False
+            reached_1r_at = None
+            free_risk_was_possible = False
+            pullback_after_1r = False
+            found_3r = False
+            mae_stopped = False
+
+            # پیدا کردن ایندکس ورود در snapshot
+            entry_ts = None
+            entry_time_str = trade["entryTime"]  # "2026-05-22 10:30:00"
+            try:
+                from datetime import datetime as _dt
+                et = _dt.strptime(entry_time_str[:16], "%Y-%m-%d %H:%M")
+                # تهران → UTC
+                import datetime as _dtt
+                et_utc = et - _dtt.timedelta(hours=3, minutes=30)
+                entry_ts = int(et_utc.timestamp())
+            except: pass
+
+            entry_idx = 0
+            if entry_ts:
+                for i, c in enumerate(candles):
+                    ct = c.get("t", 0)
+                    if isinstance(ct, str):
+                        try: ct = int(_dt.strptime(ct[:16], "%Y-%m-%d %H:%M").timestamp())
+                        except: ct = 0
+                    if ct >= entry_ts:
+                        entry_idx = i
+                        break
+
+            for i, c in enumerate(candles):
+                if i < entry_idx:
+                    continue
+                high  = float(c.get("h", 0))
+                low   = float(c.get("l", 0))
+
+                if is_buy:
+                    profit_now = (high - entry) * mul
+                    if not mae_stopped and low < entry:
+                        d = (entry - low) * mul
+                        if d > mae_pip: mae_pip = d
+                else:
+                    profit_now = (entry - low) * mul
+                    if not mae_stopped and high > entry:
+                        d = (high - entry) * mul
+                        if d > mae_pip: mae_pip = d
+
+                mfe_pip = max(mfe_pip, profit_now)
+                if risk_pips and mfe_pip >= risk_pips * 3.0:
+                    found_3r = True
+
+                if not passed_1r:
+                    mfe_before_sl = max(mfe_before_sl, profit_now)
+
+                if risk_pips and not passed_1r and profit_now >= risk_pips:
+                    passed_1r = True
+                    reached_1r_at = i
+                    mae_stopped = True
+
+                if passed_1r and reached_1r_at is not None and i > reached_1r_at:
+                    if not free_risk_was_possible:
+                        free_risk_was_possible = True
+                    if not pullback_after_1r:
+                        if is_buy and low <= entry:
+                            pullback_after_1r = True
+                        elif not is_buy and high >= entry:
+                            pullback_after_1r = True
+
+            trade["mfe_pip"]               = round(mfe_pip, 1)
+            trade["mae_pip"]               = round(mae_pip, 1)
+            trade["mfe_before_sl_pip"]     = round(mfe_before_sl, 1)
+            trade["passed_1r"]             = passed_1r
+            trade["found_3r"]              = found_3r
+            trade["free_risk_was_possible"]= free_risk_was_possible
+            trade["pullback_after_1r"]     = pullback_after_1r
+            print(f"[MT5] MFE={mfe_pip:.1f} MAE={mae_pip:.1f} 1R={passed_1r} 3R={found_3r} freeRisk={free_risk_was_possible}")
+        except Exception as e:
+            print(f"[MT5] MFE calc error: {e}")
+
     journal.insert(0, trade)
     save_journal(journal)
     print(f"[MT5] ✅ {sym} {direction} {outcome} candles={len(candles)} pos={position_id}")
