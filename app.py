@@ -582,23 +582,6 @@ def poll_telegram():
                         msg = format_ff_message(events) if events else "📭 امروز رویداد مهم فارکس نداریم."
                         send_tg(token, cid, msg)
 
-                # ── /text ────────────────────────────────────────────
-                elif txt.startswith("/text") and cid == YOUR_CHAT_ID:
-                    body_text = txt[5:].strip()
-                    if not body_text:
-                        send_tg(token, cid, "⚠️ فرمت:
-<code>/text متن پیامت اینجا</code>")
-                    else:
-                        _, all_cids, _ = _get_token_and_cids()
-                        if not all_cids:
-                            send_tg(token, cid, "❌ هیچ کاربری ثبت نشده")
-                        else:
-                            ok_count = 0
-                            for tc in all_cids:
-                                r = send_tg(token, tc, body_text)
-                                if r: ok_count += 1
-                            send_tg(token, cid, f"✅ پیام به {ok_count} نفر ارسال شد")
-
         except Exception as e:
             print(f"[poll] {e}")
         time.sleep(5)
@@ -2763,7 +2746,7 @@ def poll_open_trades():
         time.sleep(900)
 
 # =====================================================================
-# MT4/MT5 TEST ENDPOINT
+# MT4/MT5 TEST ENDPOINT — فقط لاگ، بدون ذخیره
 # =====================================================================
 @app.route("/api/mt4/test", methods=["POST"])
 def mt4_test():
@@ -2782,7 +2765,7 @@ def mt4_test():
     return jsonify({"ok": True, "received": True, "candles": candle_count})
 
 # =====================================================================
-# MT4/MT5 LIVE ENDPOINT
+# MT4/MT5 LIVE ENDPOINT — ذخیره واقعی در Gist
 # =====================================================================
 @app.route("/api/journal/mt4", methods=["POST"])
 def add_journal_mt4():
@@ -2791,10 +2774,11 @@ def add_journal_mt4():
     if not sym:
         return jsonify({"ok": False, "error": "sym الزامی است"}), 400
 
-    mt4_ticket  = body.get("mt4_ticket")
-    position_id = body.get("mt4_position_id")
-    check_id    = position_id or mt4_ticket
+    mt4_ticket    = body.get("mt4_ticket")
+    position_id   = body.get("mt4_position_id")
+    check_id      = position_id or mt4_ticket
 
+    # جلوگیری از duplicate
     journal = load_journal()
     if check_id:
         for t in journal:
@@ -2814,10 +2798,10 @@ def add_journal_mt4():
     comment    = body.get("note", "").strip()
     candles    = body.get("candle_snapshot", [])
 
-    mul       = get_pip_multiplier(sym)
-    sl_pips   = round(abs(entry - float(sl_price)) * mul, 1) if sl_price else None
-    tp_pips   = round(abs(float(tp_price) - entry) * mul, 1) if tp_price else None
-    exit_type = body.get("exit_type") or ("sl" if outcome == "loss" else "tp" if outcome == "win" else None)
+    mul        = get_pip_multiplier(sym)
+    sl_pips    = round(abs(entry - float(sl_price)) * mul, 1) if sl_price else None
+    tp_pips    = round(abs(float(tp_price) - entry) * mul, 1) if tp_price else None
+    exit_type  = body.get("exit_type") or ("sl" if outcome == "loss" else "tp" if outcome == "win" else None)
 
     trade = {
         "id":           generate_id(),
@@ -2826,16 +2810,16 @@ def add_journal_mt4():
         "direction":    direction,
         "entry":        entry,
         "size":         lots,
-        "sl_price":     float(sl_price)   if sl_price   else None,
-        "tp_price":     float(tp_price)   if tp_price   else None,
+        "sl_price":     float(sl_price)    if sl_price    else None,
+        "tp_price":     float(tp_price)    if tp_price    else None,
         "sl_pips":      sl_pips,
         "tp_pips":      tp_pips,
         "entryTime":    entry_time,
         "exitTime":     exit_time,
-        "exit":         float(exit_price) if exit_price else None,
+        "exit":         float(exit_price)  if exit_price  else None,
         "exit_type":    exit_type,
         "outcome":      outcome or None,
-        "pnl":          float(pnl_money)  if pnl_money  else None,
+        "pnl":          float(pnl_money)   if pnl_money   else None,
         "note":         comment,
         "exitNote":     f"MT5 pos #{position_id}" if position_id else f"MT5 ticket #{mt4_ticket}",
         "createdAt":    now_teh(),
@@ -2843,11 +2827,9 @@ def add_journal_mt4():
         "pending_check": False,
         "mt4_ticket":   mt4_ticket,
         "mt4_position_id": position_id,
-        "mt4_magic":    body.get("mt4_magic"),
-        "mt4_profit":   float(pnl_money)  if pnl_money  else None,
+        "mt4_profit":   float(pnl_money)   if pnl_money   else None,
         "source":       "mt5_ea",
-        "tf2":          body.get("tf2"),
-        "candle_snapshot_tf2": body.get("candle_snapshot_tf2"),
+        # فیلدهای آماری (بعداً از review پر میشن)
         "mfe_pip": 0, "mae_pip": 0,
         "found_3r": False, "free_risk_was_possible": False,
         "free_risk_saved": False, "pullback_after_1r": False,
@@ -2856,67 +2838,10 @@ def add_journal_mt4():
         "review_mfe": None, "review_mae": None, "review_pullback": None,
         "review_note": None, "review_reversal_occurred": None,
         "review_reversal_from_sl": None, "review_reversal_target_pips": None,
+        # کندل‌ها
         "candle_snapshot":  candles,
         "snapshot_locked":  len(candles) > 0,
     }
-
-    # محاسبه MFE/MAE از candle_snapshot
-    if candles and sl_price and entry:
-        try:
-            sl_f   = float(sl_price)
-            is_buy = (direction == "BUY")
-            risk_pips = abs(entry - sl_f) * mul
-            mfe_pip = mae_pip = mfe_before_sl = 0.0
-            passed_1r = found_3r = free_risk_was_possible = pullback_after_1r = False
-            mae_stopped = False
-            reached_1r_at = None
-
-            entry_ts = None
-            try:
-                from datetime import datetime as _dt, timedelta as _td
-                et = _dt.strptime(entry_time[:16], "%Y-%m-%d %H:%M")
-                entry_ts = int((et - _td(hours=3, minutes=30)).timestamp())
-            except: pass
-
-            entry_idx = 0
-            if entry_ts:
-                for i, c in enumerate(candles):
-                    ct = c.get("t", 0)
-                    if isinstance(ct, str):
-                        try: ct = int(_dt.strptime(ct[:16], "%Y-%m-%d %H:%M").timestamp())
-                        except: ct = 0
-                    if ct >= entry_ts: entry_idx = i; break
-
-            for i, c in enumerate(candles):
-                if i < entry_idx: continue
-                high = float(c.get("h", 0)); low = float(c.get("l", 0))
-                profit_now = (high - entry)*mul if is_buy else (entry - low)*mul
-                if is_buy and not mae_stopped and low < entry:
-                    d = (entry - low)*mul
-                    if d > mae_pip: mae_pip = d
-                elif not is_buy and not mae_stopped and high > entry:
-                    d = (high - entry)*mul
-                    if d > mae_pip: mae_pip = d
-                mfe_pip = max(mfe_pip, profit_now)
-                if risk_pips and mfe_pip >= risk_pips*3: found_3r = True
-                if not passed_1r: mfe_before_sl = max(mfe_before_sl, profit_now)
-                if risk_pips and not passed_1r and profit_now >= risk_pips:
-                    passed_1r = True; reached_1r_at = i; mae_stopped = True
-                if passed_1r and reached_1r_at and i > reached_1r_at:
-                    free_risk_was_possible = True
-                    if is_buy and low <= entry: pullback_after_1r = True
-                    elif not is_buy and high >= entry: pullback_after_1r = True
-
-            trade.update({
-                "mfe_pip": round(mfe_pip, 1), "mae_pip": round(mae_pip, 1),
-                "mfe_before_sl_pip": round(mfe_before_sl, 1),
-                "passed_1r": passed_1r, "found_3r": found_3r,
-                "free_risk_was_possible": free_risk_was_possible,
-                "pullback_after_1r": pullback_after_1r,
-            })
-            print(f"[MT5] MFE={mfe_pip:.1f} MAE={mae_pip:.1f} 1R={passed_1r} 3R={found_3r}")
-        except Exception as e:
-            print(f"[MT5] MFE calc error: {e}")
 
     journal.insert(0, trade)
     save_journal(journal)
