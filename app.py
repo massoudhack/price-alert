@@ -106,18 +106,37 @@ def save_alerts(data):
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 # =====================================================================
-# Supabase — جایگزین Gist برای journal
+# Supabase
 # =====================================================================
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://erwimqqskkzcsayvhxot.supabase.co")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 
-def _sb_headers():
+def _sb_h():
     return {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json",
-        "Prefer": "return=representation"
+        "Content-Type": "application/json"
     }
+
+def _sb_upsert(trade):
+    """upsert یه ترید — اگه بود آپدیت کن اگه نبود insert"""
+    tid = trade.get("id")
+    if not tid: return
+    trade_light = {k: v for k, v in trade.items() if k != "candle_snapshot"}
+    candles = trade.get("candle_snapshot", [])
+    payload = {
+        "trade_id": tid,
+        "sym": trade.get("sym", ""),
+        "created_at": trade.get("createdAt", now_teh()),
+        "data": json.dumps(trade_light, ensure_ascii=False),
+        "candles": json.dumps(candles, ensure_ascii=False)
+    }
+    r = requests.post(
+        f"{SUPABASE_URL}/rest/v1/trades",
+        headers={**_sb_h(), "Prefer": "resolution=merge-duplicates,return=minimal"},
+        json=payload, timeout=15)
+    if r.status_code not in (200, 201, 204):
+        print(f"[SB] upsert {tid}: {r.status_code} {r.text[:80]}")
 
 def load_journal():
     global _cache_journal
@@ -130,14 +149,14 @@ def load_journal():
             print("[JOURNAL:LOAD] از Supabase...")
             r = requests.get(
                 f"{SUPABASE_URL}/rest/v1/trades?order=created_at.desc&limit=2000",
-                headers=_sb_headers(), timeout=15)
+                headers=_sb_h(), timeout=15)
             if r.status_code == 200:
-                rows = r.json()
                 _cache_journal = []
-                for row in rows:
+                for row in r.json():
                     d = row.get("data", {})
-                    trade = json.loads(d) if isinstance(d, str) else d
-                    trade["candle_snapshot"] = trade.get("candle_snapshot", [])
+                    trade = json.loads(d) if isinstance(d, str) else (d or {})
+                    candles_raw = row.get("candles", "[]")
+                    trade["candle_snapshot"] = json.loads(candles_raw) if isinstance(candles_raw, str) else (candles_raw or [])
                     _cache_journal.append(trade)
                 print(f"[JOURNAL:LOAD] ✅ {len(_cache_journal)} ترید از Supabase")
                 return _cache_journal
@@ -146,6 +165,7 @@ def load_journal():
         except Exception as e:
             print(f"[JOURNAL:LOAD] Supabase error: {e}")
 
+    # fallback Gist
     if GIST_ID_JOURNAL and GIST_TOKEN:
         try:
             r = requests.get(f"https://api.github.com/gists/{GIST_ID_JOURNAL}",
@@ -167,51 +187,30 @@ def save_journal(journal_list):
     global _cache_journal
     _cache_journal = journal_list
 
-    if SUPABASE_KEY:
-        try:
-            for trade in journal_list:
-                tid = trade.get("id")
-                if not tid: continue
-                trade_light = {k: v for k, v in trade.items() if k != "candle_snapshot"}
-                candles = trade.get("candle_snapshot", [])
-                payload = {
-                    "trade_id": tid,
-                    "sym": trade.get("sym", ""),
-                    "created_at": trade.get("createdAt", now_teh()),
-                    "data": json.dumps(trade_light, ensure_ascii=False),
-                    "candles": json.dumps(candles, ensure_ascii=False)
-                }
-                r = requests.post(
-                    f"{SUPABASE_URL}/rest/v1/trades",
-                    headers={**_sb_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
-                    json=payload, timeout=10)
-                if r.status_code not in (200, 201, 204):
-                    print(f"[JOURNAL:SAVE] upsert {tid}: {r.status_code} {r.text[:80]}")
-            print(f"[JOURNAL:SAVE] ✅ {len(journal_list)} ترید در Supabase")
-        except Exception as e:
-            print(f"[JOURNAL:SAVE] Supabase error: {e}")
-    else:
-        if GIST_ID_JOURNAL and GIST_TOKEN:
-            try:
-                requests.patch(f"https://api.github.com/gists/{GIST_ID_JOURNAL}",
-                               headers={"Authorization": f"token {GIST_TOKEN}"},
-                               json={"files": {JOURNAL_FILE: {"content": json.dumps(journal_list, indent=2, ensure_ascii=False)}}},
-                               timeout=10)
-                print(f"[JOURNAL:SAVE] ✅ Gist fallback")
-            except Exception as e:
-                print(f"[JOURNAL:SAVE] Gist error: {e}")
+    if not SUPABASE_KEY:
+        print("[JOURNAL:SAVE] SUPABASE_KEY نیست")
+        return
+
+    try:
+        ok = 0
+        for trade in journal_list:
+            _sb_upsert(trade)
+            ok += 1
+        print(f"[JOURNAL:SAVE] ✅ {ok} ترید در Supabase")
+    except Exception as e:
+        print(f"[JOURNAL:SAVE] error: {e}")
 
 def get_trade_candles(trade_id):
+    """کندل‌های یه ترید رو جداگانه بخون"""
     if not SUPABASE_KEY: return []
     try:
         r = requests.get(
             f"{SUPABASE_URL}/rest/v1/trades?trade_id=eq.{trade_id}&select=candles",
-            headers=_sb_headers(), timeout=10)
+            headers=_sb_h(), timeout=10)
         if r.status_code == 200 and r.json():
             c = r.json()[0].get("candles", "[]")
             return json.loads(c) if isinstance(c, str) else (c or [])
-    except Exception as e:
-        print(f"[SB] get_candles error: {e}")
+    except: pass
     return []
 
 def log_error(msg):
