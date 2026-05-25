@@ -105,71 +105,114 @@ def save_alerts(data):
     with open(ALERTS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
+# =====================================================================
+# Supabase — جایگزین Gist برای journal
+# =====================================================================
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://erwimqqskkzcsayvhxot.supabase.co")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+
+def _sb_headers():
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+    }
+
 def load_journal():
     global _cache_journal
     if _cache_journal is not None:
         print(f"[JOURNAL:LOAD] از cache — {len(_cache_journal)} ترید")
         return _cache_journal
-    print(f"[JOURNAL:LOAD] شروع لود — GIST_ID={GIST_ID_JOURNAL[:8] if GIST_ID_JOURNAL else 'ندارد'}")
+
+    if SUPABASE_KEY:
+        try:
+            print("[JOURNAL:LOAD] از Supabase...")
+            r = requests.get(
+                f"{SUPABASE_URL}/rest/v1/trades?order=created_at.desc&limit=2000",
+                headers=_sb_headers(), timeout=15)
+            if r.status_code == 200:
+                rows = r.json()
+                _cache_journal = []
+                for row in rows:
+                    d = row.get("data", {})
+                    trade = json.loads(d) if isinstance(d, str) else d
+                    trade["candle_snapshot"] = trade.get("candle_snapshot", [])
+                    _cache_journal.append(trade)
+                print(f"[JOURNAL:LOAD] ✅ {len(_cache_journal)} ترید از Supabase")
+                return _cache_journal
+            else:
+                print(f"[JOURNAL:LOAD] Supabase: {r.status_code} {r.text[:100]}")
+        except Exception as e:
+            print(f"[JOURNAL:LOAD] Supabase error: {e}")
+
     if GIST_ID_JOURNAL and GIST_TOKEN:
         try:
-            print(f"[JOURNAL:LOAD] درخواست Gist...")
             r = requests.get(f"https://api.github.com/gists/{GIST_ID_JOURNAL}",
                              headers={"Authorization": f"token {GIST_TOKEN}"}, timeout=10)
-            print(f"[JOURNAL:LOAD] Gist status: {r.status_code}")
             if r.status_code == 200:
                 files = r.json().get("files", {})
                 if JOURNAL_FILE in files:
-                    content = files[JOURNAL_FILE]["content"]
-                    _cache_journal = json.loads(content)
-                    if not isinstance(_cache_journal, list):
-                        print(f"[JOURNAL:LOAD] ⚠️ داده Gist list نیست — reset")
-                        _cache_journal = []
-                    print(f"[JOURNAL:LOAD] ✅ {len(_cache_journal)} ترید از Gist لود شد")
+                    _cache_journal = json.loads(files[JOURNAL_FILE]["content"])
+                    if not isinstance(_cache_journal, list): _cache_journal = []
+                    print(f"[JOURNAL:LOAD] ✅ {len(_cache_journal)} ترید از Gist")
                     return _cache_journal
-                else:
-                    print(f"[JOURNAL:LOAD] ⚠️ فایل {JOURNAL_FILE} در Gist نیست — فایل‌های موجود: {list(files.keys())}")
-            else:
-                print(f"[JOURNAL:LOAD] ❌ Gist خطا: {r.status_code} — {r.text[:100]}")
         except Exception as e:
-            print(f"[JOURNAL:LOAD] ❌ Exception Gist: {e}")
-    if os.path.exists(JOURNAL_FILE):
-        try:
-            with open(JOURNAL_FILE, "r", encoding="utf-8") as f:
-                _cache_journal = json.load(f)
-                if not isinstance(_cache_journal, list):
-                    _cache_journal = []
-                print(f"[JOURNAL:LOAD] ✅ {len(_cache_journal)} ترید از فایل لوکال لود شد")
-                return _cache_journal
-        except Exception as e:
-            print(f"[JOURNAL:LOAD] ❌ خطا فایل لوکال: {e}")
-    print(f"[JOURNAL:LOAD] ⚠️ هیچ داده‌ای نیست — لیست خالی برگشت")
+            print(f"[JOURNAL:LOAD] Gist error: {e}")
+
     _cache_journal = []
     return _cache_journal
 
 def save_journal(journal_list):
     global _cache_journal
     _cache_journal = journal_list
-    print(f"[JOURNAL:SAVE] شروع ذخیره {len(journal_list)} ترید...")
-    if GIST_ID_JOURNAL and GIST_TOKEN:
+
+    if SUPABASE_KEY:
         try:
-            print(f"[JOURNAL:SAVE] ارسال به Gist...")
-            r = requests.patch(f"https://api.github.com/gists/{GIST_ID_JOURNAL}",
+            for trade in journal_list:
+                tid = trade.get("id")
+                if not tid: continue
+                trade_light = {k: v for k, v in trade.items() if k != "candle_snapshot"}
+                candles = trade.get("candle_snapshot", [])
+                payload = {
+                    "trade_id": tid,
+                    "sym": trade.get("sym", ""),
+                    "created_at": trade.get("createdAt", now_teh()),
+                    "data": json.dumps(trade_light, ensure_ascii=False),
+                    "candles": json.dumps(candles, ensure_ascii=False)
+                }
+                r = requests.post(
+                    f"{SUPABASE_URL}/rest/v1/trades",
+                    headers={**_sb_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
+                    json=payload, timeout=10)
+                if r.status_code not in (200, 201, 204):
+                    print(f"[JOURNAL:SAVE] upsert {tid}: {r.status_code} {r.text[:80]}")
+            print(f"[JOURNAL:SAVE] ✅ {len(journal_list)} ترید در Supabase")
+        except Exception as e:
+            print(f"[JOURNAL:SAVE] Supabase error: {e}")
+    else:
+        if GIST_ID_JOURNAL and GIST_TOKEN:
+            try:
+                requests.patch(f"https://api.github.com/gists/{GIST_ID_JOURNAL}",
                                headers={"Authorization": f"token {GIST_TOKEN}"},
                                json={"files": {JOURNAL_FILE: {"content": json.dumps(journal_list, indent=2, ensure_ascii=False)}}},
                                timeout=10)
-            if r.status_code == 200:
-                print(f"[JOURNAL:SAVE] ✅ Gist ذخیره شد — {len(journal_list)} ترید")
-            else:
-                print(f"[JOURNAL:SAVE] ❌ Gist خطا: {r.status_code} — {r.text[:120]}")
-        except Exception as e:
-            print(f"[JOURNAL:SAVE] ❌ Exception Gist: {e}")
+                print(f"[JOURNAL:SAVE] ✅ Gist fallback")
+            except Exception as e:
+                print(f"[JOURNAL:SAVE] Gist error: {e}")
+
+def get_trade_candles(trade_id):
+    if not SUPABASE_KEY: return []
     try:
-        with open(JOURNAL_FILE, "w", encoding="utf-8") as f:
-            json.dump(journal_list, f, indent=2, ensure_ascii=False)
-        print(f"[JOURNAL:SAVE] ✅ فایل لوکال ذخیره شد")
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/trades?trade_id=eq.{trade_id}&select=candles",
+            headers=_sb_headers(), timeout=10)
+        if r.status_code == 200 and r.json():
+            c = r.json()[0].get("candles", "[]")
+            return json.loads(c) if isinstance(c, str) else (c or [])
     except Exception as e:
-        print(f"[JOURNAL:SAVE] ❌ خطا فایل لوکال: {e}")
+        print(f"[SB] get_candles error: {e}")
+    return []
 
 def log_error(msg):
     try:
