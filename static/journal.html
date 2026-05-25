@@ -241,7 +241,20 @@
                 </div></div>
             </div>
             <div class="list-col">
-                <div class="tabs" style="margin-bottom:1rem;flex-wrap:wrap;gap:6px;align-items:center"><button class="tab on" onclick="setTab('all',this)">همه</button><button class="tab" onclick="setTab('closed',this)">✓ بسته شده</button><select id="week-filter" onchange="setWeekFilter(this.value)" style="margin-right:auto;font-size:11px;padding:4px 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);cursor:pointer"><option value="">📅 همه تاریخ‌ها</option></select></div>
+                <div style="margin-bottom:1rem;display:flex;flex-direction:column;gap:8px">
+  <div class="tabs" style="flex-wrap:wrap;gap:6px;align-items:center">
+    <button class="tab on" onclick="setTab('all',this)">همه</button>
+    <button class="tab" onclick="setTab('closed',this)">✓ بسته شده</button>
+    <button onclick="openClearAllModal()" style="margin-right:auto;padding:5px 12px;border-radius:8px;border:1px solid rgba(231,76,60,.4);background:rgba(231,76,60,.1);color:#e74c3c;font-size:11px;cursor:pointer;font-family:var(--mono)">🗑 پاک کردن همه</button>
+  </div>
+  <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+    <input id="sym-search" type="text" placeholder="🔍 نماد (مثلاً EURUSD)" oninput="onSymSearch()" style="flex:1;min-width:120px;padding:5px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:12px;font-family:var(--mono)">
+    <input id="date-from" type="date" onchange="onDateFilter()" style="padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:11px">
+    <span style="font-size:11px;color:var(--text3)">تا</span>
+    <input id="date-to" type="date" onchange="onDateFilter()" style="padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:11px">
+    <button onclick="clearDateFilter()" style="padding:5px 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text3);font-size:11px;cursor:pointer">✕</button>
+  </div>
+</div>
                 <div id="trades-wrap"><div class="empty"><div class="spin" style="width:20px;height:20px;margin:0 auto;"></div><p>در حال بارگذاری...</p></div></div>
                 <div id="pagination-wrap" style="display:none;margin-top:10px;display:flex;justify-content:center;align-items:center;gap:8px;padding:8px 0"></div>
             </div>
@@ -492,6 +505,54 @@
     </div>
 </div>
 
+<!-- مودال پاک کردن همه تریدها -->
+<div class="overlay" id="clearall-overlay" onclick="if(event.target===this) closeClearAllModal()">
+    <div class="modal" style="max-width:400px">
+        <div class="modal-hd" style="border-bottom:2px solid rgba(231,76,60,.4)">
+            <span class="modal-ttl" style="color:#e74c3c">🗑 پاک کردن همه تریدها</span>
+            <button class="modal-x" onclick="closeClearAllModal()">✕</button>
+        </div>
+        <div class="modal-bd">
+            <div style="background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.4);border-radius:10px;padding:16px;margin-bottom:16px;text-align:center">
+                <div style="font-size:28px;margin-bottom:8px">⚠️</div>
+                <div style="font-weight:700;color:#e74c3c;font-size:15px;margin-bottom:6px">این عمل برگشت‌ناپذیر است!</div>
+                <div style="font-size:13px;color:var(--text2);line-height:1.7">تمام تریدها، ارزیابی‌ها و داده‌های ژورنال برای همیشه پاک می‌شوند.<br>از Gist و فایل لوکال هر دو حذف می‌شود.</div>
+            </div>
+            <div style="margin-bottom:14px">
+                <label style="font-size:12px;color:var(--text2);margin-bottom:6px;display:block">برای تأیید، عبارت <b style="color:#e74c3c;font-family:var(--mono)">DELETE ALL</b> را تایپ کنید:</label>
+                <input id="clearall-confirm" type="text" placeholder="DELETE ALL" oninput="onClearAllInput()" style="width:100%;padding:8px 12px;border-radius:8px;border:2px solid rgba(231,76,60,.3);background:var(--bg3);color:var(--text);font-size:14px;font-family:var(--mono);box-sizing:border-box">
+            </div>
+            <button id="clearall-btn" onclick="confirmClearAll()" disabled style="width:100%;padding:10px;border-radius:8px;border:none;background:rgba(231,76,60,.3);color:rgba(231,76,60,.5);font-size:14px;font-weight:700;cursor:not-allowed;transition:.2s">🗑 بله، همه را پاک کن</button>
+        </div>
+    </div>
+</div>
+
+<!-- مودال ادیت سریع SL/TP -->
+<div class="overlay" id="esl-overlay" onclick="if(event.target===this) closeEditSlModal()">
+    <div class="modal" style="max-width:420px">
+        <div class="modal-hd"><span class="modal-ttl">✏️ ادیت استاپ لاس</span><button class="modal-x" onclick="closeEditSlModal()">✕</button></div>
+        <div class="modal-bd">
+            <input type="hidden" id="esl-tid">
+            <div id="esl-info" style="margin-bottom:14px;font-size:13px"></div>
+            <div class="frow">
+                <div class="fld">
+                    <label>🔴 استاپ لاس جدید</label>
+                    <input type="number" id="esl-sl" step="any" oninput="previewEditSl()" placeholder="قیمت SL جدید">
+                </div>
+                <div class="fld">
+                    <label>🟢 تارگت (اختیاری)</label>
+                    <input type="number" id="esl-tp" step="any" oninput="previewEditSl()" placeholder="قیمت TP (اگه تغییر کرده)">
+                </div>
+            </div>
+            <div id="esl-preview"></div>
+            <div style="background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.25);border-radius:8px;padding:10px;font-size:12px;color:var(--text2);margin:14px 0">
+                💡 بعد از ذخیره، تمام فیلدهای وابسته (R/R، risk pips، passed_1r، exit_type و ...) به صورت خودکار به‌روز می‌شوند.
+            </div>
+            <button class="btn btn-g btn-full" onclick="saveEditSl()">💾 ذخیره و به‌روزرسانی R/R</button>
+        </div>
+    </div>
+</div>
+
 <div id="toast"></div>
 <!-- Weekly Review Modal -->
 <div id="weekly-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;align-items:center;justify-content:center">
@@ -617,7 +678,7 @@
     let _tt;
     function toast(msg,dur=2700){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(_tt);_tt=setTimeout(()=>el.classList.remove('show'),dur)}
 
-    let _trades=[],_dir='BUY',_tab='all',_autoMissed=false,_weekFilter='';
+    let _trades=[],_dir='BUY',_tab='all',_autoMissed=false,_weekFilter='',_symSearch='',_dateFrom='',_dateTo='';
     const CRYPTO_LIST = ['BTC','ETH','SOL','BNB','XRP','ADA','DOGE','TRX','TON','AVAX','MATIC','DOT','LINK','UNI','ATOM','LTC','SHIB','OP','ARB','NEAR','FTM','SAND','MANA'];
     function isCrypto(sym){let s=sym.toUpperCase();for(let c of CRYPTO_LIST) if(s.includes(c)) return true;return false;}
     function getPipMultiplier(sym){let s=sym.toUpperCase();if(s.includes('XAU')||s.includes('XAG')) return 10;if(s.includes('JPY')) return 100;return 10000;}
@@ -655,6 +716,91 @@
     
     // حذف ترید
     async function deleteTrade(id){if(!confirm('این معامله حذف شود؟'))return;try{await api('DELETE',`/api/journal/${id}/delete`);_trades=_trades.filter(t=>t.id!==id);localStorage.setItem('pj_cache',JSON.stringify(_trades));toast('حذف شد');render();}catch(e){toast('⚠️ خطا: '+e.message);}}
+    function openClearAllModal(){
+        document.getElementById('clearall-confirm').value='';
+        document.getElementById('clearall-btn').disabled=true;
+        document.getElementById('clearall-btn').style.background='rgba(231,76,60,.3)';
+        document.getElementById('clearall-btn').style.color='rgba(231,76,60,.5)';
+        document.getElementById('clearall-btn').style.cursor='not-allowed';
+        document.getElementById('clearall-overlay').classList.add('open');
+    }
+    function closeClearAllModal(){ document.getElementById('clearall-overlay').classList.remove('open'); }
+    function onClearAllInput(){
+        const val=document.getElementById('clearall-confirm').value;
+        const btn=document.getElementById('clearall-btn');
+        const ok=(val==='DELETE ALL');
+        btn.disabled=!ok;
+        btn.style.background=ok?'#e74c3c':'rgba(231,76,60,.3)';
+        btn.style.color=ok?'#fff':'rgba(231,76,60,.5)';
+        btn.style.cursor=ok?'pointer':'not-allowed';
+    }
+    async function confirmClearAll(){
+        const val=document.getElementById('clearall-confirm').value;
+        if(val!=='DELETE ALL'){toast('❌ عبارت تأیید اشتباه است');return;}
+        const btn=document.getElementById('clearall-btn');
+        btn.disabled=true;btn.innerHTML='<span class="spin"></span> در حال پاک کردن...';
+        try{
+            const res=await api('DELETE','/api/journal/all');
+            if(!res.ok) throw new Error(res.error||'خطا');
+            _trades=[];
+            localStorage.removeItem('pj_cache');
+            closeClearAllModal();
+            toast('✅ همه تریدها پاک شدند');
+            render();
+        }catch(e){ toast('❌ خطا: '+e.message); btn.disabled=false; btn.innerHTML='🗑 بله، همه را پاک کن'; }
+    }
+        function openEditSlModal(tradeId){
+        const trade = _trades.find(t => t.id === tradeId);
+        if(!trade) return;
+        document.getElementById('esl-tid').value = tradeId;
+        document.getElementById('esl-sl').value = trade.sl_price || '';
+        document.getElementById('esl-tp').value = trade.tp_price || '';
+        const mul = getPipMultiplier(trade.sym);
+        const risk = trade.sl_price && trade.entry ? Math.abs(trade.entry - trade.sl_price) * mul : null;
+        const reward = trade.tp_price && trade.entry ? Math.abs(trade.tp_price - trade.entry) * mul : null;
+        const rr = (risk && reward && risk > 0) ? (reward / risk).toFixed(2) : '—';
+        document.getElementById('esl-info').innerHTML = `<span style="color:var(--text2)">SL: <b style="color:var(--red)">${trade.sl_price ? fmtPx(trade.sl_price) : '—'}</b> | TP: <b style="color:var(--green)">${trade.tp_price ? fmtPx(trade.tp_price) : '—'}</b> | R/R: <b style="color:var(--gold)">${rr}R</b></span>`;
+        document.getElementById('esl-preview').innerHTML = '';
+        document.getElementById('esl-overlay').classList.add('open');
+    }
+    function closeEditSlModal(){ document.getElementById('esl-overlay').classList.remove('open'); }
+    function previewEditSl(){
+        const tid = document.getElementById('esl-tid').value;
+        const trade = _trades.find(t => t.id === tid);
+        if(!trade) return;
+        const sl = parseFloat(document.getElementById('esl-sl').value);
+        const tp = parseFloat(document.getElementById('esl-tp').value) || trade.tp_price;
+        if(!sl){ document.getElementById('esl-preview').innerHTML = '<span style="color:var(--red)">SL را وارد کنید</span>'; return; }
+        const mul = getPipMultiplier(trade.sym);
+        const risk = Math.abs(trade.entry - sl) * mul;
+        const reward = tp ? Math.abs(tp - trade.entry) * mul : null;
+        const rr = (reward && risk > 0) ? (reward / risk).toFixed(2) : '—';
+        document.getElementById('esl-preview').innerHTML = `<div style="background:var(--bg3);border-radius:8px;padding:10px;font-size:12px;font-family:var(--mono);margin-top:8px">
+            ریسک جدید: <b style="color:var(--red)">${risk.toFixed(1)} pip (1R)</b> &nbsp;|&nbsp; R/R جدید: <b style="color:var(--gold)">${rr}R</b>
+        </div>`;
+    }
+    async function saveEditSl(){
+        const tid = document.getElementById('esl-tid').value;
+        const trade = _trades.find(t => t.id === tid);
+        if(!trade) return;
+        const sl = parseFloat(document.getElementById('esl-sl').value);
+        const tp = parseFloat(document.getElementById('esl-tp').value) || null;
+        if(!sl){ toast('❌ SL را وارد کنید'); return; }
+        try{
+            const res = await api('PUT', `/api/journal/${tid}/edit`, {
+                sl_price: sl,
+                tp_price: tp !== null ? tp : trade.tp_price
+            });
+            if(!res.ok) throw new Error(res.error || 'خطا');
+            // آپدیت فوری لوکال
+            const idx = _trades.findIndex(t => t.id === tid);
+            if(idx !== -1) _trades[idx] = res.trade;
+            localStorage.setItem('pj_cache', JSON.stringify(_trades));
+            toast('✅ SL ادیت شد — R/R به‌روز شد');
+            closeEditSlModal();
+            render();
+        }catch(e){ toast('❌ خطا: ' + e.message); }
+    }
     
     // ==================== ارزیابی ترید (بازنویسی شده) ====================
     let _rv_tid = null, _rv_trade = null;
@@ -842,10 +988,17 @@
             payload.review_reversal_occurred = null;
         }
         try {
-            await api('POST', `/api/journal/${_rv_tid}/review`, payload);
+            const res = await api('POST', `/api/journal/${_rv_tid}/review`, payload);
+            if (!res.ok) throw new Error(res.error || 'خطا');
+            // آپدیت فوری لوکال — بدون نیاز به round-trip سرور
+            if (res.trade) {
+                const idx = _trades.findIndex(t => t.id === _rv_tid);
+                if (idx !== -1) _trades[idx] = res.trade;
+                localStorage.setItem('pj_cache', JSON.stringify(_trades));
+            }
             toast('✅ ارزیابی ذخیره شد');
             closeReviewModal();
-            await loadFromServer();
+            render();
         } catch (e) { toast('❌ خطا: ' + e.message); }
     }
 
@@ -1013,9 +1166,14 @@
         try {
             const res = await api('POST', '/api/journal/manual', payload);
             if (!res.ok) throw new Error(res.error || 'خطا');
+            // آپدیت فوری لوکال
+            if(res.trade){
+                _trades.unshift(res.trade);
+                localStorage.setItem('pj_cache', JSON.stringify(_trades));
+            }
             toast(_man_missed ? '🚫 ناحیه جا مونده ذخیره شد' : '✅ ترید دستی ذخیره شد');
             closeManualModal();
-            await loadFromServer();
+            render();
         } catch (e) { toast('❌ ' + e.message); const sb=document.querySelector('#manual-modal .btn-g');if(sb){sb.disabled=false;sb.innerHTML='💾 ذخیره ترید دستی';} }
     }
     // ==================== ویرایش کامل ترید ====================
@@ -1118,10 +1276,17 @@
         }
         
         try{
-            await api('PUT',`/api/journal/${tid}/edit`,payload);
+            const res = await api('PUT',`/api/journal/${tid}/edit`,payload);
+            if(!res.ok) throw new Error(res.error || 'خطا');
+            // آپدیت فوری لوکال
+            if(res.trade){
+                const idx = _trades.findIndex(t => t.id === tid);
+                if(idx !== -1) _trades[idx] = res.trade;
+                localStorage.setItem('pj_cache', JSON.stringify(_trades));
+            }
             toast('✅ ترید ویرایش شد');
             closeEditModal();
-            await loadFromServer();
+            render();
         }catch(e){ toast('❌ خطا: '+e.message); }
     }
     
@@ -1648,26 +1813,10 @@
     }
     function setTab(f,el){_tab=f;document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));el.classList.add('on');render(true);}
     function setWeekFilter(v){_weekFilter=v;_currentPage=1;render();}
-    function populateWeekFilter(trades){
-        const sel=document.getElementById('week-filter');if(!sel)return;
-        const weeks={};
-        trades.forEach(t=>{
-            const et=t.entryTime||t.createdAt||'';if(!et)return;
-            try{
-                const d=new Date(et.replace(' ','T'));
-                const day=d.getDay();
-                const diff=d.getDate()-(day===0?6:day-1);
-                const mon=new Date(new Date(d).setDate(diff));
-                const key=mon.toISOString().slice(0,10);
-                const sun=new Date(mon);sun.setDate(sun.getDate()+6);
-                weeks[key]=key+' تا '+sun.toISOString().slice(0,10);
-            }catch(e){}
-        });
-        const sorted=Object.keys(weeks).sort().reverse();
-        const cur=sel.value;
-        sel.innerHTML='<option value="">📅 همه تاریخ‌ها</option>';
-        sorted.forEach(k=>sel.innerHTML+=`<option value="${k}"${cur===k?' selected':''}>${weeks[k]}</option>`);
-    }
+    function onSymSearch(){ _symSearch=(document.getElementById('sym-search')?.value||'').trim().toUpperCase();_currentPage=1;render(); }
+    function onDateFilter(){ _dateFrom=document.getElementById('date-from')?.value||'';_dateTo=document.getElementById('date-to')?.value||'';_currentPage=1;render(); }
+    function clearDateFilter(){ _dateFrom='';_dateTo='';_symSearch='';const df=document.getElementById('date-from');const dt=document.getElementById('date-to');const ss=document.getElementById('sym-search');if(df)df.value='';if(dt)dt.value='';if(ss)ss.value='';_currentPage=1;render(); }
+    function populateWeekFilter(){}
     function goPage(p){const closed=_trades.filter(t=>t.status==='closed');const list=_tab==='closed'?closed:_trades;const total=Math.ceil(list.length/TRADES_PER_PAGE);if(p<1||p>total)return;_currentPage=p;render();}
     function showTab(tab){if(tab==='trades'){document.getElementById('trades-panel').style.display='block';document.getElementById('overall-panel').style.display='none';document.getElementById('tab-trades').classList.add('on');document.getElementById('tab-overall').classList.remove('on');}else{document.getElementById('trades-panel').style.display='none';document.getElementById('overall-panel').style.display='block';document.getElementById('tab-trades').classList.remove('on');document.getElementById('tab-overall').classList.add('on');}}
     // ===== فیلتر حالت AI =====
@@ -1977,13 +2126,18 @@ ${st_rows?`<div class="sec" style="margin-bottom:1rem"><div class="sec-hd"><div 
             let res = sortFn(arr);
             if(_sort==='win') res=res.filter(t=>t.outcome==='win');
             if(_sort==='loss') res=res.filter(t=>t.outcome==='loss');
-            if(_weekFilter){
-                const monStart=new Date(_weekFilter+'T00:00:00');
-                const sunEnd=new Date(monStart);sunEnd.setDate(sunEnd.getDate()+7);
+            // فیلتر بازه تاریخ
+            if(_dateFrom||_dateTo){
+                const from=_dateFrom?new Date(_dateFrom+'T00:00:00'):null;
+                const to=_dateTo?new Date(_dateTo+'T23:59:59'):null;
                 res=res.filter(t=>{
                     const et=t.entryTime||t.createdAt||'';if(!et)return false;
-                    try{const d=new Date(et.replace(' ','T'));return d>=monStart&&d<sunEnd;}catch(e){return false;}
+                    try{const d=new Date(et.replace(' ','T'));return(!from||d>=from)&&(!to||d<=to);}catch(e){return false;}
                 });
+            }
+            // فیلتر نماد
+            if(_symSearch){
+                res=res.filter(t=>(t.sym||'').toUpperCase().includes(_symSearch));
             }
             return res;
         };
@@ -2109,7 +2263,7 @@ ${st_rows?`<div class="sec" style="margin-bottom:1rem"><div class="sec-hd"><div 
             
 return `<div class="tcard ${isMissedZone?'missed-zone':(isWatching?'closed-win':(t.outcome==='win'?'closed-win':'closed-loss'))}" onclick="showChart('${t.id}')"><div class="tc-top"><div><div class="tc-sym"><span class="tc-num">${tradeNum}</span> ${escH(t.sym)} <span style="font-size:11px;color:var(--text3);font-family:var(--mono)">${t.tf||''}</span></div><div class="tc-badges"><span class="bdg ${t.direction==='BUY'?'bdg-long':'bdg-short'}">${t.direction==='BUY'?'↑ BUY':'↓ SELL'}</span>${mktBdg}${isOpen ? openBadge : (isWatching ? watchingBadge : (t.outcome==='win'?'<span class="bdg" style="background:var(--gdim);color:var(--green);border:1px solid rgba(0,217,139,.2)">✓ برد</span>':'<span class="bdg" style="background:var(--rdim);color:var(--red);border:1px solid rgba(255,69,96,.2)">✗ باخت</span>'))}${freeRiskBadge}${missedZoneBadge}</div></div><div><div class="tc-pnl ${isOpen?'zero':(takenRNum>0?'pos':(takenRNum<0?'neg':'zero'))}" style="${isOpen?'color:var(--gold)':''}">
 ${isOpen ? '?' : (takenR ? takenR+'R'+(isWatching?' ✓':'') : '—')}</div>
-<div class="tc-pnl-sub">${isOpen ? 'نامشخص' : (isWatching ? 'برد ✓ — ادامه' : 'R خروج')}</div></div></div><div class="tc-grid"><div class="pbox"><div class="pbox-lbl">ورود</div><div class="pbox-val">${fmtPx(t.entry)}</div></div><div class="pbox"><div class="pbox-lbl">خروج</div><div class="pbox-val g">${fmtPx(t.exit)}</div></div><div class="pbox"><div class="pbox-lbl">SL</div><div class="pbox-val r">${t.sl_price?fmtPx(t.sl_price):'—'} ${slPips?`<small>(${slPips}p)</small>`:''}</div></div><div class="pbox"><div class="pbox-lbl">TP</div><div class="pbox-val g">${t.tp_price?fmtPx(t.tp_price):'—'} ${tpPips?`<small>(${tpPips}p)</small>`:''}</div></div></div>${reversalLine}<div class="tc-time">⏰ ورود: ${escH(t.entryTime||'')} ${t.exitTime?`&nbsp;|&nbsp; 🚪 خروج: ${escH(t.exitTime)}`:''}</div>${noteH}${exitNoteH}<div class="tc-actions" onclick="event.stopPropagation()"><button class="btn btn-sm btn-r" onclick="event.stopPropagation();deleteTrade('${t.id}')">✕ حذف</button><button class="btn btn-sm btn-pu" onclick="event.stopPropagation();openReviewModal('${t.id}')">📝 ارزیابی</button><span class="tc-ts">${escH(t.createdAt||'')}</span></div>${reviewHtml}</div>`;
+<div class="tc-pnl-sub">${isOpen ? 'نامشخص' : (isWatching ? 'برد ✓ — ادامه' : 'R خروج')}</div></div></div><div class="tc-grid"><div class="pbox"><div class="pbox-lbl">ورود</div><div class="pbox-val">${fmtPx(t.entry)}</div></div><div class="pbox"><div class="pbox-lbl">خروج</div><div class="pbox-val g">${fmtPx(t.exit)}</div></div><div class="pbox"><div class="pbox-lbl">SL</div><div class="pbox-val r">${t.sl_price?fmtPx(t.sl_price):'—'} ${slPips?`<small>(${slPips}p)</small>`:''}</div></div><div class="pbox"><div class="pbox-lbl">TP</div><div class="pbox-val g">${t.tp_price?fmtPx(t.tp_price):'—'} ${tpPips?`<small>(${tpPips}p)</small>`:''}</div></div></div>${reversalLine}<div class="tc-time">⏰ ورود: ${escH(t.entryTime||'')} ${t.exitTime?`&nbsp;|&nbsp; 🚪 خروج: ${escH(t.exitTime)}`:''}</div>${noteH}${exitNoteH}<div class="tc-actions" onclick="event.stopPropagation()"><button class="btn btn-sm btn-r" onclick="event.stopPropagation();deleteTrade('${t.id}')">✕ حذف</button><button class="btn btn-sm" style="background:rgba(231,76,60,.15);color:#e7603c;border:1px solid rgba(231,76,60,.35)" onclick="event.stopPropagation();openEditSlModal('${t.id}')">✏️ ادیت SL</button><button class="btn btn-sm btn-pu" onclick="event.stopPropagation();openReviewModal('${t.id}')">📝 ارزیابی</button><span class="tc-ts">${escH(t.createdAt||'')}</span></div>${reviewHtml}</div>`;
         }).join('');
     }
     // محاسبه خودکار فرم دستی
