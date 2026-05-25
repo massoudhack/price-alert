@@ -1729,28 +1729,92 @@ def recalculate_all():
     return jsonify({"ok": True, "fixed": fixed, "errors": errors, "report": report})
 
 
+@app.route("/api/journal/<tid>/edit", methods=["PUT"])
 def edit_trade(tid):
     journal = load_journal()
     trade = next((t for t in journal if t["id"] == tid), None)
     if not trade:
         return jsonify({"ok": False, "error": "ترید یافت نشد"}), 404
     body = request.json or {}
+
+    # ---- ادیت فیلدهای اصلی ----
     for key in ["sym","direction","entry","exit","sl_price","tp_price","entryTime","exitTime","pnl","outcome","note","exitNote"]:
         if key in body:
             trade[key] = body[key] if key in ["note","exitNote","outcome","direction","sym"] else float(body[key]) if body[key] is not None else None
     for key in ["review_mfe","review_mae","review_pullback","review_note","review_reversal_occurred","review_reversal_from_sl","review_reversal_target_pips","review_free_risk_saved"]:
         if key in body:
             trade[key] = body[key]
-    mul = get_pip_multiplier(trade["sym"])
-    if trade.get("sl_price") and trade.get("entry"):
-        trade["sl_pips"] = abs(trade["entry"] - trade["sl_price"]) * mul
-    if trade.get("tp_price") and trade.get("entry"):
-        trade["tp_pips"] = abs(trade["tp_price"] - trade["entry"]) * mul
-    if trade.get("exit") and trade.get("entry"):
-        diff = (trade["exit"] - trade["entry"]) if trade["direction"] == "BUY" else (trade["entry"] - trade["exit"])
-        trade["pnl"] = diff * 1.0
+
+    # ---- recalc کامل بعد از ادیت ----
+    sym = trade.get("sym", "")
+    mul = get_pip_multiplier(sym)
+    entry = trade.get("entry")
+    sl_price = trade.get("sl_price")
+    tp_price = trade.get("tp_price")
+    direction = trade.get("direction", "BUY")
+    outcome = trade.get("outcome", "")
+
+    # sl_pips / tp_pips
+    if sl_price and entry:
+        trade["sl_pips"] = round(abs(float(entry) - float(sl_price)) * mul, 1)
+    if tp_price and entry:
+        trade["tp_pips"] = round(abs(float(tp_price) - float(entry)) * mul, 1)
+
+    # pnl از exit یا fallback به tp/sl
+    exit_px = trade.get("exit")
+    if not exit_px and outcome == "win" and tp_price:
+        exit_px = tp_price
+    elif not exit_px and outcome == "loss" and sl_price:
+        exit_px = sl_price
+    if exit_px and entry:
+        diff = (float(exit_px) - float(entry)) if direction == "BUY" else (float(entry) - float(exit_px))
+        trade["pnl"] = round(diff, 5)
+
+    # ---- recalc risk-based fields ----
+    if sl_price and entry:
+        risk_pips = abs(float(entry) - float(sl_price)) * mul
+        if risk_pips > 0:
+            mfe_raw = float(trade.get("review_mfe") or trade.get("mfe_pip") or 0)
+            mae_raw = float(trade.get("review_mae") or trade.get("mae_pip") or 0)
+
+            # اگه MFE خالیه و win داریم، از tp تخمین بزن
+            if mfe_raw == 0 and outcome == "win" and tp_price:
+                mfe_raw = abs(float(tp_price) - float(entry)) * mul
+
+            # passed_1r
+            passed_1r = mfe_raw >= risk_pips * 0.98 if mfe_raw > 0 else False
+            trade["passed_1r"] = passed_1r
+
+            # found_3r
+            found_3r = mfe_raw >= risk_pips * 3.0 if mfe_raw > 0 else False
+            trade["found_3r"] = found_3r
+
+            # free_risk_was_possible
+            fr_saved = trade.get("review_free_risk_saved", False)
+            trade["free_risk_was_possible"] = fr_saved or passed_1r
+
+            # mfe_pip / mae_pip sync (فقط اگه review نداره)
+            if trade.get("review_mfe") is None and mfe_raw > 0:
+                trade["mfe_pip"] = round(mfe_raw, 1)
+            if trade.get("review_mae") is None and mae_raw > 0:
+                trade["mae_pip"] = round(mae_raw, 1)
+
+            # exit_type recalc
+            trade["exit_type"] = calc_exit_type(outcome, risk_pips, mfe_raw, found_3r)
+
+            print(f"[EDIT] {sym} sl_price={sl_price} risk={risk_pips:.1f}p passed_1r={passed_1r} found_3r={found_3r} exit_type={trade['exit_type']}")
+
     save_journal(journal)
     return jsonify({"ok": True, "trade": trade})
+
+@app.route("/api/journal/all", methods=["DELETE"])
+def delete_all_trades():
+    global _cache_journal
+    print("[DELETE_ALL] درخواست پاک کردن همه تریدها")
+    _cache_journal = []
+    save_journal([])
+    print("[DELETE_ALL] ✅ همه تریدها پاک شدند")
+    return jsonify({"ok": True, "deleted": True})
 
 @app.route("/api/journal/<tid>/delete", methods=["DELETE"])
 def delete_trade(tid):
@@ -1827,10 +1891,46 @@ def review_trade(tid):
             trade[f] = body[f]
             if old_val != body[f]:
                 print(f"[REVIEW] فیلد {f}: {old_val} → {body[f]}")
+
+    # ---- recalc کامل بعد از ثبت ارزیابی ----
+    if risk_pips and risk_pips > 0:
+        outcome = trade.get("outcome", "")
+        mfe_final = float(trade.get("review_mfe") or trade.get("mfe_pip") or 0)
+        mae_final = float(trade.get("review_mae") or trade.get("mae_pip") or 0)
+        tp_price = trade.get("tp_price")
+        entry_val = float(trade.get("entry", 0))
+
+        # اگه MFE خالیه و win داریم، از tp تخمین بزن
+        if mfe_final == 0 and outcome == "win" and tp_price and entry_val:
+            mfe_final = abs(float(tp_price) - entry_val) * mul
+
+        # passed_1r — منبع اصلی حقیقت
+        passed_1r = mfe_final >= risk_pips * 0.98 if mfe_final > 0 else False
+        trade["passed_1r"] = passed_1r
+
+        # found_3r
+        found_3r = mfe_final >= risk_pips * 3.0 if mfe_final > 0 else False
+        trade["found_3r"] = found_3r
+
+        # free_risk_was_possible — از passed_1r یا review_free_risk_saved
+        fr_saved = trade.get("review_free_risk_saved", False)
+        trade["free_risk_was_possible"] = passed_1r or fr_saved
+
+        # mfe_pip / mae_pip sync با review
+        if mfe_final > 0:
+            trade["mfe_pip"] = round(mfe_final, 1)
+        if mae_final > 0:
+            trade["mae_pip"] = round(mae_final, 1)
+
+        # exit_type recalc
+        trade["exit_type"] = calc_exit_type(outcome, risk_pips, mfe_final, found_3r)
+
+        print(f"[REVIEW] recalc — passed_1r={passed_1r} found_3r={found_3r} fr_possible={trade['free_risk_was_possible']} exit_type={trade['exit_type']} mfe_pip={trade['mfe_pip']}")
+
     print(f"[REVIEW] وضعیت نهایی — passed_1r={trade.get('passed_1r')} fr_possible={trade.get('free_risk_was_possible')} review_mfe={trade.get('review_mfe')} missed={trade.get('is_missed_zone')}")
     save_journal(journal)
     print(f"[REVIEW] ✅ ذخیره ترید {tid} انجام شد")
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "trade": trade})
 
 @app.route("/api/analyze/<trade_id>", methods=["GET"])
 def analyze_trade(trade_id):
