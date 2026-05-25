@@ -200,6 +200,36 @@ def save_journal(journal_list):
     except Exception as e:
         print(f"[JOURNAL:SAVE] error: {e}")
 
+def _sb_delete(trade_id):
+    """یه ترید رو از Supabase حذف کن"""
+    if not SUPABASE_KEY:
+        return
+    try:
+        r = requests.delete(
+            f"{SUPABASE_URL}/rest/v1/trades?trade_id=eq.{trade_id}",
+            headers=_sb_h(), timeout=10)
+        if r.status_code in (200, 204):
+            print(f"[SB] delete {trade_id}: ✅")
+        else:
+            print(f"[SB] delete {trade_id}: {r.status_code} {r.text[:80]}")
+    except Exception as e:
+        print(f"[SB] delete error: {e}")
+
+def _sb_delete_all():
+    """همه تریدها رو از Supabase پاک کن"""
+    if not SUPABASE_KEY:
+        return
+    try:
+        r = requests.delete(
+            f"{SUPABASE_URL}/rest/v1/trades?trade_id=neq.null",
+            headers=_sb_h(), timeout=15)
+        if r.status_code in (200, 204):
+            print(f"[SB] delete_all: ✅")
+        else:
+            print(f"[SB] delete_all: {r.status_code} {r.text[:80]}")
+    except Exception as e:
+        print(f"[SB] delete_all error: {e}")
+
 def get_trade_candles(trade_id):
     """کندل‌های یه ترید رو جداگانه بخون"""
     if not SUPABASE_KEY: return []
@@ -1854,6 +1884,7 @@ def delete_all_trades():
     global _cache_journal
     print("[DELETE_ALL] درخواست پاک کردن همه تریدها")
     _cache_journal = []
+    _sb_delete_all()
     save_journal([])
     print("[DELETE_ALL] ✅ همه تریدها پاک شدند")
     return jsonify({"ok": True, "deleted": True})
@@ -1870,6 +1901,7 @@ def delete_trade(tid):
         return jsonify({"ok": False, "error": f"ترید {tid} یافت نشد"}), 404
     global _cache_journal
     _cache_journal = journal
+    _sb_delete(tid)
     save_journal(journal)
     print(f"[DELETE] ✅ ترید {tid} حذف شد — باقیمانده: {after}")
     return jsonify({"ok": True})
