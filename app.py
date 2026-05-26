@@ -709,7 +709,9 @@ def check_alerts():
             for sym in due_crypto:
                 p = get_crypto_price(sym)
                 price_map[(sym.upper(), "crypto")] = p
+            print(f"[check_alerts] لوپ #{_loop_count} — {len(active)} آلارم فعال — {len(price_map)} قیمت دریافت شد — {now}")
             fired = []
+            now = now_teh()
             for a in active:
                 sym = a["symbol"]
                 atype = a.get("type", "crypto")
@@ -717,6 +719,9 @@ def check_alerts():
                 if key not in price_map: continue
                 cur = price_map[key]
                 if cur is None: continue
+                # ✅ آپدیت قیمت لحظه‌ای برای همه آلارم‌ها
+                a["last_price"] = cur
+                a["last_checked"] = now
                 tgt = float(a["target_price"])
                 cond = a.get("condition", "above")
                 triggered = (cond == "above" and cur >= tgt) or (cond == "below" and cur <= tgt)
