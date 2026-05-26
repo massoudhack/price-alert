@@ -1277,11 +1277,7 @@ def get_journal():
 
 @app.route("/api/journal", methods=["POST"])
 def add_journal():
-    journal = load_journal()
-    body = request.json or {}
-    sym = body.get("sym", "").upper().strip()
-    if not sym:
-        return jsonify({"ok": False, "error": "sym الزامی است"}), 400
+    return jsonify({"ok": False, "error": "ثبت دستی غیرفعال — از MT5 EA استفاده کن"}), 403
     entry = float(body.get("entry", 0))
     direction = body.get("direction", "BUY")
     size = 1.0
@@ -3089,13 +3085,14 @@ def add_journal_mt4():
             for i, c in enumerate(candles):
                 if i < entry_idx: continue
                 high = float(c.get("h", 0)); low = float(c.get("l", 0))
-                profit_now = (high - entry)*mul if is_buy else (entry - low)*mul
-                if is_buy and not mae_stopped and low < entry:
-                    d = (entry - low)*mul
-                    if d > mae_pip: mae_pip = d
-                elif not is_buy and not mae_stopped and high > entry:
-                    d = (high - entry)*mul
-                    if d > mae_pip: mae_pip = d
+                if is_buy:
+                    profit_now = (high - entry) * mul   # بهترین حرکت موافق
+                    adverse    = (entry - low)  * mul   # بدترین حرکت مخالف
+                else:
+                    profit_now = (entry - low)  * mul   # بهترین حرکت موافق
+                    adverse    = (high - entry) * mul   # بدترین حرکت مخالف
+                if not mae_stopped and adverse > 0:
+                    if adverse > mae_pip: mae_pip = adverse
                 mfe_pip = max(mfe_pip, profit_now)
                 if risk_pips and mfe_pip >= risk_pips*3: found_3r = True
                 if not passed_1r: mfe_before_sl = max(mfe_before_sl, profit_now)
