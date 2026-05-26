@@ -709,7 +709,7 @@ def check_alerts():
             for sym in due_crypto:
                 p = get_crypto_price(sym)
                 price_map[(sym.upper(), "crypto")] = p
-            print(f"[check_alerts] لوپ #{_loop_count} — {len(active)} آلارم فعال — {len(price_map)} قیمت دریافت شد — {now}")
+            print(f"[check] loop={_loop_count} forex_open={forex_open} due_f={len(due_forex)} due_c={len(due_crypto)} prices={len(price_map)}")
             fired = []
             now = now_teh()
             for a in active:
@@ -719,32 +719,44 @@ def check_alerts():
                 if key not in price_map: continue
                 cur = price_map[key]
                 if cur is None: continue
+                tgt = float(a["target_price"])
+                cond = a.get("condition", "above")
                 # ✅ آپدیت قیمت لحظه‌ای برای همه آلارم‌ها
                 a["last_price"] = cur
                 a["last_checked"] = now
-                tgt = float(a["target_price"])
-                cond = a.get("condition", "above")
+                stale_ts = price_map.get((sym.upper(), atype, "stale"))
+                a["price_stale"] = stale_ts if stale_ts else None
+                data["last_update"] = now
                 triggered = (cond == "above" and cur >= tgt) or (cond == "below" and cur <= tgt)
+                print(f"[check] {sym} cur={fmt_price(cur,sym)} tgt={fmt_price(tgt,sym)} cond={cond} → {'🔥 FIRE' if triggered else 'ok'}")
                 if triggered and a["id"] not in notified:
                     notified.add(a["id"])
                     a["active"] = False
+                    a["fired_at"] = now
+                    a["fired_price"] = cur
                     fired.append(a["id"])
                     if token and cids:
+                        comment = a.get("comment", "")
+                        if str(YOUR_CHAT_ID) in str(comment):
+                            notify_cids = [str(YOUR_CHAT_ID)]
+                            print(f"[FILTER] comment contains {YOUR_CHAT_ID} → only to you")
+                        elif a.get("notify_only"):
+                            notify_cids = [str(a["notify_only"])]
+                            print(f"[FILTER] notify_only → {a['notify_only']}")
+                        else:
+                            notify_cids = cids
+                            print(f"[FILTER] broadcast → {len(cids)} users")
                         arrow = "📈 ناحیه سل" if cond == "above" else "📉 ناحیه بای"
                         creator = a.get("created_by") or "سیستم"
-                        comment = a.get("comment", "")
                         cmt = f"\n💬 <i>{comment}</i>" if comment else ""
-                        price_text = fmt_price(cur, sym) if cur else "—"
-                        tgt_text = fmt_price(tgt, sym)
-                        notify_cids = cids
-                        if a.get("notify_only"):
-                            notify_cids = [str(a["notify_only"])]
+                        dist = calc_dist_str(sym, atype, cur, tgt)
                         fired_msg = (
                             f"🚨 <b>آلارم قیمت!</b>\n\n"
                             f"💰 <b>{sym}</b> — {arrow}\n"
                             f"👤 ارسال‌کننده: <b>{creator}</b>\n\n"
-                            f"🎯 هدف: <b>{tgt_text}</b>\n"
-                            f"📊 قیمت لحظه‌ای: <b>{price_text}</b>"
+                            f"🎯 هدف: <b>{fmt_price(tgt,sym)}</b>\n"
+                            f"📊 قیمت لحظه‌ای: <b>{fmt_price(cur,sym)}</b>\n"
+                            f"📏 فاصله: <b>{dist}</b>"
                             f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
                         )
                         broadcast(token, notify_cids, fired_msg)
@@ -769,6 +781,15 @@ def fmt_price(p, sym=""):
     if "JPY" in su:
         return f"{v:.3f}"
     return f"{v:.5f}"
+
+def calc_dist_str(symbol, atype, cur, tgt):
+    if not cur or not tgt: return ""
+    diff = abs(float(cur) - float(tgt))
+    sym_up = symbol.upper()
+    if atype == "crypto": return f"{diff/float(tgt)*100:.2f}%"
+    if "XAU" in sym_up or "XAG" in sym_up: return f"{diff:.2f} $"
+    if "JPY" in sym_up: return f"{round(diff*100):,} pip"
+    return f"{round(diff*10000):,} pip"
 
 def tehran_to_utc(tehran_str):
     try:
