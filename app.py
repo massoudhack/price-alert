@@ -183,20 +183,30 @@ def load_journal():
     _cache_journal = []
     return _cache_journal
 
+def save_trade(trade):
+    """فقط یه ترید رو ذخیره/آپدیت کن — سریع‌تر از save_journal"""
+    global _cache_journal
+    if _cache_journal is not None:
+        exists = False
+        for i, t in enumerate(_cache_journal):
+            if t.get("id") == trade.get("id"):
+                _cache_journal[i] = trade
+                exists = True
+                break
+        if not exists:
+            _cache_journal.insert(0, trade)
+    _sb_upsert(trade)
+
 def save_journal(journal_list):
     global _cache_journal
     _cache_journal = journal_list
-
     if not SUPABASE_KEY:
         print("[JOURNAL:SAVE] SUPABASE_KEY نیست")
         return
-
     try:
-        ok = 0
         for trade in journal_list:
             _sb_upsert(trade)
-            ok += 1
-        print(f"[JOURNAL:SAVE] ✅ {ok} ترید در Supabase")
+        print(f"[JOURNAL:SAVE] ✅ {len(journal_list)} ترید در Supabase")
     except Exception as e:
         print(f"[JOURNAL:SAVE] error: {e}")
 
@@ -2024,7 +2034,7 @@ def review_trade(tid):
         print(f"[REVIEW] recalc — passed_1r={passed_1r} found_3r={found_3r} fr_possible={trade['free_risk_was_possible']} exit_type={trade['exit_type']} mfe_pip={trade['mfe_pip']}")
 
     print(f"[REVIEW] وضعیت نهایی — passed_1r={trade.get('passed_1r')} fr_possible={trade.get('free_risk_was_possible')} review_mfe={trade.get('review_mfe')} missed={trade.get('is_missed_zone')}")
-    save_journal(journal)
+    save_trade(trade)
     print(f"[REVIEW] ✅ ذخیره ترید {tid} انجام شد")
     return jsonify({"ok": True, "trade": trade})
 
@@ -2140,7 +2150,7 @@ def analyze_trade(trade_id):
     ai_result = groq_analyze(ai_prompt)
     trade["ai_analysis"] = ai_result or summary_text
     trade["ai_summary"] = summary_text
-    save_journal(journal)
+    save_trade(trade)
     return jsonify({"ok": True, "analysis": ai_result or summary_text, "summary": summary_text})
 
 @app.route("/api/overall-analysis", methods=["GET"])
@@ -3086,11 +3096,11 @@ def add_journal_mt4():
                 if i < entry_idx: continue
                 high = float(c.get("h", 0)); low = float(c.get("l", 0))
                 if is_buy:
-                    profit_now = (high - entry) * mul   # بهترین حرکت موافق
-                    adverse    = (entry - low)  * mul   # بدترین حرکت مخالف
+                    profit_now = (high - entry) * mul
+                    adverse    = (entry - low)  * mul
                 else:
-                    profit_now = (entry - low)  * mul   # بهترین حرکت موافق
-                    adverse    = (high - entry) * mul   # بدترین حرکت مخالف
+                    profit_now = (entry - low)  * mul
+                    adverse    = (high - entry) * mul
                 if not mae_stopped and adverse > 0:
                     if adverse > mae_pip: mae_pip = adverse
                 mfe_pip = max(mfe_pip, profit_now)
@@ -3115,7 +3125,7 @@ def add_journal_mt4():
             print(f"[MT5] MFE calc error: {e}")
 
     journal.insert(0, trade)
-    save_journal(journal)
+    save_trade(trade)
     print(f"[MT5] ✅ {sym} {direction} {outcome} candles={len(candles)} pos={position_id}")
     return jsonify({"ok": True, "id": trade["id"]})
 
