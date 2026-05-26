@@ -164,6 +164,13 @@ select option{background:var(--bg3)}
 .acard-dir{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-family:var(--mono);font-weight:700;padding:4px 12px;border-radius:30px}
 .acard-dir.up{background:var(--gdim);color:var(--green)}
 .acard-dir.dn{background:var(--rdim);color:var(--red)}
+/* دکمه‌های انتخاب جهت آلارم */
+.dir-toggle{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px}
+.dir-btn{display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 8px;border-radius:10px;border:2px solid var(--border);background:var(--bg4);color:var(--text3);cursor:pointer;font-size:13px;font-weight:700;font-family:inherit;transition:all .2s;line-height:1.3}
+.dir-btn .dir-sub{font-size:9px;font-weight:400;opacity:.7;font-family:var(--mono)}
+.dir-btn.dir-buy.active{border-color:var(--green);background:var(--gdim);color:var(--green)}
+.dir-btn.dir-sell.active{border-color:var(--red);background:var(--rdim);color:var(--red)}
+.dir-btn:not(.active):hover{border-color:var(--text3);background:var(--bg3)}
 
 /* حالت لیست فشرده */
 .list-mode .cards-grid{display:flex;flex-direction:column;gap:6px;padding:0.8rem}
@@ -270,7 +277,19 @@ select option{background:var(--bg3)}
           <div class="fld"><label>نوع بازار</label><select id="mkt" onchange="onMktChange()"><option value="forex">💱 فارکس / طلا</option><option value="crypto">🪙 کریپتو</option></select></div>
           <div class="fld"><label>نماد <span id="sym-hint" style="color:var(--blue);font-size:10px">(EURUSD, XAUUSD...)</span></label><input type="text" id="sym" placeholder="EURUSD" dir="ltr" oninput="this.value=this.value.toUpperCase()"></div>
           <div class="fld"><label>قیمت هدف (USD)</label><input type="number" id="tprice" placeholder="0.00000" step="any" dir="ltr"></div>
-          <div class="fld"><label>جهت آلارم</label><select id="adir"><option value="above">↑ بالاتر از هدف</option><option value="below">↓ پایین‌تر از هدف</option></select></div>
+          <div class="fld"><label>جهت آلارم</label>
+            <div class="dir-toggle" id="dir-toggle">
+              <button type="button" class="dir-btn dir-buy active" id="dir-buy" onclick="setDir('below')">
+                📈 ناحیه بای
+                <span class="dir-sub">پایین‌تر از هدف</span>
+              </button>
+              <button type="button" class="dir-btn dir-sell" id="dir-sell" onclick="setDir('above')">
+                📉 ناحیه سل
+                <span class="dir-sub">بالاتر از هدف</span>
+              </button>
+            </div>
+            <input type="hidden" id="adir" value="below">
+          </div>
           <div class="fld"><label>یادداشت (اختیاری)</label><input type="text" id="acmt" placeholder="سطح کلیدی..."></div>
           <div class="fld" style="display:flex;align-items:flex-end;gap:8px">
             <button class="btn btn-blue" style="flex:1" onclick="checkPrice()">👁 قیمت</button>
@@ -484,6 +503,12 @@ async function checkPrice() {
   } catch { toast('❌ خطا در ارتباط'); }
 }
 
+function setDir(val) {
+  document.getElementById('adir').value = val;
+  document.getElementById('dir-buy').classList.toggle('active', val === 'below');
+  document.getElementById('dir-sell').classList.toggle('active', val === 'above');
+}
+
 async function addAlert() {
   const symbol = document.getElementById('sym').value.trim().toUpperCase();
   const type = document.getElementById('mkt').value;
@@ -566,7 +591,7 @@ function getPipDistance(a) {
   return diff * 10000;
 }
 
-function minutesAgo(ts) { if (!ts) return null; const diff = (Date.now() - new Date(ts.replace(' ', 'T') + '+03:30')) / 60000; if (diff < 1) return 'همین الان'; if (diff < 60) return Math.round(diff) + ' دقیقه پیش'; return Math.round(diff/60) + ' ساعت پیش'; }
+function minutesAgo(ts) { if (!ts) return null; const serverDate = new Date(ts.replace(' ', 'T') + '+03:30'); const diff = (Date.now() - serverDate) / 60000; if (diff < 0) return 'همین الان'; if (diff < 1) return 'همین الان'; if (diff < 60) return Math.round(diff) + ' دقیقه پیش'; return Math.round(diff/60) + ' ساعت پیش'; }
 
 // ========== Card rendering ==========
 function buildCard(a) {
@@ -604,7 +629,7 @@ function buildCard(a) {
     ${distHtml}
     <div class="acard-footer">
       ${cmtHtml}
-      <span class="acard-dir ${isAbove?'up':'dn'}">${isAbove?'↑ بالاتر':'↓ پایین‌تر'}</span>
+      <span class="acard-dir ${isAbove?'dn':'up'}">${isAbove?'📉 ناحیه سل':'📈 ناحیه بای'}</span>
     </div>
     ${staleHtml}
   </div>`;
