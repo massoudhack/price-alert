@@ -3137,6 +3137,126 @@ def mt4_status():
     return jsonify({"sent": ids, "total": len(ids)})
 
 # =====================================================================
+# Watching endpoints — EA این‌ها رو هر بار ران میشه چک میکنه
+# =====================================================================
+
+@app.route("/api/journal/watching", methods=["GET"])
+def get_watching_trades():
+    """لیست تریدهایی که هنوز تعیین تکلیف نشدن (watching)"""
+    journal = load_journal()
+    watching = []
+    for t in journal:
+        if t.get("status") == "watching" or (t.get("source") == "mt5_ea" and not t.get("found_3r") and t.get("outcome") == "win"):
+            watching.append({
+                "id":           t.get("id"),
+                "sym":          t.get("sym"),
+                "tf":           t.get("tf", "15m"),
+                "direction":    t.get("direction"),
+                "entry":        t.get("entry"),
+                "exit":         t.get("exit"),         # قیمت TP
+                "exitTime":     t.get("exitTime"),      # آخرین کندل موجود از اینجاست
+                "sl_price":     t.get("sl_price"),
+                "tp_price":     t.get("tp_price"),
+                "outcome":      t.get("outcome"),
+                "found_3r":     t.get("found_3r", False),
+                "mt4_position_id": t.get("mt4_position_id"),
+            })
+    print(f"[WATCHING] {len(watching)} ترید در جریان")
+    return jsonify({"watching": watching, "total": len(watching)})
+
+
+@app.route("/api/journal/mt4/update-watching", methods=["POST"])
+def update_watching_trade():
+    """
+    EA کندل‌های جدید یه ترید watching رو میفرسته.
+    سرور چک میکنه SL خورده یا 3R زده شده.
+    """
+    body = request.json or {}
+    trade_id     = body.get("id")
+    new_candles  = body.get("candle_snapshot", [])
+
+    if not trade_id or not new_candles:
+        return jsonify({"ok": False, "error": "id و candle_snapshot الزامی"}), 400
+
+    journal = load_journal()
+    trade = next((t for t in journal if t.get("id") == trade_id), None)
+    if not trade:
+        return jsonify({"ok": False, "error": "ترید یافت نشد"}), 404
+
+    sym       = trade.get("sym", "")
+    direction = trade.get("direction", "BUY")
+    entry     = float(trade.get("entry", 0))
+    sl_price  = trade.get("sl_price")
+    exit_price= float(trade.get("exit", 0))
+    mul       = get_pip_multiplier(sym)
+    is_buy    = direction == "BUY"
+
+    if not sl_price:
+        return jsonify({"ok": False, "error": "sl_price ندارد"}), 400
+
+    sl_f      = float(sl_price)
+    risk_pips = abs(entry - sl_f) * mul
+    tp3_price = (entry + 3 * risk_pips / mul) if is_buy else (entry - 3 * risk_pips / mul)
+
+    # merge کندل‌های جدید با snapshot موجود
+    existing  = trade.get("candle_snapshot", [])
+    merged    = merge_snapshot(existing, new_candles)
+
+    # چک 3R و SL روی کندل‌های بعد از خروج
+    hit_3r = False
+    hit_sl = False
+    new_mfe = float(trade.get("mfe_pip") or 0)
+
+    # فقط کندل‌های بعد از exitTime رو چک کن
+    exit_ts = None
+    try:
+        from datetime import datetime as _dt
+        et = _dt.strptime(str(trade.get("exitTime",""))[:16], "%Y-%m-%d %H:%M")
+        exit_ts = int(et.timestamp())
+    except: pass
+
+    for c in new_candles:
+        ct = c.get("t", 0)
+        if exit_ts and ct < exit_ts: continue
+        h = float(c.get("h", 0))
+        l = float(c.get("l", 0))
+
+        # MFE بعد از خروج
+        post_profit = (h - exit_price) * mul if is_buy else (exit_price - l) * mul
+        if post_profit > new_mfe: new_mfe = post_profit
+
+        # 3R چک
+        if is_buy and h >= tp3_price:  hit_3r = True; break
+        if not is_buy and l <= tp3_price: hit_3r = True; break
+
+        # SL برگشت چک
+        if is_buy and l <= sl_f:  hit_sl = True; break
+        if not is_buy and h >= sl_f: hit_sl = True; break
+
+    # آپدیت ترید
+    trade["candle_snapshot"] = merged
+    trade["mfe_pip"] = round(new_mfe, 1)
+
+    if hit_3r:
+        trade["status"]       = "closed"
+        trade["found_3r"]     = True
+        trade["exit_type"]    = "tp3"
+        trade["pending_check"]= False
+        trade["snapshot_locked"] = True
+        trade["exitNote"]     = "EA: 3R کامل شد بعد از تارگت"
+        print(f"[WATCHING] ✅ {sym} 3R زده شد — closed")
+    elif hit_sl:
+        trade["status"]       = "closed"
+        trade["pending_check"]= False
+        trade["snapshot_locked"] = True
+        trade["exitNote"]     = "EA: SL خورد بعد از تارگت (چارت کامل)"
+        print(f"[WATCHING] ✅ {sym} SL برگشت — closed")
+    else:
+        trade["last_poll"]    = now_teh()
+        print(f"[WATCHING] ⏳ {sym} هنوز تعیین تکلیف نشده — کندل‌ها آپدیت شد")
+
+    save_trade(trade)
+    return jsonify({"ok": True, "status": trade["status"], "found_3r": trade.get("found_3r", False), "hit_sl": hit_sl, "hit_3r": hit_3r})
 
 print("=" * 60)
 print(f"[STARTUP] 🚀 سرور در حال راه‌اندازی...")
