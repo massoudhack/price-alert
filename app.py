@@ -649,10 +649,62 @@ def poll_telegram():
                             send_tg(token, cid,
                                 f"✅ <b>آلارم ثبت شد</b>\n\n"
                                 f"💰 <b>{sym}</b> — {arrow}\n"
-                                f"🎯 هدف: <b>{fmt_price(tgt_f, sym)}</b>\n"
+                                f"🎯 هدف: <code>{fmt_price(tgt_f, sym)}</code>\n"
                                 f"📊 قیمت الان: <b>{price_now}</b>"
                                 + (f"\n💬 <i>{comment}</i>" if comment else "") +
                                 f"\n\n⏰ {now_pretty()} (تهران)")
+
+                # ── /me_alarm — آلارم شخصی (فقط برای خود فرستنده) ───
+                elif txt.startswith("/me_alarm"):
+                    parts = txt.split(maxsplit=4)
+                    if len(parts) < 4:
+                        send_tg(token, cid,
+                            "⚠️ فرمت:\n<code>/me_alarm SYMBOL buy|sell PRICE [کامنت]</code>\n\n"
+                            "مثال:\n"
+                            "<code>/me_alarm xauusd sell 2350 ناحیه شخصی</code>\n\n"
+                            "این آلارم فقط برای شما ثبت میشه و بقیه نمیبینن.")
+                    else:
+                        sym = parts[1].upper().replace("/", "")
+                        raw_dir = parts[2].lower()
+                        raw_price = parts[3]
+                        comment = parts[4] if len(parts) > 4 else ""
+                        condition = "above" if raw_dir in ("sell","s","سل","above") else "below"
+                        atype = "forex" if any(x in sym for x in ["EUR","GBP","JPY","XAU","XAG","CHF","CAD","AUD","NZD"]) else "crypto"
+                        sender_name = _get_sender_name(msg)
+                        tgt_f = None
+                        try:
+                            tgt_f = float(raw_price)
+                        except ValueError:
+                            send_tg(token, cid, f"❌ قیمت نامعتبر: <code>{raw_price}</code>")
+                        if tgt_f is not None:
+                            send_tg(token, cid, f"⏳ <b>{sym}</b> در حال ثبت آلارم شخصی...")
+                            cur = None
+                            try: cur = get_price(sym, atype)
+                            except: pass
+                            d = load_alerts()
+                            new_alert = {
+                                "id": str(int(time.time()*1000)),
+                                "symbol": sym, "type": atype,
+                                "target_price": tgt_f, "condition": condition,
+                                "comment": comment, "created_by": sender_name,
+                                "active": True, "last_price": cur,
+                                "last_checked": now_teh() if cur else None,
+                                "created_at": now_teh(),
+                                "notify_only": cid,        # فقط به همین chat_id
+                                "private_cid": cid,        # برای فیلتر سایت
+                                "is_private": True
+                            }
+                            d["alerts"].append(new_alert)
+                            save_alerts(d)
+                            arrow = "سل 📈" if condition == "above" else "بای 📉"
+                            price_now = fmt_price(cur, sym) if cur else "—"
+                            send_tg(token, cid,
+                                f"✅ <b>آلارم شخصی ثبت شد</b>\n\n"
+                                f"💰 <b>{sym}</b> — {arrow}\n"
+                                f"🎯 هدف: <code>{fmt_price(tgt_f, sym)}</code>\n"
+                                f"📊 قیمت الان: <b>{price_now}</b>"
+                                + (f"\n💬 <i>{comment}</i>" if comment else "") +
+                                f"\n\n🔒 فقط شما این آلارم رو میبینید\n⏰ {now_pretty()} (تهران)")
 
                 # ── /news ────────────────────────────────────────────
                 elif txt.startswith("/news") and cid == YOUR_CHAT_ID:
@@ -764,7 +816,7 @@ def check_alerts():
                             f"🚨 <b>آلارم قیمت!</b>\n\n"
                             f"💰 <b>{sym}</b> — {arrow}\n"
                             f"👤 ارسال‌کننده: <b>{creator}</b>\n\n"
-                            f"🎯 هدف: <b>{fmt_price(tgt,sym)}</b>\n"
+                            f"🎯 هدف: <code>{fmt_price(tgt,sym)}</code>\n"
                             f"📊 قیمت لحظه‌ای: <b>{fmt_price(cur,sym)}</b>\n"
                             f"📏 فاصله: <b>{dist}</b>"
                             f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
@@ -1118,7 +1170,20 @@ def config():
 
 @app.route("/api/alerts", methods=["GET"])
 def get_alerts():
-    return jsonify(load_alerts().get("alerts", []))
+    all_alerts = load_alerts().get("alerts", [])
+    # آلارم‌های شخصی (is_private=True) رو از لیست عمومی حذف کن
+    public = [a for a in all_alerts if not a.get("is_private")]
+    return jsonify(public)
+
+@app.route("/api/alerts/my", methods=["GET"])
+def get_my_alerts():
+    """آلارم‌های شخصی یه کاربر — با chat_id فیلتر میشه"""
+    cid = request.args.get("cid", "")
+    if not cid:
+        return jsonify([])
+    all_alerts = load_alerts().get("alerts", [])
+    my = [a for a in all_alerts if a.get("private_cid") == cid]
+    return jsonify(my)
 
 @app.route("/api/alerts", methods=["POST"])
 def add_alert():
@@ -1218,13 +1283,13 @@ def instant_alert():
     arrow = "📈 ناحیه سل" if condition == "above" else "📉 ناحیه بای"
     cmt = f"\n💬 <i>{comment}</i>" if comment else ""
     price_text = fmt_price(cur, sym) if cur else "—"
-    tp_text = f"\n🎯 قیمت هدف: <b>{fmt_price(target_price, sym)}</b>" if target_price else ""
+    tp_text = f"\n🎯 قیمت هدف: <code>{fmt_price(target_price, sym)}</code>" if target_price else ""
     alert_title = "آلارم قیمت" if target_price else "آلارم فوری"
     out_msg = (
         f"🚨 <b>{alert_title}!</b>\n\n"
         f"💰 <b>{sym}</b> — {arrow}\n"
         f"👤 ارسال‌کننده: <b>{creator or 'سیستم'}</b>\n\n"
-        + (f"🎯 هدف: <b>{fmt_price(target_price, sym)}</b>\n" if target_price else "")
+        + (f"🎯 هدف: <code>{fmt_price(target_price, sym)}</code>\n" if target_price else "")
         + f"📊 قیمت لحظه‌ای: <b>{price_text}</b>"
         f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
     )
