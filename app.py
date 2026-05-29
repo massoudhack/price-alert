@@ -563,9 +563,17 @@ def daily_news_scheduler():
             print(f"[news_scheduler] {e}")
         time.sleep(50)
 
+_pending_name = {}   # cid → True  (منتظر دریافت اسم custom)
+
 def _get_sender_name(msg):
-    """اسم فرستنده رو از آبجکت message تلگرام میگیره"""
+    """اسم فرستنده — اول custom_name، بعد اسم تلگرام"""
     u = msg.get("from", {})
+    cid = str(msg.get("chat", {}).get("id", "") or u.get("id", ""))
+    if cid:
+        users = load_alerts().get("users", [])
+        for usr in users:
+            if str(usr.get("chat_id", "")) == cid and usr.get("custom_name"):
+                return usr["custom_name"]
     fn = u.get("first_name", "")
     ln = u.get("last_name", "")
     un = u.get("username", "")
@@ -638,14 +646,56 @@ def poll_telegram():
                     data = load_alerts()
                     users = data.get("users", [])
                     if cid not in [str(u["chat_id"]) for u in users]:
-                        users.append({"chat_id": cid, "username": uname, "joined_at": now_teh()})
+                        users.append({"chat_id": cid, "username": uname, "joined_at": now_teh(), "custom_name": ""})
                         data["users"] = users
                         ids = data.get("telegram", {}).get("chat_ids", [])
                         if cid not in [str(x) for x in ids]:
                             ids.append(cid)
                         data["telegram"]["chat_ids"] = ids
                         save_alerts(data)
-                    send_tg(token, cid, f"👋 سلام <b>{uname}</b>!\n✅ در سیستم آلارم ثبت شدید. 🔔")
+                    _pending_name[cid] = True
+                    send_tg(token, cid,
+                        f"👋 سلام <b>{uname}</b>!\n\n"
+                        f"لطفاً <b>اسمی که در سایت استفاده می‌کنی</b> رو بنویس:\n"
+                        f"(آلارم‌های شخصیت با همین اسم شناسایی میشن)")
+
+                # ── دریافت اسم custom بعد از /start یا /setname ──────
+                elif cid in _pending_name and not txt.startswith("/"):
+                    custom_name = txt.strip()
+                    if len(custom_name) < 2:
+                        send_tg(token, cid, "⚠️ اسم باید حداقل ۲ حرف باشه. دوباره بنویس:")
+                    else:
+                        data = load_alerts()
+                        users = data.get("users", [])
+                        found = False
+                        for usr in users:
+                            if str(usr.get("chat_id", "")) == cid:
+                                usr["custom_name"] = custom_name
+                                found = True
+                                break
+                        if not found:
+                            users.append({"chat_id": cid, "username": uname, "joined_at": now_teh(), "custom_name": custom_name})
+                            data["users"] = users
+                            ids = data.get("telegram", {}).get("chat_ids", [])
+                            if cid not in [str(x) for x in ids]:
+                                ids.append(cid)
+                            data["telegram"]["chat_ids"] = ids
+                        data["users"] = users
+                        save_alerts(data)
+                        del _pending_name[cid]
+                        send_tg(token, cid,
+                            f"✅ اسم <b>{custom_name}</b> ذخیره شد!\n"
+                            f"از این به بعد آلارم‌هات با این اسم ثبت میشن.\n"
+                            f"توی سایت هم همین اسم رو وارد کن.")
+
+                # ── /setname — تغییر اسم ────────────────────────────
+                elif txt.startswith("/setname"):
+                    _pending_name[cid] = True
+                    data = load_alerts()
+                    users = data.get("users", [])
+                    cur = next((u.get("custom_name","") for u in users if str(u.get("chat_id",""))==cid), "")
+                    cur_info = f"\nاسم فعلی: <b>{cur}</b>" if cur else ""
+                    send_tg(token, cid, f"✏️ اسم جدیدت رو بنویس:{cur_info}")
 
                 # ── /sos ─────────────────────────────────────────────
                 elif txt.startswith("/sos") and (cid == YOUR_CHAT_ID or BROADCAST_MODE):
@@ -740,14 +790,14 @@ def poll_telegram():
                                 + (f"\n💬 <i>{comment}</i>" if comment else "") +
                                 f"\n\n⏰ {now_pretty()} (تهران)")
 
-                # ── /me_alarm — آلارم شخصی (فقط برای خود فرستنده) ───
-                elif txt.startswith("/me_alarm"):
+                # ── /mealarm — آلارم شخصی (فقط برای خود فرستنده) ───
+                elif txt.startswith("/mealarm"):
                     parts = txt.split(maxsplit=4)
                     if len(parts) < 4:
                         send_tg(token, cid,
-                            "⚠️ فرمت:\n<code>/me_alarm SYMBOL buy|sell PRICE [کامنت]</code>\n\n"
+                            "⚠️ فرمت:\n<code>/mealarm SYMBOL buy|sell PRICE [کامنت]</code>\n\n"
                             "مثال:\n"
-                            "<code>/me_alarm xauusd sell 2350 ناحیه شخصی</code>\n\n"
+                            "<code>/mealarm xauusd sell 2350 ناحیه شخصی</code>\n\n"
                             "این آلارم فقط برای شما ثبت میشه و بقیه نمیبینن.")
                     else:
                         sym = parts[1].upper().replace("/", "")
@@ -905,6 +955,7 @@ def check_alerts():
                         creator = a.get("created_by") or "سیستم"
                         cmt = f"\n💬 <i>{comment}</i>" if comment else ""
                         dist = calc_dist_str(sym, atype, cur, tgt)
+                        private_label = "\n\n🔒 <i>آلارم شخصی — فقط برای شما ارسال شده</i>" if a.get("is_private") else ""
                         fired_msg = (
                             f"🚨 <b>آلارم قیمت!</b>\n\n"
                             f"💰 <b>{sym}</b> — {arrow}\n"
@@ -912,7 +963,8 @@ def check_alerts():
                             f"🎯 هدف: <code>{fmt_price(tgt,sym)}</code>\n"
                             f"📊 قیمت لحظه‌ای: <b>{fmt_price(cur,sym)}</b>\n"
                             f"📏 فاصله: <b>{dist}</b>"
-                            f"{cmt}\n\n⏰ {now_pretty()} (تهران)"
+                            f"{cmt}"
+                            f"{private_label}\n\n⏰ {now_pretty()} (تهران)"
                         )
                         broadcast(token, notify_cids, fired_msg)
             if fired:
