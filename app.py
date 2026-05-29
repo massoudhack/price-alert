@@ -48,7 +48,7 @@ def is_crypto_symbol(sym):
 def _empty_alerts():
     return {
         "alerts": [], "archive": [], "telegram": {"bot_token": "", "chat_ids": []},
-        "users": [], "errors": [], "last_update": None
+        "users": [], "errors": [], "last_update": None, "fired_msgs": {}
     }
 
 def fix_alerts(data):
@@ -385,8 +385,25 @@ def send_tg(token, chat_id, text):
         return r.status_code == 200
     except: return False
 
-def broadcast(token, chat_ids, text):
-    return [send_tg(token, c, text) for c in chat_ids]
+def send_tg_msg_id(token, chat_id, text, keyboard=None):
+    try:
+        payload = {"chat_id": str(chat_id), "text": text, "parse_mode": "HTML"}
+        if keyboard:
+            payload["reply_markup"] = {"inline_keyboard": keyboard}
+        r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
+                          json=payload, timeout=10, headers=H)
+        return r.json().get("result", {}).get("message_id")
+    except: return None
+
+def broadcast(token, chat_ids, text, keyboard=None):
+    results = {}
+    for c in chat_ids:
+        mid = send_tg_msg_id(token, c, text, keyboard)
+        if mid:
+            results[str(c)] = mid
+    return results
+
+# fired_msgs در JSON ذخیره میشه (persistent)
 
 def send_tg_keyboard(token, chat_id, text, keyboard):
     """ارسال پیام با inline keyboard"""
@@ -712,6 +729,24 @@ def poll_telegram():
                                 timeout=10, headers=H)
                         except: pass
 
+                    elif cbq_data.startswith("delete_all:"):
+                        # هر کسی این دکمه رو بزنه، پیام از چت همه پاک میشه
+                        alert_id = cbq_data.split(":",1)[1]
+                        answer_callback(token_cbq, cbq_id, "🗑 در حال حذف از همه...")
+                        d = load_alerts()
+                        fired_map = d.get("fired_msgs", {}).get(alert_id, {})
+                        tok, _, _ = _get_token_and_cids()
+                        for fc, fm in fired_map.items():
+                            try:
+                                requests.post(
+                                    f"https://api.telegram.org/bot{tok}/deleteMessage",
+                                    json={"chat_id": str(fc), "message_id": fm},
+                                    timeout=10, headers=H)
+                            except: pass
+                        if alert_id in d.get("fired_msgs", {}):
+                            del d["fired_msgs"][alert_id]
+                            save_alerts(d)
+
                     elif cbq_data == "close_myalerts":
                         answer_callback(token_cbq, cbq_id, "بسته شد")
                         try:
@@ -730,8 +765,48 @@ def poll_telegram():
                 cid = str(ch.get("id", ""))
                 uname = ch.get("username", "") or ch.get("first_name", "")
 
-                # ── /start ──────────────────────────────────────────
-                if txt.startswith("/start") and cid:
+                # ── delete — ریپلای با "delete" پیام اصلی رو پاک میکنه ──
+                if txt.strip().lower() == "delete":
+                    reply_to = msg.get("reply_to_message", {})
+                    if reply_to:
+                        replied_msg_id = reply_to.get("message_id")
+                        # پیدا کردن alert_id از _fired_msgs که این message_id داره
+                        d = load_alerts()
+                        fired_msgs_data = d.get("fired_msgs", {})
+                        found_alert_id = None
+                        for aid, fmap in fired_msgs_data.items():
+                            if replied_msg_id in [str(v) for v in fmap.values()]:
+                                found_alert_id = aid
+                                break
+                        if found_alert_id:
+                            tok, _, _ = _get_token_and_cids()
+                            for fc, fm in fired_msgs_data[found_alert_id].items():
+                                try:
+                                    requests.post(
+                                        f"https://api.telegram.org/bot{tok}/deleteMessage",
+                                        json={"chat_id": str(fc), "message_id": fm},
+                                        timeout=10, headers=H)
+                                except: pass
+                            del d["fired_msgs"][found_alert_id]
+                            save_alerts(d)
+                        else:
+                            # فقط همین پیام رو پاک کن
+                            try:
+                                requests.post(
+                                    f"https://api.telegram.org/bot{token}/deleteMessage",
+                                    json={"chat_id": cid, "message_id": replied_msg_id},
+                                    timeout=10, headers=H)
+                            except: pass
+                        # پیام delete خود ادمین رو هم پاک کن
+                        try:
+                            requests.post(
+                                f"https://api.telegram.org/bot{token}/deleteMessage",
+                                json={"chat_id": cid, "message_id": msg.get("message_id")},
+                                timeout=10, headers=H)
+                        except: pass
+                    continue
+
+                # ── /start ──────────────────────────────────────────                if txt.startswith("/start") and cid:
                     data = load_alerts()
                     users = data.get("users", [])
                     if cid not in [str(u["chat_id"]) for u in users]:
@@ -1068,7 +1143,9 @@ def check_alerts():
                             kb = [[{"text": "⏰ تنظیم هشدار دوره‌ای", "callback_data": f"set_reminder:{priv_cid}:{sym}"}]]
                             send_tg_keyboard(token, priv_cid, fired_msg, kb)
                         else:
-                            broadcast(token, notify_cids, fired_msg)
+                            msg_map = broadcast(token, notify_cids, fired_msg)
+                            data["fired_msgs"][a["id"]] = msg_map
+                            save_alerts(data)
             if fired:
                 arch = data.get("archive", [])
                 for fid in fired:
