@@ -388,6 +388,55 @@ def send_tg(token, chat_id, text):
 def broadcast(token, chat_ids, text):
     return [send_tg(token, c, text) for c in chat_ids]
 
+def send_tg_keyboard(token, chat_id, text, keyboard):
+    """ارسال پیام با inline keyboard"""
+    try:
+        r = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": str(chat_id), "text": text,
+                  "parse_mode": "HTML", "reply_markup": {"inline_keyboard": keyboard}},
+            timeout=10, headers=H)
+        return r.json().get("result", {}).get("message_id")
+    except: return None
+
+def edit_tg_keyboard(token, chat_id, message_id, text, keyboard):
+    """ویرایش پیام با inline keyboard"""
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{token}/editMessageText",
+            json={"chat_id": str(chat_id), "message_id": message_id,
+                  "text": text, "parse_mode": "HTML",
+                  "reply_markup": {"inline_keyboard": keyboard}},
+            timeout=10, headers=H)
+    except: pass
+
+def answer_callback(token, callback_id, text=""):
+    """جواب به callback query"""
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{token}/answerCallbackQuery",
+            json={"callback_query_id": callback_id, "text": text},
+            timeout=10, headers=H)
+    except: pass
+
+def build_myalerts_msg(cid):
+    """متن و keyboard لیست آلارم‌های شخصی"""
+    alerts = load_alerts().get("alerts", [])
+    my = [a for a in alerts if a.get("is_private") and str(a.get("private_cid","")) == cid and a.get("active")]
+    if not my:
+        return "📭 هیچ آلارم شخصی فعالی نداری.", []
+    lines = ["🔒 <b>آلارم‌های شخصی تو:</b>\n"]
+    keyboard = []
+    for i, a in enumerate(my, 1):
+        sym = a.get("symbol","")
+        tgt = a.get("target_price",0)
+        cond = "📈 بای" if a.get("condition") == "below" else "📉 سل"
+        cmt = f" — {a['comment']}" if a.get("comment") else ""
+        lines.append(f"{i}. <b>{sym}</b> {cond} @ <code>{tgt}</code>{cmt}")
+        keyboard.append([{"text": f"🗑 حذف {sym} @ {tgt}", "callback_data": f"del_alert:{a['id']}"}])
+    keyboard.append([{"text": "✕ بستن", "callback_data": "close_myalerts"}])
+    return "\n".join(lines), keyboard
+
 def _get_token_and_cids():
     data = load_alerts()
     tg = data.get("telegram", {})
@@ -514,18 +563,9 @@ def daily_news_scheduler():
             print(f"[news_scheduler] {e}")
         time.sleep(50)
 
-_pending_name = {}   # cid → True  (منتظر دریافت اسم custom)
-
 def _get_sender_name(msg):
-    """اسم فرستنده رو برمیگردونه — اول custom name، بعد اسم تلگرام"""
+    """اسم فرستنده رو از آبجکت message تلگرام میگیره"""
     u = msg.get("from", {})
-    cid = str(msg.get("chat", {}).get("id", "") or u.get("id", ""))
-    # اگه این کاربر اسم custom ذخیره کرده، همونو برگردون
-    if cid:
-        users = load_alerts().get("users", [])
-        for usr in users:
-            if str(usr.get("chat_id", "")) == cid and usr.get("custom_name"):
-                return usr["custom_name"]
     fn = u.get("first_name", "")
     ln = u.get("last_name", "")
     un = u.get("username", "")
@@ -548,6 +588,43 @@ def poll_telegram():
                 continue
             for upd in r.json().get("result", []):
                 last_id = upd["update_id"]
+
+                # ── callback query (دکمه‌های inline) ─────────────────
+                cbq = upd.get("callback_query", {})
+                if cbq:
+                    cbq_id = cbq.get("id","")
+                    cbq_data = cbq.get("data","")
+                    cbq_cid = str(cbq.get("from",{}).get("id","") or cbq.get("message",{}).get("chat",{}).get("id",""))
+                    cbq_msg_id = cbq.get("message",{}).get("message_id")
+                    token_cbq, _, _ = _get_token_and_cids()
+
+                    if cbq_data.startswith("del_alert:"):
+                        aid = cbq_data.split(":",1)[1]
+                        d = load_alerts()
+                        before = len(d["alerts"])
+                        d["alerts"] = [a for a in d["alerts"] if a["id"] != aid]
+                        if len(d["alerts"]) < before:
+                            save_alerts(d)
+                            answer_callback(token_cbq, cbq_id, "✅ آلارم حذف شد")
+                        else:
+                            answer_callback(token_cbq, cbq_id, "⚠️ آلارم پیدا نشد")
+                        # آپدیت لیست
+                        new_text, new_kb = build_myalerts_msg(cbq_cid)
+                        if new_kb:
+                            edit_tg_keyboard(token_cbq, cbq_cid, cbq_msg_id, new_text, new_kb)
+                        else:
+                            edit_tg_keyboard(token_cbq, cbq_cid, cbq_msg_id, "✅ همه آلارم‌های شخصی حذف شدن.", [])
+
+                    elif cbq_data == "close_myalerts":
+                        answer_callback(token_cbq, cbq_id, "بسته شد")
+                        try:
+                            requests.post(
+                                f"https://api.telegram.org/bot{token_cbq}/deleteMessage",
+                                json={"chat_id": cbq_cid, "message_id": cbq_msg_id},
+                                timeout=10, headers=H)
+                        except: pass
+                    continue
+
                 msg = upd.get("message", {})
                 raw_txt = msg.get("text", "") or ""
                 # normalize: /cmd@botname → /cmd
@@ -561,57 +638,14 @@ def poll_telegram():
                     data = load_alerts()
                     users = data.get("users", [])
                     if cid not in [str(u["chat_id"]) for u in users]:
-                        users.append({"chat_id": cid, "username": uname, "joined_at": now_teh(), "custom_name": ""})
+                        users.append({"chat_id": cid, "username": uname, "joined_at": now_teh()})
                         data["users"] = users
                         ids = data.get("telegram", {}).get("chat_ids", [])
                         if cid not in [str(x) for x in ids]:
                             ids.append(cid)
                         data["telegram"]["chat_ids"] = ids
                         save_alerts(data)
-                    # بپرس اسم دلخواه چیه (همونی که تو سایت میزنه)
-                    _pending_name[cid] = True
-                    send_tg(token, cid,
-                        f"👋 سلام <b>{uname}</b>!\n\n"
-                        f"لطفاً <b>اسمی که در سایت استفاده می‌کنی</b> رو بنویس:\n"
-                        f"(این اسم روی آلارم‌هات نمایش داده میشه و سایت با همین اسم آلارم‌هات رو شناسایی می‌کنه)")
-
-                # ── دریافت اسم custom بعد از /start یا /setname ──────
-                elif cid in _pending_name and not txt.startswith("/"):
-                    custom_name = txt.strip()
-                    if len(custom_name) < 2:
-                        send_tg(token, cid, "⚠️ اسم باید حداقل ۲ حرف باشه. دوباره بنویس:")
-                    else:
-                        data = load_alerts()
-                        users = data.get("users", [])
-                        found = False
-                        for usr in users:
-                            if str(usr.get("chat_id", "")) == cid:
-                                usr["custom_name"] = custom_name
-                                found = True
-                                break
-                        if not found:
-                            users.append({"chat_id": cid, "username": uname, "joined_at": now_teh(), "custom_name": custom_name})
-                            data["users"] = users
-                            ids = data.get("telegram", {}).get("chat_ids", [])
-                            if cid not in [str(x) for x in ids]:
-                                ids.append(cid)
-                            data["telegram"]["chat_ids"] = ids
-                        data["users"] = users
-                        save_alerts(data)
-                        del _pending_name[cid]
-                        send_tg(token, cid,
-                            f"✅ اسم <b>{custom_name}</b> ذخیره شد!\n\n"
-                            f"از این به بعد آلارم‌هات با این اسم ثبت میشن.\n"
-                            f"توی سایت هم همین اسم رو وارد کن تا آلارم‌هات رو ببینی.")
-
-                # ── /setname — تغییر اسم ────────────────────────────
-                elif txt.startswith("/setname"):
-                    _pending_name[cid] = True
-                    data = load_alerts()
-                    users = data.get("users", [])
-                    cur_name = next((u.get("custom_name","") for u in users if str(u.get("chat_id",""))==cid), "")
-                    cur_info = f"\nاسم فعلی: <b>{cur_name}</b>" if cur_name else ""
-                    send_tg(token, cid, f"✏️ اسم جدید خود را بنویس:{cur_info}")
+                    send_tg(token, cid, f"👋 سلام <b>{uname}</b>!\n✅ در سیستم آلارم ثبت شدید. 🔔")
 
                 # ── /sos ─────────────────────────────────────────────
                 elif txt.startswith("/sos") and (cid == YOUR_CHAT_ID or BROADCAST_MODE):
@@ -759,6 +793,13 @@ def poll_telegram():
                                 f"\n\n🔒 فقط شما این آلارم رو میبینید\n⏰ {now_pretty()} (تهران)")
 
                 # ── /news ────────────────────────────────────────────
+                elif txt.startswith("/myalerts"):
+                    text_msg, keyboard = build_myalerts_msg(cid)
+                    if keyboard:
+                        send_tg_keyboard(token, cid, text_msg, keyboard)
+                    else:
+                        send_tg(token, cid, text_msg)
+
                 elif txt.startswith("/news") and cid == YOUR_CHAT_ID:
                     send_tg(token, cid, "⏳ در حال دریافت تقویم اقتصادی...")
                     events, err = fetch_ff_news()
@@ -1229,19 +1270,12 @@ def get_alerts():
 
 @app.route("/api/alerts/my", methods=["GET"])
 def get_my_alerts():
-    """آلارم‌های شخصی یه کاربر — با name یا cid فیلتر میشه"""
-    name = request.args.get("name", "").strip()
-    cid = request.args.get("cid", "").strip()
-    if not name and not cid:
+    """آلارم‌های شخصی یه کاربر — با chat_id فیلتر میشه"""
+    cid = request.args.get("cid", "")
+    if not cid:
         return jsonify([])
     all_alerts = load_alerts().get("alerts", [])
-    my = [
-        a for a in all_alerts
-        if a.get("is_private") and (
-            (name and a.get("created_by", "") == name) or
-            (cid and str(a.get("private_cid", "")) == cid)
-        )
-    ]
+    my = [a for a in all_alerts if a.get("private_cid") == cid]
     return jsonify(my)
 
 @app.route("/api/alerts", methods=["POST"])
