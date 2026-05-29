@@ -829,11 +829,19 @@ async function loadAlerts() {
     const alerts = await r.json();
     allAlertsData = alerts;
 
-    // fetch آلارم‌های شخصی بر اساس نام کاربر (match با created_by)
-    // چون chat_id نداریم، از نام استفاده می‌کنیم — سرور is_private=true داره
-    // آلارم‌هایی که is_private=true و created_by === userName هستن رو از public جدا می‌کنیم
+    // fetch آلارم‌های شخصی بر اساس نام کاربر از endpoint جداگانه
     const userName = getUserName();
-    allPrivateData = alerts.filter(a => a.is_private && a.created_by === userName);
+    try {
+      const rMy = await fetch(`${API}/api/alerts/my?name=${encodeURIComponent(userName)}`);
+      const myPrivate = await rMy.json();
+      // آلارم‌های شخصی رو به allAlertsData اضافه کن (اگه duplicate نبودن)
+      for (const pa of myPrivate) {
+        if (!allAlertsData.find(x => x.id === pa.id)) {
+          allAlertsData.push(pa);
+        }
+      }
+      allPrivateData = myPrivate;
+    } catch { allPrivateData = []; }
 
     const active = alerts.filter(a => a.active && !a.is_private);
     const myPrivateActive = allPrivateData.filter(a => a.active);
