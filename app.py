@@ -1322,12 +1322,27 @@ def get_alerts():
 
 @app.route("/api/alerts/my", methods=["GET"])
 def get_my_alerts():
-    """آلارم‌های شخصی یه کاربر — با chat_id فیلتر میشه"""
-    cid = request.args.get("cid", "")
-    if not cid:
+    """آلارم‌های شخصی یه کاربر — با name یا cid فیلتر میشه"""
+    name = request.args.get("name", "").strip()
+    cid  = request.args.get("cid",  "").strip()
+    if not name and not cid:
         return jsonify([])
-    all_alerts = load_alerts().get("alerts", [])
-    my = [a for a in all_alerts if a.get("private_cid") == cid]
+    data = load_alerts()
+    all_alerts = data.get("alerts", [])
+    # اگه name داریم، chat_id متناظر رو از users پیدا کن
+    resolved_cid = cid
+    if name and not resolved_cid:
+        for usr in data.get("users", []):
+            if usr.get("custom_name", "").strip() == name:
+                resolved_cid = str(usr.get("chat_id", ""))
+                break
+    my = [
+        a for a in all_alerts
+        if a.get("is_private") and (
+            (resolved_cid and str(a.get("private_cid", "")) == resolved_cid) or
+            (name and a.get("created_by", "").strip() == name)
+        )
+    ]
     return jsonify(my)
 
 @app.route("/api/alerts", methods=["POST"])
