@@ -421,6 +421,7 @@ def answer_callback(token, callback_id, text=""):
 
 # ── reminder state ─────────────────────────────────────────────
 # { cid: { "sym": str, "interval": int(sec), "timer": Timer } }
+# _reminders = { cid: { sym: {"interval": int, "active": bool} } }
 _reminders = {}
 
 def _delete_msg_after(token, cid, msg_id, delay=120):
@@ -438,7 +439,7 @@ def _delete_msg_after(token, cid, msg_id, delay=120):
 def _send_reminder(token, cid, sym):
     """یه پیام یادآوری بفرست با دکمه کنسل"""
     msg = f"⚠️ <b>یادآوری:</b> <code>{sym}</code> بررسی بشه!\n\n🕐 این پیام ۲ دقیقه دیگه پاک میشه."
-    kb = [[{"text": "✕ کنسل هشدار", "callback_data": f"cancel_reminder:{cid}"}]]
+    kb = [[{"text": f"✕ کنسل {sym}", "callback_data": f"cancel_reminder_one:{cid}:{sym}"}]]
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
@@ -452,15 +453,33 @@ def _send_reminder(token, cid, sym):
 
 def _schedule_reminder(token, cid, sym, interval_sec):
     """هر interval_sec یه یادآوری بفرست تا کنسل نشه"""
+    if cid not in _reminders:
+        _reminders[cid] = {}
+    _reminders[cid][sym] = {"interval": interval_sec, "active": True}
+    entry = _reminders[cid][sym]
     def _loop():
-        while cid in _reminders:
+        while entry.get("active") and _reminders.get(cid, {}).get(sym, {}).get("active"):
             time.sleep(interval_sec)
-            if cid not in _reminders:
+            if not _reminders.get(cid, {}).get(sym, {}).get("active"):
                 break
             _send_reminder(token, cid, sym)
-    t = threading.Thread(target=_loop, daemon=True)
-    _reminders[cid] = {"sym": sym, "interval": interval_sec, "thread": t}
-    t.start()
+    threading.Thread(target=_loop, daemon=True).start()
+
+def build_cancel_reminder_msg(cid):
+    """لیست هشدارهای فعال با دکمه حذف جداگانه"""
+    active = _reminders.get(cid, {})
+    if not active:
+        return "هیچ هشدار دوره‌ای فعالی نداری.", []
+    labels = {300:"۵ دقیقه", 900:"۱۵ دقیقه", 3600:"۱ ساعت", 14400:"۴ ساعت"}
+    lines = ["⏰ <b>هشدارهای دوره‌ای فعال:</b>\n"]
+    keyboard = []
+    for sym, info in active.items():
+        lbl = labels.get(info["interval"], f"{info['interval']//60} دقیقه")
+        lines.append(f"• <b>{sym}</b> — هر {lbl}")
+        keyboard.append([{"text": f"🗑 حذف {sym}", "callback_data": f"cancel_reminder_one:{cid}:{sym}"}])
+    keyboard.append([{"text": "✕ کنسل همه", "callback_data": f"cancel_reminder_all:{cid}"}])
+    keyboard.append([{"text": "✓ بستن", "callback_data": "close_myalerts"}])
+    return "\n".join(lines), keyboard
 
 def build_myalerts_msg(cid):
     """متن و keyboard لیست آلارم‌های شخصی"""
@@ -690,27 +709,45 @@ def poll_telegram():
                         r_int = int(parts[3]) if len(parts) > 3 else 900
                         labels = {300:"۵ دقیقه", 900:"۱۵ دقیقه", 3600:"۱ ساعت", 14400:"۴ ساعت"}
                         label = labels.get(r_int, f"{r_int//60} دقیقه")
-                        # کنسل قبلی اگه بود
-                        if r_cid in _reminders:
-                            del _reminders[r_cid]
+                        # کنسل قبلی برای همین نماد اگه بود
+                        if _reminders.get(r_cid, {}).get(r_sym):
+                            _reminders[r_cid][r_sym]["active"] = False
+                            del _reminders[r_cid][r_sym]
                         answer_callback(token_cbq, cbq_id, f"✅ هر {label} یادآوری میاد")
                         edit_tg_keyboard(token_cbq, cbq_cid, cbq_msg_id,
                             f"✅ هشدار دوره‌ای <b>{r_sym}</b> هر <b>{label}</b> فعال شد.\nبرای کنسل: /cancel_reminder", [])
                         _schedule_reminder(token_cbq, r_cid, r_sym, r_int)
 
-                    elif cbq_data.startswith("cancel_reminder:"):
+                    elif cbq_data.startswith("cancel_reminder_one:"):
+                        # حذف یه هشدار مشخص
+                        parts = cbq_data.split(":", 2)
+                        r_cid = parts[1] if len(parts) > 1 else cbq_cid
+                        r_sym = parts[2] if len(parts) > 2 else ""
+                        if r_sym and _reminders.get(r_cid, {}).get(r_sym):
+                            _reminders[r_cid][r_sym]["active"] = False
+                            del _reminders[r_cid][r_sym]
+                            if not _reminders[r_cid]:
+                                del _reminders[r_cid]
+                            answer_callback(token_cbq, cbq_id, f"✅ هشدار {r_sym} کنسل شد")
+                        else:
+                            answer_callback(token_cbq, cbq_id, "هشداری پیدا نشد")
+                        # آپدیت لیست
+                        new_text, new_kb = build_cancel_reminder_msg(r_cid)
+                        if new_kb:
+                            edit_tg_keyboard(token_cbq, cbq_cid, cbq_msg_id, new_text, new_kb)
+                        else:
+                            edit_tg_keyboard(token_cbq, cbq_cid, cbq_msg_id, "✅ همه هشدارها کنسل شدن.", [])
+
+                    elif cbq_data.startswith("cancel_reminder_all:"):
                         r_cid = cbq_data.split(":", 1)[1] if ":" in cbq_data else cbq_cid
                         if r_cid in _reminders:
+                            for info in _reminders[r_cid].values():
+                                info["active"] = False
                             del _reminders[r_cid]
-                            answer_callback(token_cbq, cbq_id, "✅ هشدار کنسل شد")
+                            answer_callback(token_cbq, cbq_id, "✅ همه هشدارها کنسل شد")
                         else:
                             answer_callback(token_cbq, cbq_id, "هشداری فعال نبود")
-                        try:
-                            requests.post(
-                                f"https://api.telegram.org/bot{token_cbq}/deleteMessage",
-                                json={"chat_id": cbq_cid, "message_id": cbq_msg_id},
-                                timeout=10, headers=H)
-                        except: pass
+                        edit_tg_keyboard(token_cbq, cbq_cid, cbq_msg_id, "✅ همه هشدارهای دوره‌ای کنسل شدن.", [])
 
                     elif cbq_data == "close_myalerts":
                         answer_callback(token_cbq, cbq_id, "بسته شد")
@@ -933,11 +970,11 @@ def poll_telegram():
 
                 # ── /news ────────────────────────────────────────────
                 elif txt.startswith("/cancel_reminder"):
-                    if cid in _reminders:
-                        del _reminders[cid]
-                        send_tg(token, cid, "✅ هشدار دوره‌ای کنسل شد.")
+                    text_msg, keyboard = build_cancel_reminder_msg(cid)
+                    if keyboard:
+                        send_tg_keyboard(token, cid, text_msg, keyboard)
                     else:
-                        send_tg(token, cid, "هیچ هشدار فعالی نداری.")
+                        send_tg(token, cid, text_msg)
 
                 elif txt.startswith("/myalerts"):
                     text_msg, keyboard = build_myalerts_msg(cid)
