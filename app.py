@@ -2554,8 +2554,9 @@ def overall_analysis():
             rp = abs(float(t["entry"]) - float(t["sl_price"])) * mul
         mfe = float(t.get("review_mfe") or t.get("mfe_pip") or 0)
         return t.get("exit_type") or calc_exit_type(t.get("outcome",""), rp, mfe, t.get("found_3r", False))
-    win_tp_count = sum(1 for t in closed if _et(t) == "tp")
-    win_3r_count = sum(1 for t in closed if _et(t) == "tp3")
+    win_tp_count  = sum(1 for t in closed if _et(t) == "tp")
+    win_3r_count  = sum(1 for t in closed if _et(t) == "tp3")
+    win_manual_count = sum(1 for t in closed if _et(t) == "manual")
 
     early_exit_count = 0
     early_exit_left_r_list = []
@@ -2651,9 +2652,11 @@ def overall_analysis():
 
         # ─── محاسبات جدید ───
         if has_valid_risk:
-            # ۱. hypothetical 3R: اگه این ترید رو تا 3R نگه می‌داشتیم چی می‌شد؟
+            # ۱. hypothetical 3R: اگه همه تریدها تا 3R نگه می‌داشتیم چی می‌شد؟
+            # باگ‌فیکس: برای win، hypothetical باید mfe_r باشه نه taken_r
+            # taken_r ممکنه کمتر از mfe_r باشه (زود بستیم)
             if outcome == "win":
-                h3r = 3.0 if mfe_r >= 3.0 else taken_r  # اگه MFE به 3R رسید، 3R بگیر
+                h3r = min(3.0, mfe_r) if mfe_r > 0 else taken_r
             else:
                 h3r = -1.0  # باخت همیشه -1R
             hypothetical_3r_list.append(h3r)
@@ -2769,7 +2772,14 @@ def overall_analysis():
                         "extra": {"taken_r": taken_r, "mfe_r": mfe_r, "left_r": left_r}})
         else:
             # باخت‌ها
-            mbe_pip = float(t.get("review_mfe") or t.get("mfe_before_sl_pip") or 0)
+            # باگ‌فیکس: برای باخت، review_mfe = MFE قبل از SL (کاربر وارد کرده)
+            # اگه review_mfe نداشت، از mfe_before_sl_pip بخون نه mfe_pip
+            # mfe_pip برای باخت = MFE کل ترید (که ممکنه بعد از SL هم ادامه داشته باشه)
+            mbe_pip = float(
+                t.get("review_mfe")             # اول review دستی (پیپ)
+                or t.get("mfe_before_sl_pip")   # بعد مقدار سیستمی قبل از SL
+                or 0
+            )
             mbe_r = round(mbe_pip / risk_pips, 2) if has_valid_risk else 0.0
 
             psl_manual = t.get("review_reversal_target_pips")
@@ -2821,6 +2831,10 @@ def overall_analysis():
 
 
         # ─── فری‌ریسک ───
+        # باگ‌فیکس: تریدهای manual (زود بسته) که passed_1r بودن
+        # هم باید در fr_missed حساب بشن — چون به 1R رسیدی ولی نگه نداشتی
+        _et_this = t.get("exit_type") or calc_exit_type(outcome, risk_pips,
+            float(t.get("review_mfe") or t.get("mfe_pip") or 0), t.get("found_3r", False))
         if outcome == "loss":
             if free_risk_done:
                 free_risk_done_count += 1
@@ -2828,6 +2842,9 @@ def overall_analysis():
             elif fr_possible:
                 fr_missed_count += 1
                 detail_fr_missed.append({**tshort, "detail": f"SL={round(risk_pips,1) if has_valid_risk else '—'}p | {entry_time_short}"})
+        elif outcome == "win" and _et_this == "manual" and passed_1r and has_valid_risk:
+            # زود بستن بعد از 1R — missed opportunity برای نگه‌داشتن بیشتر
+            detail_fr_missed.append({**tshort, "detail": f"manual بسته شد بعد از {taken_r:.1f}R (1R رسیده بود) | {entry_time_short}"})
 
         # ─── خلاصه متنی برای AI ───
         mfe_r_str  = f"{mfe_r:.2f}R"  if (has_valid_risk and mfe_r)  else "—"
@@ -2932,7 +2949,7 @@ def overall_analysis():
         sym_lines.append(f"{s}: {wr_s}% برد ({v['wins']}/{tot}) | R:{v['total_r']:+.2f}R")
     numeric = {
         "total": total, "wins": wins, "losses": losses, "winrate": wr,
-        "win_tp_count": win_tp_count, "win_3r_count": win_3r_count,
+        "win_tp_count": win_tp_count, "win_3r_count": win_3r_count, "win_manual_count": win_manual_count,
         "avg_taken_r": avg_taken_r, "avg_mfe_r": avg_mfe_r,
         "early_exit_count": early_exit_count, "early_exit_avg_pip": avg_early_r,
         "fr_missed_count": fr_missed_count,
@@ -2968,7 +2985,7 @@ def overall_analysis():
         f"=== آمار کلی ===\n"
         f"تعداد: {total} | برد: {wins} | باخت: {losses} | نرخ برد: {wr}%\n"
         f"{'⚠️ '+str(no_sl_count)+' ترید بدون SL (از محاسبات R حذف شدند)\n' if no_sl_count else ''}"
-        f"بردها: {win_3r_count} تا 3R کامل | {win_tp_count} تا زودخروج\n"
+        f"بردها: {win_3r_count} تا 3R کامل | {win_tp_count} تا TP زودخروج" + (f" | {win_manual_count} تا بسته‌شدن دستی قبل از TP" if win_manual_count else "") + "\n"
         f"R واقعی گرفته شده: {total_actual_r:+.2f}R | اگه همه تا 3R نگه می‌داشتیم: {total_hypothetical_3r:+.2f}R\n"
         f"→ با نگه داشتن تا 3R، {gain_if_held:+.2f}R بیشتر/کمتر می‌گرفتیم\n"
         f"میانگین R گرفته: {avg_taken_r:+.2f}R | میانگین MFE: {avg_mfe_r:.2f}R | میانگین MAE: {avg_mae_r:.2f}R\n\n"
