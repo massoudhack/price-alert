@@ -1775,6 +1775,9 @@ import uuid as _uuid
 def generate_id():
     """ID یکتا حتی برای تریدهای همزمان"""
     return str(int(time.time() * 1000)) + str(_uuid.uuid4().hex[:4])
+
+def calc_exit_type(outcome, risk_pips, mfe_pip, found_3r, exit_type_stored=None):
+    """نوع خروج رو بر اساس outcome و MFE محاسبه کن"""
     if exit_type_stored in ("sl", "tp", "tp3"):
         return exit_type_stored
     if outcome == "loss":
@@ -3386,7 +3389,29 @@ def add_journal_mt4():
     mul       = get_pip_multiplier(sym)
     sl_pips   = round(abs(entry - float(sl_price)) * mul, 1) if sl_price else None
     tp_pips   = round(abs(float(tp_price) - entry) * mul, 1) if tp_price else None
-    exit_type = body.get("exit_type") or ("sl" if outcome == "loss" else "tp" if outcome == "win" else None)
+
+    # تشخیص exit_type دقیق
+    _exit_type_from_ea = body.get("exit_type")
+    if _exit_type_from_ea in ("sl", "tp", "tp3", "manual"):
+        exit_type = _exit_type_from_ea
+    elif outcome == "loss":
+        exit_type = "sl"
+    elif outcome == "win":
+        if exit_price and tp_price and sl_price:
+            _tp_f   = float(tp_price)
+            _sl_f   = float(sl_price)
+            _exit_f = float(exit_price)
+            _risk   = abs(entry - _sl_f) * mul
+            _diff_from_tp = abs(_exit_f - _tp_f) * mul
+            if _diff_from_tp <= max(2.0, _risk * 0.10):
+                exit_type = "tp"
+            else:
+                exit_type = "manual"
+            print(f"[MT5] exit_type auto: exit={_exit_f} tp={_tp_f} diff={_diff_from_tp:.1f}pip risk={_risk:.1f}pip -> {exit_type}")
+        else:
+            exit_type = "tp"
+    else:
+        exit_type = None
 
     trade = {
         "id":           generate_id(),
